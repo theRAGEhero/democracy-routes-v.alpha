@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --ink: #151515;
+  --muted: #5a5a5a;
+  --paper: #f7f3ea;
+  --accent: #f97316;
+  --accent-deep: #9a3412;
+  --mint: #14b8a6;
+  --sky: #1d4ed8;
+  --shadow: rgba(18, 18, 18, 0.12);
+  --card: rgba(255, 255, 255, 0.78);
+  --stroke: rgba(0, 0, 0, 0.08);
+}
+
+body {
+  font-family: var(--font-sans, "Space Grotesk", "IBM Plex Sans", sans-serif);
+  color: var(--ink);
+  background: radial-gradient(circle at 15% 10%, #ffe9cf, transparent 45%),
+    radial-gradient(circle at 80% 0%, #d8f4ff, transparent 55%),
+    linear-gradient(180deg, #fffdf8 0%, #f2f0e8 100%);
+  min-height: 100vh;
+}
+
+.dr-card {
+  background: var(--card);
+  border: 1px solid var(--stroke);
+  border-radius: 20px;
+  box-shadow: 0 24px 60px var(--shadow);
+  backdrop-filter: blur(12px);
+}
+
+.dr-card-no-filter {
+  backdrop-filter: none;
+}
+
+.dr-button {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  font-weight: 600;
+  transition: background 0.2s ease;
+}
+
+.dr-button:hover {
+  background: var(--accent-deep);
+}
+
+.dr-button-outline {
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.7);
+  font-weight: 600;
+  transition: background 0.2s ease;
+}
+
+.dr-button-outline:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.dr-input {
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.75);
+  color: var(--ink);
+}
+
+[data-poster] {
+  color: #f8fafc;
+  font-size: clamp(2.4rem, 4vw, 4.6rem);
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+}
+
+[data-poster] strong {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+[data-poster] em {
+  font-style: italic;
+  letter-spacing: 0.02em;
+}

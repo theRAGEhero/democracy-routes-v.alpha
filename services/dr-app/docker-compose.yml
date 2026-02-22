@@ -1,0 +1,26 @@
+version: "3.9"
+
+services:
+  democracyroutes:
+    build: .
+    ports:
+      - "3015:3015"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3015
+      DATABASE_URL: file:/data/dev.db
+    volumes:
+      - democracyroutes_data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - dr-shared
+
+volumes:
+  democracyroutes_data:
+
+networks:
+  dr-shared:
+    external: true

@@ -1,0 +1,579 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String           @id @default(cuid())
+  email              String           @unique
+  passwordHash       String
+  emailVerifiedAt    DateTime?
+  emailVerificationToken String?
+  emailVerificationExpiresAt DateTime?
+  passwordResetToken String?
+  passwordResetExpiresAt DateTime?
+  telegramHandle     String?
+  telegramChatId     String?
+  telegramVerificationCode String?
+  telegramVerificationExpiresAt DateTime?
+  calComLink         String?
+  role               String           @default("USER")
+  isGuest            Boolean          @default(false)
+  isDeleted          Boolean          @default(false)
+  deletedAt          DateTime?
+  privacyPolicyAccepted Boolean       @default(false)
+  mustChangePassword Boolean          @default(false)
+  createdAt          DateTime         @default(now())
+  meetingsCreated    Meeting[]        @relation("MeetingCreator")
+  memberships        MeetingMember[]
+  meetingInvites     MeetingInvite[]
+  meetingGuestInvites MeetingGuestInvite[]
+  planParticipations PlanParticipant[]
+  plansCreated       Plan[]           @relation("PlanCreator")
+  planPairsA         PlanPair[]       @relation("PlanPairUserA")
+  planPairsB         PlanPair[]       @relation("PlanPairUserB")
+  dataspacesCreated  Dataspace[]      @relation("DataspaceCreator")
+  dataspaceMemberships DataspaceMember[]
+  dataspaceInvites   DataspaceInvite[]
+  dataspaceGuestInvites DataspaceGuestInvite[] @relation("DataspaceGuestCreator")
+  dataspaceSubscriptions DataspaceSubscription[]
+  texts              Text[]           @relation("TextAuthor")
+  planMeditationSessions PlanMeditationSession[]
+  planRecordSessions  PlanRecordSession[]
+  planFormResponses   PlanFormResponse[]
+  postersCreated     Poster[]         @relation("PosterCreator")
+  planTextEntries    PlanTextEntry[]
+  appLogs            AppLog[]
+  planTemplates      PlanTemplate[]   @relation("PlanTemplateCreator")
+  transcriptionJobs  TranscriptionJob[]
+  feedbacks          Feedback[]
+  planGuestInvitesCreated PlanGuestInvite[] @relation("PlanGuestInviteCreator")
+  planGuestInvites   PlanGuestInvite[] @relation("PlanGuestInviteUser")
+
+  @@index([role])
+  @@index([emailVerificationToken])
+  @@index([passwordResetToken])
+}
+
+model Text {
+  id          String    @id @default(cuid())
+  content     String    @default("")
+  createdById String
+  createdBy   User      @relation("TextAuthor", fields: [createdById], references: [id])
+  dataspaceId String?
+  dataspace   Dataspace? @relation(fields: [dataspaceId], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([createdById])
+  @@index([dataspaceId])
+}
+
+model Poster {
+  id          String   @id @default(cuid())
+  title       String
+  content     String
+  createdById String
+  createdBy   User     @relation("PosterCreator", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  blocks      PlanBlock[]
+
+  @@index([createdById])
+  @@index([createdAt])
+}
+
+model RegistrationSettings {
+  id               String   @id @default(cuid())
+  registrationOpen Boolean  @default(true)
+  requireCode      Boolean  @default(false)
+  requireEmailConfirmation Boolean @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Feedback {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userEmail String
+  pagePath  String
+  message   String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model RegistrationCode {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([enabled])
+}
+
+model Meeting {
+  id          String          @id @default(cuid())
+  title       String
+  description String?
+  roomId      String          @unique
+  createdById String
+  createdBy   User            @relation("MeetingCreator", fields: [createdById], references: [id])
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @default(now()) @updatedAt
+  timezone    String?
+  scheduledStartAt DateTime?
+  expiresAt   DateTime?
+  isActive    Boolean         @default(true)
+  isHidden    Boolean         @default(false)
+  isPublic    Boolean         @default(false)
+  requiresApproval Boolean    @default(false)
+  capacity    Int?
+  language    String          @default("EN")
+  transcriptionProvider String @default("DEEPGRAM")
+  transcriptionRoundId String?
+  dataspaceId String?
+  dataspace   Dataspace?      @relation(fields: [dataspaceId], references: [id])
+  members     MeetingMember[]
+  invites     MeetingInvite[]
+  guestInvites MeetingGuestInvite[]
+  planPairs   PlanPair[]
+  transcript  MeetingTranscript?
+  transcriptionJobs TranscriptionJob[]
+
+  @@index([createdById])
+  @@index([isActive])
+  @@index([isHidden])
+  @@index([expiresAt])
+}
+
+model MeetingTranscript {
+  id            String   @id @default(cuid())
+  meetingId     String   @unique
+  provider      String
+  roundId       String?
+  transcriptText String?
+  transcriptJson String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  meeting       Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId])
+  @@index([provider])
+  @@index([updatedAt])
+}
+
+model MeetingGuestInvite {
+  id          String   @id @default(cuid())
+  meetingId   String
+  createdById String
+  email       String
+  token       String   @unique
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime?
+  meeting     Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, email])
+  @@index([meetingId])
+  @@index([createdById])
+  @@index([expiresAt])
+}
+
+model MeetingMember {
+  id        String      @id @default(cuid())
+  meetingId String
+  userId    String
+  role      String
+  createdAt DateTime    @default(now())
+  meeting   Meeting     @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, userId])
+  @@index([meetingId])
+  @@index([userId])
+}
+
+model MeetingInvite {
+  id        String   @id @default(cuid())
+  meetingId String
+  userId    String
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now())
+  meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, userId])
+  @@index([meetingId])
+  @@index([userId])
+  @@index([status])
+}
+
+model Plan {
+  id                   String      @id @default(cuid())
+  title                String
+  description          String?
+  createdById          String
+  createdBy            User        @relation("PlanCreator", fields: [createdById], references: [id])
+  dataspaceId          String?
+  dataspace            Dataspace?  @relation(fields: [dataspaceId], references: [id], onDelete: SetNull)
+  startAt              DateTime
+  timezone             String?
+  roundDurationMinutes Int
+  roundsCount          Int
+  syncMode             String      @default("SERVER")
+  maxParticipantsPerRoom Int       @default(2)
+  allowOddGroup        Boolean     @default(false)
+  language             String      @default("EN")
+  transcriptionProvider String     @default("DEEPGRAM")
+  meditationEnabled    Boolean     @default(false)
+  meditationAtStart    Boolean     @default(false)
+  meditationBetweenRounds Boolean  @default(false)
+  meditationAtEnd      Boolean     @default(false)
+  meditationDurationMinutes Int    @default(5)
+  meditationAnimationId String?
+  meditationAudioUrl   String?
+  isPublic             Boolean     @default(false)
+  requiresApproval     Boolean     @default(false)
+  capacity             Int?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @default(now()) @updatedAt
+  rounds               PlanRound[]
+  participants         PlanParticipant[]
+  meditationSessions   PlanMeditationSession[]
+  blocks               PlanBlock[]
+  textEntries          PlanTextEntry[]
+  transcriptionJobs    TranscriptionJob[]
+  guestInvites         PlanGuestInvite[]
+  analyses             PlanAnalysis[]
+  recordSessions       PlanRecordSession[]
+  formResponses        PlanFormResponse[]
+
+  @@index([createdById])
+  @@index([startAt])
+  @@index([dataspaceId])
+}
+
+model PlanAnalysis {
+  id        String   @id @default(cuid())
+  planId    String
+  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  prompt    String
+  provider  String
+  analysis  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([planId])
+  @@index([createdAt])
+}
+
+model TranscriptionJob {
+  id            String   @id @default(cuid())
+  kind          String
+  status        String
+  provider      String
+  meetingId     String?
+  planId        String?
+  userId        String?
+  roundId       String?
+  meditationIndex Int?
+  audioPath     String?
+  attempts      Int      @default(0)
+  lastError     String?
+  lastAttemptAt DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  meeting       Meeting? @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  plan          Plan?    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([kind])
+  @@index([status])
+  @@index([provider])
+  @@index([meetingId])
+  @@index([planId])
+  @@index([updatedAt])
+}
+
+model PlanBlock {
+  id             String   @id @default(cuid())
+  planId         String
+  orderIndex     Int
+  type           String
+  durationSeconds Int
+  roundNumber    Int?
+  roundMaxParticipants Int?
+  formQuestion   String?
+  formChoicesJson String?
+  posterId       String?
+  meditationAnimationId String?
+  meditationAudioUrl   String?
+  createdAt      DateTime @default(now())
+  plan           Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  poster         Poster?  @relation(fields: [posterId], references: [id], onDelete: SetNull)
+  textEntries    PlanTextEntry[]
+  recordSessions PlanRecordSession[]
+  formResponses  PlanFormResponse[]
+
+  @@index([planId])
+  @@index([orderIndex])
+  @@index([type])
+  @@index([posterId])
+}
+
+model PlanFormResponse {
+  id        String   @id @default(cuid())
+  planId    String
+  blockId   String
+  userId    String
+  choiceKey String
+  createdAt DateTime @default(now())
+  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  block     PlanBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([blockId, userId])
+  @@index([planId])
+  @@index([blockId])
+  @@index([userId])
+}
+
+model PlanMeditationSession {
+  id             String   @id @default(cuid())
+  planId         String
+  userId         String
+  meditationIndex Int
+  roundAfter     Int?
+  provider       String
+  language       String
+  roundId        String
+  transcriptText String?
+  transcriptJson String?
+  createdAt      DateTime @default(now())
+  plan           Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([planId])
+  @@index([userId])
+  @@index([meditationIndex])
+}
+
+model PlanRecordSession {
+  id             String   @id @default(cuid())
+  planId         String
+  blockId        String
+  userId         String
+  provider       String
+  language       String
+  roundId        String
+  transcriptText String?
+  transcriptJson String?
+  createdAt      DateTime @default(now())
+  plan           Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  block          PlanBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([blockId, userId])
+  @@index([planId])
+  @@index([blockId])
+  @@index([userId])
+}
+
+model PlanTextEntry {
+  id          String   @id @default(cuid())
+  planId      String
+  blockId     String
+  userId      String
+  content     String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  plan        Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  block       PlanBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([blockId, userId])
+  @@index([planId])
+  @@index([blockId])
+  @@index([userId])
+}
+
+model PlanRound {
+  id          String     @id @default(cuid())
+  planId      String
+  roundNumber Int
+  plan        Plan       @relation(fields: [planId], references: [id], onDelete: Cascade)
+  pairs       PlanPair[]
+
+  @@unique([planId, roundNumber])
+  @@index([planId])
+}
+
+model PlanPair {
+  id          String   @id @default(cuid())
+  planRoundId String
+  roomId      String
+  meetingId   String?
+  userAId     String
+  userBId     String?
+  planRound   PlanRound @relation(fields: [planRoundId], references: [id], onDelete: Cascade)
+  userA       User      @relation("PlanPairUserA", fields: [userAId], references: [id])
+  userB       User?     @relation("PlanPairUserB", fields: [userBId], references: [id])
+  meeting     Meeting?  @relation(fields: [meetingId], references: [id], onDelete: SetNull)
+
+  @@index([planRoundId])
+  @@index([meetingId])
+  @@index([userAId])
+  @@index([userBId])
+}
+
+model PlanParticipant {
+  id        String   @id @default(cuid())
+  planId    String
+  userId    String
+  status    String   @default("APPROVED")
+  createdAt DateTime @default(now())
+  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, userId])
+  @@index([planId])
+  @@index([userId])
+  @@index([status])
+}
+
+model PlanGuestInvite {
+  id          String   @id @default(cuid())
+  planId      String
+  createdById String
+  userId      String
+  email       String
+  token       String   @unique
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime?
+  plan        Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  createdBy   User     @relation("PlanGuestInviteCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  user        User     @relation("PlanGuestInviteUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, email])
+  @@index([planId])
+  @@index([createdById])
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Dataspace {
+  id          String            @id @default(cuid())
+  name        String
+  description String?
+  createdById String
+  createdBy   User              @relation("DataspaceCreator", fields: [createdById], references: [id])
+  personalOwnerId String?       @unique
+  isPrivate   Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+  members     DataspaceMember[]
+  invites     DataspaceInvite[]
+  guestInvites DataspaceGuestInvite[]
+  subscriptions DataspaceSubscription[]
+  texts       Text[]
+  meetings    Meeting[]
+  plans       Plan[]
+
+  @@index([createdById])
+  @@index([createdAt])
+  @@index([isPrivate])
+}
+
+model DataspaceSubscription {
+  id          String    @id @default(cuid())
+  dataspaceId String
+  userId      String
+  createdAt   DateTime  @default(now())
+  dataspace   Dataspace @relation(fields: [dataspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([dataspaceId, userId])
+  @@index([dataspaceId])
+  @@index([userId])
+}
+
+model DataspaceMember {
+  id          String    @id @default(cuid())
+  dataspaceId String
+  userId      String
+  createdAt   DateTime  @default(now())
+  dataspace   Dataspace @relation(fields: [dataspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([dataspaceId, userId])
+  @@index([dataspaceId])
+  @@index([userId])
+}
+
+model DataspaceInvite {
+  id          String    @id @default(cuid())
+  dataspaceId String
+  userId      String
+  status      String    @default("PENDING")
+  createdAt   DateTime  @default(now())
+  dataspace   Dataspace @relation(fields: [dataspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([dataspaceId, userId])
+  @@index([dataspaceId])
+  @@index([userId])
+  @@index([status])
+}
+
+model AppLog {
+  id        String   @id @default(cuid())
+  level     String
+  scope     String
+  message   String
+  meta      String?
+  userId    String?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([level])
+  @@index([scope])
+  @@index([createdAt])
+}
+
+model PlanTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  blocksJson  String
+  createdById String
+  isPublic    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   User     @relation("PlanTemplateCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([createdById])
+  @@index([isPublic])
+  @@index([createdAt])
+}
+
+model DataspaceGuestInvite {
+  id          String    @id @default(cuid())
+  dataspaceId String
+  createdById String
+  email       String
+  status      String    @default("PENDING")
+  createdAt   DateTime  @default(now())
+  dataspace   Dataspace @relation(fields: [dataspaceId], references: [id], onDelete: Cascade)
+  createdBy   User      @relation("DataspaceGuestCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@unique([dataspaceId, email])
+  @@index([dataspaceId])
+  @@index([createdById])
+  @@index([status])
+}

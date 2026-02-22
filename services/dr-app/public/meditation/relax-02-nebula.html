@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Relax Nebula</title>
+  <style>
+    :root{
+      --bg1:#05050f;
+      --bg2:#150a24;
+      --bg3:#07111c;
+      --text: rgba(255,255,255,.78);
+    }
+    html,body{height:100%;margin:0}
+    body{
+      overflow:hidden;
+      background: radial-gradient(1000px 700px at 20% 20%, rgba(129,106,233,.2), transparent 60%),
+                  radial-gradient(800px 600px at 80% 30%, rgba(88,189,245,.16), transparent 60%),
+                  linear-gradient(150deg, var(--bg1), var(--bg2), var(--bg3));
+      background-size: 180% 180%;
+      animation: drift 26s ease-in-out infinite;
+      font-family: "Garamond", "Times New Roman", serif;
+      color: var(--text);
+    }
+    @keyframes drift{
+      0%{background-position: 0% 30%}
+      50%{background-position: 100% 70%}
+      100%{background-position: 0% 30%}
+    }
+    canvas{position:fixed;inset:0;display:block}
+    .ui{
+      position:fixed;
+      left:20px; bottom:18px;
+      display:flex; gap:12px; align-items:center;
+      padding:10px 12px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(8,8,18,.4);
+      backdrop-filter: blur(10px);
+      border-radius:14px;
+      box-shadow: 0 10px 40px rgba(0,0,0,.3);
+      user-select:none;
+    }
+    .ui label{font-size:12px;letter-spacing:.2px}
+    .ui input[type="range"]{width:150px}
+    .ui button{
+      border:1px solid rgba(255,255,255,.25);
+      background: rgba(255,255,255,.08);
+      color: rgba(255,255,255,.9);
+      font-size:12px;
+      padding:6px 10px;
+      border-radius:10px;
+      cursor:pointer;
+    }
+    .ui button:disabled{opacity:.6; cursor:default}
+    #micLevel{font-size:12px;opacity:.8}
+    .hint{
+      position:fixed;
+      right:20px; top:18px;
+      padding:10px 12px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(8,8,18,.35);
+      backdrop-filter: blur(10px);
+      border-radius:14px;
+      font-size:12px;
+      line-height:1.35;
+      max-width: 240px;
+    }
+    .hint b{color: rgba(255,255,255,.9)}
+  
+    .ui, .hint { display: none; }
+</style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+
+  <div class="hint">
+    <b>Nebula Drift</b><br/>
+    Enable the microphone and speak softly.<br/>
+    Press <b>Space</b> to pause.
+  </div>
+
+  <div class="ui">
+    <label>Calm</label>
+    <input id="calm" type="range" min="0" max="100" value="65" />
+    <label id="label">65%</label>
+    <button id="mic">Enable Mic</button>
+    <span id="micLevel" aria-hidden="true">Mic: 0</span>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("c");
+    const ctx = canvas.getContext("2d", { alpha: true });
+
+    const calmSlider = document.getElementById("calm");
+    const calmLabel  = document.getElementById("label");
+    const micButton = document.getElementById("mic");
+    const micMeter = document.getElementById("micLevel");
+
+    let W=0,H=0, DPR=1;
+    function resize(){
+      DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      W = Math.floor(window.innerWidth);
+      H = Math.floor(window.innerHeight);
+      canvas.width  = Math.floor(W * DPR);
+      canvas.height = Math.floor(H * DPR);
+      canvas.style.width = W + "px";
+      canvas.style.height = H + "px";
+      ctx.setTransform(DPR,0,0,DPR,0,0);
+    }
+    window.addEventListener("resize", resize);
+    resize();
+
+    let micLevel = 0;
+    window.addEventListener('message', (event) => {
+      if (!event || !event.data || event.data.type !== 'meditation-mic') return;
+      const next = Number(event.data.level);
+      if (Number.isNaN(next)) return;
+      micLevel = Math.max(0, Math.min(1, next));
+    });
+    let micReady = false;
+    let micUnavailable = false;
+
+    async function enableMic(){
+      if(micReady || micUnavailable) return;
+      try{
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512;
+        const source = audioCtx.createMediaStreamSource(stream);
+        source.connect(analyser);
+
+        const buffer = new Uint8Array(analyser.fftSize);
+        function updateMic(){
+          analyser.getByteTimeDomainData(buffer);
+          let sum = 0;
+          for(let i=0;i<buffer.length;i++){
+            const v = (buffer[i] - 128) / 128;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / buffer.length);
+          const target = Math.min(1, rms * 6.0);
+          micLevel += (target - micLevel) * 0.15;
+          micMeter.textContent = "Mic: " + Math.round(micLevel * 100);
+          requestAnimationFrame(updateMic);
+        }
+        updateMic();
+
+        micReady = true;
+        micButton.textContent = "Mic On";
+        micButton.disabled = true;
+      }catch(err){
+        micUnavailable = true;
+        micButton.textContent = "Mic Blocked";
+        micButton.disabled = true;
+      }
+    }
+
+    micButton.addEventListener("click", enableMic);
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      micUnavailable = true;
+      micButton.textContent = "Mic Unsupported";
+      micButton.disabled = true;
+    }
+
+    let paused = false;
+    window.addEventListener("keydown", (e)=>{
+      if(e.code === "Space"){ paused = !paused; }
+    });
+
+    const stars = [];
+    const STAR_COUNT = 220;
+    function initStars(){
+      stars.length = 0;
+      for(let i=0;i<STAR_COUNT;i++){
+        stars.push({
+          x: Math.random() * W,
+          y: Math.random() * H,
+          z: Math.random(),
+          tw: Math.random()*Math.PI*2
+        });
+      }
+    }
+    initStars();
+
+    const clouds = [
+      { x: 0.25, y: 0.35, hue: 265 },
+      { x: 0.75, y: 0.45, hue: 205 },
+      { x: 0.55, y: 0.7, hue: 230 }
+    ];
+
+    let t0 = performance.now();
+    function frame(now){
+      requestAnimationFrame(frame);
+      if(paused) return;
+
+      const dt = Math.min(0.033, (now - t0) / 1000);
+      t0 = now;
+
+      const calm = Number(calmSlider.value) / 100;
+      calmLabel.textContent = Math.round(calm*100) + "%";
+      const voice = micLevel;
+
+      ctx.fillStyle = `rgba(4,5,10,${0.12 + (1-calm)*0.06})`;
+      ctx.fillRect(0,0,W,H);
+
+      ctx.globalCompositeOperation = "lighter";
+      for(const c of clouds){
+        const rad = Math.min(W,H) * (0.3 + voice*0.25);
+        const gx = W * c.x + Math.sin(now*0.00008 + c.hue) * 40;
+        const gy = H * c.y + Math.cos(now*0.00006 + c.hue) * 30;
+        const g = ctx.createRadialGradient(gx, gy, 10, gx, gy, rad);
+        g.addColorStop(0, `hsla(${c.hue}, 70%, 65%, ${0.18 + voice*0.3})`);
+        g.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(0,0,W,H);
+      }
+
+      ctx.globalCompositeOperation = "source-over";
+      for(const s of stars){
+        s.tw += dt * (0.6 + voice*2.0);
+        const tw = (Math.sin(s.tw) + 1) / 2;
+        const r = 0.6 + s.z*1.5 + voice*0.8;
+        ctx.fillStyle = `rgba(255,255,255,${0.35 + tw*0.6})`;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, r, 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+
+    ctx.fillStyle = "rgba(4,5,10,1)";
+    ctx.fillRect(0,0,W,H);
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>

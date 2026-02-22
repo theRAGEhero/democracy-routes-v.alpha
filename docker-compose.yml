@@ -1,0 +1,62 @@
+services:
+  dr-app:
+    build:
+      context: ./services/dr-app
+      dockerfile: Dockerfile
+    container_name: dr-app
+    env_file:
+      - ./.env
+    environment:
+      NODE_ENV: production
+      PORT: ${DR_APP_PORT:-3015}
+      DATABASE_URL: ${DR_APP_DATABASE_URL:-file:/data/dev.db}
+    expose:
+      - "3015"
+    volumes:
+      - dr_app_data:/data
+    networks:
+      - dr_net
+
+  dr-video:
+    image: node:20-alpine
+    container_name: dr-video
+    working_dir: /app
+    env_file:
+      - ./.env
+    environment:
+      NODE_ENV: production
+      PORT: ${DR_VIDEO_PORT:-3020}
+      HOST: ${DR_VIDEO_HOST:-0.0.0.0}
+      ANNOUNCED_IP: ${DR_VIDEO_ANNOUNCED_IP:-}
+      DEEPGRAM_API_KEY: ${DR_VIDEO_DEEPGRAM_API_KEY:-}
+    command: sh -lc "npm ci && node server.js"
+    volumes:
+      - ./services/dr-video:/app
+      - dr_video_recordings:/app/recordings
+      - dr_video_logs:/app/logs
+    expose:
+      - "3020"
+    networks:
+      - dr_net
+
+  dr-proxy:
+    image: nginx:1.27-alpine
+    container_name: dr-proxy
+    depends_on:
+      - dr-app
+      - dr-video
+    ports:
+      - "${PROXY_HTTP_PORT:-8088}:80"
+    volumes:
+      - ./infra/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - dr_net
+
+volumes:
+  dr_app_data:
+  dr_video_recordings:
+  dr_video_logs:
+
+networks:
+  dr_net:
+    name: democracy_routes_net

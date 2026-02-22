@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DR Video Admin</title>
+    <style>
+      :root {
+        --ink: #111827;
+        --muted: #526079;
+        --line: rgba(17, 24, 39, 0.12);
+        --panel: rgba(255, 255, 255, 0.88);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", "IBM Plex Sans", "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: linear-gradient(180deg, #fffdf8 0%, #f2ede2 100%);
+      }
+      .app {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 16px 14px 24px;
+      }
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--panel);
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
+      }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+      }
+      .grid {
+        margin-top: 12px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+      .panel {
+        padding: 12px;
+      }
+      .panel h3 {
+        margin: 0 0 8px;
+        font-size: 14px;
+      }
+      .tools {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+      }
+      .list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #fff;
+        max-height: 280px;
+        overflow: auto;
+      }
+      .list li {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+        font-size: 12px;
+        color: #334155;
+      }
+      .list li:last-child {
+        border-bottom: 0;
+      }
+      .recordings li {
+        display: grid;
+        grid-template-columns: auto 1fr auto auto auto;
+        gap: 8px;
+        align-items: center;
+      }
+      .meta strong,
+      .meta span {
+        display: block;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .meta strong {
+        color: #111827;
+      }
+      .meta span {
+        color: #526079;
+      }
+      button {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 8px 10px;
+        background: #fff;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .danger {
+        color: #be123c;
+        border-color: rgba(190, 18, 60, 0.25);
+      }
+      a {
+        color: #1d4ed8;
+        font-size: 12px;
+        text-decoration: none;
+      }
+      .json-viewer {
+        margin-top: 8px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #fff;
+        padding: 10px;
+        min-height: 120px;
+        max-height: 340px;
+        overflow: auto;
+        white-space: pre-wrap;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        color: #0f172a;
+      }
+      @media (max-width: 940px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <header class="card header">
+        <strong>DemocracyRoutes Video Admin</strong>
+        <div>
+          <button id="refreshAdmin">Refresh</button>
+          <a href="/" style="margin-left: 10px">Open room page</a>
+        </div>
+      </header>
+
+      <section class="grid">
+        <article class="card panel">
+          <h3>Active rooms</h3>
+          <ul id="activeRoomsList" class="list"></ul>
+        </article>
+        <article class="card panel">
+          <h3>Recording ingest (to server)</h3>
+          <ul id="ingestList" class="list"></ul>
+        </article>
+      </section>
+
+      <section class="card panel" style="margin-top: 12px">
+        <h3>Recordings</h3>
+        <div class="tools">
+          <button id="refreshRecordings">Refresh recordings</button>
+          <button id="selectAllRecordings">Select all</button>
+          <button id="deleteSelectedRecordings" class="danger">Delete selected</button>
+        </div>
+        <ul id="recordingsList" class="list recordings"></ul>
+      </section>
+
+      <section class="card panel" style="margin-top: 12px">
+        <h3>Merged-from sessions</h3>
+        <ul id="mergedSessionsList" class="list"></ul>
+      </section>
+
+      <section class="card panel" style="margin-top: 12px">
+        <h3>Transcript viewer</h3>
+        <div class="tools">
+          <button id="clearTranscriptViewer">Clear</button>
+        </div>
+        <pre id="transcriptViewer" class="json-viewer">Select a recording transcript to view it here.</pre>
+      </section>
+    </main>
+    <script type="module" src="/admin.js"></script>
+  </body>
+</html>
