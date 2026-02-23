@@ -80,11 +80,11 @@ export async function POST(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const planIds = dataspace.plans.map((plan) => plan.id);
-  const [textEntries, meditationSessions, recordSessions, planPairs] = await Promise.all([
-    planIds.length
+  const flowIds = dataspace.plans.map((flow) => flow.id);
+  const [textEntries, meditationSessions, recordSessions, flowPairs] = await Promise.all([
+    flowIds.length
       ? prisma.planTextEntry.findMany({
-          where: { planId: { in: planIds } },
+          where: { planId: { in: flowIds } },
           select: {
             blockId: true,
             content: true,
@@ -92,9 +92,9 @@ export async function POST(
           }
         })
       : [],
-    planIds.length
+    flowIds.length
       ? prisma.planMeditationSession.findMany({
-          where: { planId: { in: planIds } },
+          where: { planId: { in: flowIds } },
           select: {
             meditationIndex: true,
             roundAfter: true,
@@ -105,9 +105,9 @@ export async function POST(
           orderBy: { createdAt: "asc" }
         })
       : [],
-    planIds.length
+    flowIds.length
       ? prisma.planRecordSession.findMany({
-          where: { planId: { in: planIds } },
+          where: { planId: { in: flowIds } },
           select: {
             id: true,
             transcriptText: true,
@@ -115,9 +115,9 @@ export async function POST(
           }
         })
       : [],
-    planIds.length
+    flowIds.length
       ? prisma.planPair.findMany({
-          where: { planRound: { planId: { in: planIds } }, meetingId: { not: null } },
+          where: { planRound: { planId: { in: flowIds } }, meetingId: { not: null } },
           select: {
             meetingId: true,
             planRound: { select: { roundNumber: true } },
@@ -150,7 +150,7 @@ export async function POST(
     });
   });
 
-  const pairMeetings = planPairs
+  const pairMeetings = flowPairs
     .filter((pair) => pair.meetingId)
     .map((pair) => ({
       meetingId: pair.meetingId as string,
@@ -165,12 +165,16 @@ export async function POST(
       })
     : [];
 
+  const pairTranscriptByMeeting = new Map(
+    pairTranscripts.map((item) => [
+      item.meetingId,
+      item.transcriptText?.trim() || extractTranscriptText(item.transcriptJson ?? null) || ""
+    ])
+  );
+
   pairMeetings.forEach((pair) => {
     if (meetingTranscriptMap.has(pair.meetingId)) return;
-    const transcript = pairTranscripts.find((item) => item.meetingId === pair.meetingId);
-    const text =
-      transcript?.transcriptText?.trim() ||
-      extractTranscriptText(transcript?.transcriptJson ?? null);
+    const text = String(pairTranscriptByMeeting.get(pair.meetingId) || "").trim();
     if (!text) return;
     meetingTranscriptMap.set(pair.meetingId, {
       meetingId: pair.meetingId,
