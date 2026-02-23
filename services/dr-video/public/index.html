@@ -1300,6 +1300,12 @@
       </div>
     </main>
 
-    <script type="module" src="./app.js"></script>
+    <script type="module">
+      const __drVideoBasePath =
+        location.pathname.startsWith("/video/") || location.pathname === "/video"
+          ? "/video"
+          : "";
+      import(`${__drVideoBasePath}/app.js`);
+    </script>
   </body>
 </html>
