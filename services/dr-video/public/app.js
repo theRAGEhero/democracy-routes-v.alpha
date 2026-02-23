@@ -120,6 +120,7 @@ const GEAR_ICON =
 let ws;
 let peerId;
 let roomId;
+let meetingId = "";
 let device;
 let sendTransport;
 let recvTransport;
@@ -196,7 +197,15 @@ async function handleHostCommand(message) {
   if (command === "join") {
     if (typeof data.roomId === "string" && data.roomId.trim()) roomEl.value = sanitizeRoomId(data.roomId);
     if (typeof data.name === "string" && data.name.trim()) nameEl.value = data.name.trim();
+    if (typeof data.meetingId === "string" && data.meetingId.trim()) meetingId = data.meetingId.trim();
     if (typeof data.autoRecordMode === "string") setAutoRecordMode(data.autoRecordMode);
+    if (typeof data.transcriptionLanguage === "string") {
+      const normalized = normalizeTranscriptionLanguage(data.transcriptionLanguage);
+      if (normalized) {
+        transcriptionLanguage = normalized;
+        syncTranscriptionJoinControls();
+      }
+    }
     if (!isSocketOpen()) await joinRoom();
     return;
   }
@@ -520,8 +529,26 @@ function generateRoomName() {
   return `${adjective}-${noun}-${suffix}`;
 }
 
+function getOrCreateEmbedDisplayName() {
+  const storageKey = "drvideo.embed.displayName";
+  try {
+    const saved = String(window.localStorage.getItem(storageKey) || "").trim();
+    if (saved) return saved;
+  } catch {}
+  const generated = `guest_${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    window.localStorage.setItem(storageKey, generated);
+  } catch {}
+  return generated;
+}
+
 function readRoomFromPath() {
-  const match = window.location.pathname.match(/^\/meet\/([^/?#]+)/i);
+  const pathname = String(window.location.pathname || "");
+  const normalizedPath =
+    BASE_PATH && pathname.startsWith(BASE_PATH + "/")
+      ? pathname.slice(BASE_PATH.length)
+      : pathname;
+  const match = normalizedPath.match(/^\/meet\/([^/?#]+)/i);
   return match ? sanitizeRoomId(decodeURIComponent(match[1])) : "";
 }
 
@@ -561,10 +588,11 @@ function initializeJoinFields() {
   const url = new URL(window.location.href);
   const roomFromPath = readRoomFromPath();
   const roomFromQuery = sanitizeRoomId(url.searchParams.get("room"));
-  const nameFromQuery =
+  let nameFromQuery =
     (url.searchParams.get("name") || url.searchParams.get("user") || "").trim() ||
     readQueryParamFromHref("name") ||
     readQueryParamFromHref("user");
+  const meetingIdFromQuery = (url.searchParams.get("meetingId") || "").trim();
   const autoRecordAudioFromQuery = String(url.searchParams.get("autorecordaudio") || "")
     .trim()
     .toLowerCase();
@@ -584,6 +612,9 @@ function initializeJoinFields() {
 
   const initialRoom = roomFromPath || roomFromQuery || sanitizeRoomId(roomEl.value);
   const hasRoomInUrl = Boolean(roomFromPath || roomFromQuery);
+  if (!nameFromQuery && EMBED_MODE && hasRoomInUrl) {
+    nameFromQuery = getOrCreateEmbedDisplayName();
+  }
   const hasNameInUrl = Boolean(nameFromQuery);
   const hasAutoRecordInUrl =
     url.searchParams.has("autorecordaudio") ||
@@ -614,6 +645,10 @@ function initializeJoinFields() {
   if (initialRoom) {
     roomEl.value = initialRoom;
     updateMeetingUrl(initialRoom, nameEl.value || "");
+  }
+
+  if (meetingIdFromQuery) {
+    meetingId = meetingIdFromQuery;
   }
 
   if (autoRecordAudioFromQuery && ["1", "true", "yes", "on"].includes(autoRecordAudioFromQuery)) {
@@ -825,6 +860,7 @@ function refreshViewButton() {
   const icon = viewMode === "speaker" ? "viewSpeaker" : viewMode === "grid" ? "viewGrid" : "viewAuto";
   const label = viewMode === "speaker" ? "View: Speaker" : viewMode === "grid" ? "View: Grid" : "View: Auto";
   setControlButton(viewToggleBtn, icon, label);
+  postHostEvent("view-state", { mode: viewMode });
 }
 
 function refreshTranscriptToggleButton() {
@@ -1167,6 +1203,7 @@ function refreshMicCamButtons() {
   camToggleBtn.disabled = !connected || !videoProducer;
   dockMicBtn.disabled = !connected || !audioProducer;
   dockCamBtn.disabled = !connected || !videoProducer;
+  postHostEvent("media-state", { micEnabled, camEnabled });
 }
 
 function refreshRecordingButtons() {
@@ -1784,10 +1821,19 @@ async function startRecording(mode = "av") {
   const normalizedMode = normalizeRecordingMode(mode);
 
   try {
-    const state = await sendRequest("setRecording", { enabled: true, mode: normalizedMode });
+    const state = await sendRequest("setRecording", {
+      enabled: true,
+      mode: normalizedMode,
+      transcriptionLanguage: transcriptionLanguage || ""
+    });
     recordingEnabled = Boolean(state?.enabled);
     recordingOwnerPeerId = state?.ownerPeerId ?? null;
     recordingMode = normalizeRecordingMode(state?.mode || normalizedMode);
+    if (state?.transcriptionLanguage) {
+      transcriptionLanguage = normalizeTranscriptionLanguage(state.transcriptionLanguage);
+      syncTranscriptionJoinControls();
+      renderTranscriptBox();
+    }
 
     if (recordingOwnerPeerId !== peerId) {
       log("Recording already active by another participant.");
@@ -1971,8 +2017,10 @@ async function joinRoom() {
 
       const joined = await sendRequest("join", {
         roomId,
+        meetingId: meetingId || "",
         name: displayName,
-        autoRecordMode: getAutoRecordModePreference()
+        autoRecordMode: getAutoRecordModePreference(),
+        transcriptionLanguage: transcriptionLanguage || ""
       });
       peerId = joined.peerId;
       loadTranscriptHistory(Array.isArray(joined.transcriptHistory) ? joined.transcriptHistory : []);
@@ -1991,6 +2039,11 @@ async function joinRoom() {
       recordingEnabled = Boolean(joined.recordingEnabled ?? joined.autoRecord);
       recordingOwnerPeerId = joined.recordingOwnerPeerId ?? null;
       recordingMode = normalizeRecordingMode(joined.recordingMode || joined.autoRecordMode || "av");
+      const roomRecordingTranscriptionLanguage = normalizeTranscriptionLanguage(joined.recordingTranscriptionLanguage || "");
+      if (!transcriptionLanguage && roomRecordingTranscriptionLanguage) {
+        transcriptionLanguage = roomRecordingTranscriptionLanguage;
+        syncTranscriptionJoinControls();
+      }
 
       device = new mediasoupClient.Device();
       await device.load({ routerRtpCapabilities: joined.rtpCapabilities });
@@ -2204,12 +2257,18 @@ async function joinRoom() {
       const enabled = Boolean(payload.data?.enabled);
       const ownerPeer = payload.data?.ownerPeerId ?? null;
       const mode = normalizeRecordingMode(payload.data?.mode || "av");
+      const nextTranscriptionLanguage = normalizeTranscriptionLanguage(payload.data?.transcriptionLanguage || "");
       const prevEnabled = recordingEnabled;
       const prevOwner = recordingOwnerPeerId;
 
       recordingEnabled = enabled;
       recordingOwnerPeerId = ownerPeer;
       recordingMode = mode;
+      if (nextTranscriptionLanguage) {
+        transcriptionLanguage = nextTranscriptionLanguage;
+        syncTranscriptionJoinControls();
+        renderTranscriptBox();
+      }
 
       if (rec && recordingOwnerPeerId !== peerId) {
         rec.stop();
@@ -2227,7 +2286,12 @@ async function joinRoom() {
         log(`Recording state: ${enabled ? `${mode} on (${ownerPeer || "unknown"})` : "off"}`);
       }
 
-      postHostEvent("recording-state", { enabled, ownerPeerId: ownerPeer, mode });
+      postHostEvent("recording-state", {
+        enabled,
+        ownerPeerId: ownerPeer,
+        mode,
+        transcriptionLanguage: transcriptionLanguage || ""
+      });
       refreshRecordingButtons();
     }
   };
