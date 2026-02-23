@@ -1150,7 +1150,29 @@
         }
 
       }
+
+      html.pre-autojoin #lobbyPanel {
+        display: none !important;
+      }
+
+      html.pre-autojoin #callShell {
+        display: block !important;
+      }
     </style>
+    <script>
+      (function () {
+        try {
+          var url = new URL(window.location.href);
+          var autojoin = String(url.searchParams.get("autojoin") || "").toLowerCase();
+          var hasAutojoin = autojoin === "1" || autojoin === "true" || autojoin === "yes";
+          var hasRoomInPath = /\/meet\/[^/?#]+/i.test(window.location.pathname || "");
+          var hasName = Boolean((url.searchParams.get("name") || url.searchParams.get("user") || "").trim());
+          if (hasAutojoin && hasRoomInPath && hasName) {
+            document.documentElement.classList.add("pre-autojoin");
+          }
+        } catch {}
+      })();
+    </script>
   </head>
   <body>
     <main class="app">

@@ -17,7 +17,7 @@ type ServiceStatus = {
 async function checkService(
   label: string,
   baseUrl: string | undefined,
-  healthPath = "/api/rounds",
+  healthPath = "/health",
   headers?: Record<string, string>,
   displayBaseUrl?: string
 ): Promise<ServiceStatus> {
@@ -71,22 +71,28 @@ export default async function AdminHomePage() {
     return <p className="text-sm text-slate-500">Access denied.</p>;
   }
 
-  const liveBridgeKey = process.env.LIVE_BRIDGE_API_KEY;
-  const liveBridgeBase = process.env.LIVE_BRIDGE_BASE_URL;
-  const liveBridgeHealthBase = liveBridgeBase?.replace(/\/recSyncBridge\/?$/, "");
-  const [usersCount, meetingsCount, deepgramStatus, voskStatus, liveStatus, jobs] =
+  const callBaseRaw = process.env.DEMOCRACYROUTES_CALL_BASE_URL || "";
+  const callBaseUrlForDisplay = callBaseRaw || "/video";
+  const drVideoBaseUrl =
+    callBaseRaw.startsWith("http://") || callBaseRaw.startsWith("https://")
+      ? callBaseRaw
+      : "http://dr-video:3020";
+
+  const [usersCount, meetingsCount, drVideoStatus, deepgramStatus, voskStatus, hubStatus, analysisStatus, jobs] =
     await Promise.all([
     prisma.user.count(),
     prisma.meeting.count({ where: { isHidden: false } }),
-    checkService("Deepgram-modular", process.env.DEEPGRAM_BASE_URL),
-    checkService("Vosk-modular", process.env.VOSK_BASE_URL),
+    checkService("DR Video", drVideoBaseUrl, "/api/health", undefined, callBaseUrlForDisplay),
+    checkService("Audio API Deepgram", process.env.DEEPGRAM_BASE_URL, "/api/rounds"),
+    checkService("Audio API Vosk", process.env.VOSK_BASE_URL, "/api/rounds"),
     checkService(
-      "Deepgram Live bridge",
-      liveBridgeHealthBase ?? liveBridgeBase,
-      "/health",
+      "Transcription Hub",
+      process.env.TRANSCRIPTION_HUB_BASE_URL,
+      "/api/health",
       undefined,
-      liveBridgeBase
+      process.env.TRANSCRIPTION_HUB_BASE_URL
     ),
+    checkService("Analysis API", process.env.ANALYZE_TABLES_API_URL, "/"),
     prisma.transcriptionJob.findMany({
       orderBy: { updatedAt: "desc" },
       take: 50,
@@ -136,16 +142,25 @@ export default async function AdminHomePage() {
           <Link href="/admin/global-dashboard" className="dr-button-outline px-4 py-2 text-sm text-center">
             Global dashboard
           </Link>
-          <Link href="/plans/new" className="dr-button-outline px-4 py-2 text-sm text-center">
+          <Link href="/admin/analytics" className="dr-button-outline px-4 py-2 text-sm text-center">
+            Analytics
+          </Link>
+          <Link href="/admin/audio/deepgram" className="dr-button-outline px-4 py-2 text-sm text-center">
+            Deepgram admin
+          </Link>
+          <Link href="/admin/audio/vosk" className="dr-button-outline px-4 py-2 text-sm text-center">
+            Vosk admin
+          </Link>
+          <Link href="/flows/new" className="dr-button-outline px-4 py-2 text-sm text-center">
             Create plan
           </Link>
         </div>
       </div>
 
       <div className="dr-card p-6">
-        <h2 className="text-lg font-semibold text-slate-900">Transcription services</h2>
+        <h2 className="text-lg font-semibold text-slate-900">Stack services</h2>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
-          {[deepgramStatus, voskStatus, liveStatus].map((service) => (
+          {[drVideoStatus, deepgramStatus, voskStatus, hubStatus, analysisStatus].map((service) => (
             <div
               key={service.label}
               className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-4"
