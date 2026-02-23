@@ -40,6 +40,7 @@ export function EmbedCall({
   const [camEnabled, setCamEnabled] = useState(true);
   const [viewMode, setViewMode] = useState<"auto" | "grid" | "speaker">("auto");
   const [bridgeError, setBridgeError] = useState<string | null>(null);
+  const [immersiveEnabled, setImmersiveEnabled] = useState(true);
   const router = useRouter();
   const embedOrigin = useMemo(() => {
     try {
@@ -80,12 +81,12 @@ export function EmbedCall({
   }
 
   useEffect(() => {
-    if (showModal) {
+    if (showModal || (immersiveEnabled && callConnected && isActive)) {
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "";
     }
-  }, [showModal]);
+  }, [showModal, immersiveEnabled, callConnected, isActive]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -183,6 +184,8 @@ export function EmbedCall({
     }
   }
 
+  const immersiveActive = immersiveEnabled && callConnected && isActive && !showModal;
+
   return (
     <div>
       {showModal ? (
@@ -203,7 +206,9 @@ export function EmbedCall({
         className={`overflow-hidden rounded-lg border border-slate-200 bg-white/80 ${
           showModal
             ? "fixed inset-0 z-[10000] m-4 flex h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] flex-col"
-            : "flex h-[calc(100dvh-14rem)] min-h-[560px] flex-col"
+            : immersiveActive
+              ? "fixed inset-0 z-[9000] flex h-[100dvh] w-screen flex-col rounded-none border-0 bg-black"
+              : "flex h-[calc(100dvh-14rem)] min-h-[560px] flex-col"
         }`}
         onClick={(event) => event.stopPropagation()}
       >
@@ -222,7 +227,11 @@ export function EmbedCall({
             {isActive ? "Call is hidden." : "Meeting is inactive or expired."}
           </div>
         )}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white/70 px-4 py-2 text-sm">
+        <div
+          className={`flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white/70 px-4 py-2 text-sm ${
+            immersiveActive ? "hidden" : ""
+          }`}
+        >
           <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
             <span className="font-semibold text-slate-700">Embedded call</span>
             <span className={isActive ? "text-emerald-600" : "text-slate-400"}>{statusLabel}</span>
@@ -338,6 +347,34 @@ export function EmbedCall({
           </div>
         </div>
       </div>
+      {immersiveActive ? (
+        <div className="pointer-events-none fixed right-3 top-3 z-[9100]">
+          <button
+            type="button"
+            onClick={() => sendBridgeCommand("leave")}
+            className="pointer-events-auto rounded-md bg-black/65 px-3 py-1.5 text-xs font-semibold text-white"
+          >
+            Exit call
+          </button>
+          <button
+            type="button"
+            onClick={() => setImmersiveEnabled(false)}
+            className="pointer-events-auto ml-2 rounded-md bg-white/85 px-3 py-1.5 text-xs font-semibold text-slate-800"
+          >
+            Show page
+          </button>
+        </div>
+      ) : callConnected && isActive ? (
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={() => setImmersiveEnabled(true)}
+            className="dr-button-outline px-3 py-1 text-xs"
+          >
+            Immersive mode
+          </button>
+        </div>
+      ) : null}
       {bridgeError ? <p className="mt-2 text-sm text-amber-700">{bridgeError}</p> : null}
       {actionError ? <p className="mt-2 text-sm text-red-600">{actionError}</p> : null}
     </div>
