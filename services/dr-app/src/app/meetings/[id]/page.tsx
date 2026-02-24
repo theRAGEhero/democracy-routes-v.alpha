@@ -103,7 +103,6 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
     name: callDisplayName,
     autojoin: true,
     embed: true,
-    hideDock: true,
     autoRecordVideo: true,
     transcriptionLanguage
   });

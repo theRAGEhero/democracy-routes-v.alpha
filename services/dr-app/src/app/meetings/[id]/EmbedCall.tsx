@@ -40,7 +40,7 @@ export function EmbedCall({
   const [camEnabled, setCamEnabled] = useState(true);
   const [viewMode, setViewMode] = useState<"auto" | "grid" | "speaker">("auto");
   const [bridgeError, setBridgeError] = useState<string | null>(null);
-  const [immersiveEnabled, setImmersiveEnabled] = useState(true);
+  const [immersiveEnabled, setImmersiveEnabled] = useState(false);
   const router = useRouter();
   const embedOrigin = useMemo(() => {
     try {
@@ -81,12 +81,12 @@ export function EmbedCall({
   }
 
   useEffect(() => {
-    if (showModal || (immersiveEnabled && isActive)) {
+    if (showModal || (immersiveEnabled && callConnected && isActive)) {
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "";
     }
-  }, [showModal, immersiveEnabled, isActive]);
+  }, [showModal, immersiveEnabled, callConnected, isActive]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -184,7 +184,7 @@ export function EmbedCall({
     }
   }
 
-  const immersiveActive = immersiveEnabled && isActive && !showModal;
+  const immersiveActive = immersiveEnabled && callConnected && isActive && !showModal;
 
   return (
     <div>
