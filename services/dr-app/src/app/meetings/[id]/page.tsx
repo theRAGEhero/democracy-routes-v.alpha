@@ -8,7 +8,6 @@ import { MeetingActions } from "@/app/meetings/[id]/MeetingActions";
 import { TranscriptionAutoLink } from "@/app/meetings/[id]/TranscriptionAutoLink";
 import { MeetingInviteActions } from "@/app/meetings/[id]/MeetingInviteActions";
 import { MeetingParticipation } from "@/app/meetings/[id]/MeetingParticipation";
-import { LiveTranscriptPanel } from "@/app/meetings/[id]/LiveTranscriptPanel";
 import { buildCallJoinUrl, normalizeCallBaseUrl } from "@/lib/callUrl";
 
 export default async function MeetingDetailPage({ params }: { params: { id: string } }) {
@@ -124,7 +123,6 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
       : meeting.transcriptionProvider === "DEEPGRAMLIVE"
         ? "Deepgram Live"
         : "Deepgram";
-  const showLiveTranscript = meeting.transcriptionProvider === "DEEPGRAMLIVE";
 
   return (
     <div className="space-y-6">
@@ -156,11 +154,6 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
       </div>
 
       <div className="flex flex-col gap-4 lg:flex-row">
-        {showLiveTranscript ? (
-          <div className="order-2 lg:order-1">
-            <LiveTranscriptPanel roomId={meeting.roomId} />
-          </div>
-        ) : null}
         <div className="order-1 flex-1 lg:order-2">
           <EmbedCall
             embedUrl={embedUrl}
