@@ -29,6 +29,8 @@ export function LiveTranscriptPanel({ roomId }: Props) {
   const [lines, setLines] = useState<TranscriptLine[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [nextRetryIn, setNextRetryIn] = useState<number | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
   const lineKeysRef = useRef<Set<string>>(new Set());
   const wsRef = useRef<WebSocket | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
@@ -189,13 +191,34 @@ export function LiveTranscriptPanel({ roomId }: Props) {
     };
   }, [roomId]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(min-width: 1024px)");
+    const sync = () => {
+      setIsDesktop(media.matches);
+      setCollapsed(!media.matches);
+    };
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+
   return (
-    <aside className="dr-card h-[360px] w-full overflow-hidden p-4 sm:h-[520px] lg:w-[260px] lg:self-stretch">
-      <div className="flex items-center justify-between">
+    <aside className="dr-card w-full overflow-hidden p-4 lg:w-[260px] lg:self-stretch">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase text-slate-500">Deepgram Live</p>
           <p className="text-sm font-semibold text-slate-900">Live transcript</p>
         </div>
+        {!isDesktop ? (
+          <button
+            type="button"
+            onClick={() => setCollapsed((prev) => !prev)}
+            className="dr-button-outline px-3 py-1 text-[11px]"
+          >
+            {collapsed ? "Show" : "Hide"}
+          </button>
+        ) : null}
         <span
           className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
             status === "live"
@@ -208,7 +231,11 @@ export function LiveTranscriptPanel({ roomId }: Props) {
           {headerLabel}
         </span>
       </div>
-      <div className="mt-3 h-full overflow-y-auto pr-2 text-xs text-slate-600">
+      <div
+        className={`mt-3 overflow-y-auto pr-2 text-xs text-slate-600 transition-all duration-200 ${
+          collapsed ? "max-h-0 opacity-0" : "max-h-[45vh] opacity-100 lg:max-h-none"
+        }`}
+      >
         {lines.length === 0 ? (
           <div className="space-y-3 text-sm text-slate-500">
             <p>Waiting for live transcription to start.</p>

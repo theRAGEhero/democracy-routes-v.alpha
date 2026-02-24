@@ -156,8 +156,12 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
       </div>
 
       <div className="flex flex-col gap-4 lg:flex-row">
-        {showLiveTranscript ? <LiveTranscriptPanel roomId={meeting.roomId} /> : null}
-        <div className="flex-1">
+        {showLiveTranscript ? (
+          <div className="order-2 lg:order-1">
+            <LiveTranscriptPanel roomId={meeting.roomId} />
+          </div>
+        ) : null}
+        <div className="order-1 flex-1 lg:order-2">
           <EmbedCall
             embedUrl={embedUrl}
             isActive={active}
