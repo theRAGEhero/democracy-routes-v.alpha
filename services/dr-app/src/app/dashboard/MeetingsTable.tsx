@@ -50,7 +50,7 @@ type TextRow = {
 type Props = {
   initialMeetings: MeetingRow[];
   dataspaceOptions: Array<{ key: string; label: string }>;
-  plans: PlanRow[];
+  flows: PlanRow[];
   texts: TextRow[];
   showCreatedBy?: boolean;
   showFlagFilters?: boolean;
@@ -59,7 +59,7 @@ type Props = {
 export function MeetingsTable({
   initialMeetings,
   dataspaceOptions,
-  plans,
+  flows,
   texts,
   showCreatedBy = false,
   showFlagFilters = false
@@ -163,7 +163,7 @@ export function MeetingsTable({
 
   const availableDataspaces = dataspaceOptions.filter((option) => option.key !== "none");
 
-  const filteredPlans = plans.filter((plan) => {
+  const filteredPlans = flows.filter((plan) => {
     const term = query.trim().toLowerCase();
     if (!showPast && plan.isPast) {
       return false;
@@ -208,7 +208,7 @@ export function MeetingsTable({
               mode === "MEETINGS"
                 ? "Search meetings..."
                 : mode === "PLANS"
-                  ? "Search plans..."
+                  ? "Search templates..."
                   : "Search texts..."
             }
             className="dr-input w-full rounded px-3 py-2 text-sm"
@@ -230,7 +230,7 @@ export function MeetingsTable({
                 mode === "PLANS" ? "bg-slate-900 text-white" : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              Plans
+              Templates
             </button>
             <button
               type="button"
@@ -302,7 +302,7 @@ export function MeetingsTable({
               onChange={(event) => setPlanFlagFilter(event.target.value)}
               className="dr-input w-full rounded px-3 py-2 text-sm sm:w-44"
             >
-              <option value="all">All plans</option>
+              <option value="all">All templates</option>
               <option value="public">Public only</option>
               <option value="private">Private only</option>
             </select>
@@ -420,13 +420,13 @@ export function MeetingsTable({
             </div>
             <div className="divide-y divide-slate-200">
               {filteredPlans.length === 0 ? (
-                <div className="px-4 py-6 text-sm text-slate-500">No plans found.</div>
+                <div className="px-4 py-6 text-sm text-slate-500">No templates found.</div>
               ) : (
                 filteredPlans.map((plan) => (
                   <div key={plan.id} className="grid grid-cols-6 gap-4 px-4 py-4 text-sm">
                     <div className="col-span-2">
                       <Link
-                        href={`/plans/${plan.id}`}
+                        href={`/flows/${plan.id}`}
                         className="font-medium text-slate-900 hover:underline"
                       >
                         {plan.title}
@@ -446,14 +446,14 @@ export function MeetingsTable({
                           />
                         ) : null}
                         <Link
-                          href={`/plans/${plan.id}`}
+                          href={`/flows/${plan.id}`}
                           className="text-sm font-medium text-slate-900 hover:underline"
                         >
                           View
                         </Link>
                         {plan.canEdit ? (
                           <Link
-                            href={`/plans/${plan.id}/edit`}
+                            href={`/flows/${plan.id}/edit`}
                             className="text-sm font-medium text-slate-600 hover:underline"
                           >
                             Edit

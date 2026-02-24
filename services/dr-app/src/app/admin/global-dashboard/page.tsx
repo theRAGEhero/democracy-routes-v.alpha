@@ -15,7 +15,7 @@ export default async function GlobalDashboardPage() {
     return <p className="text-sm text-slate-500">Access denied.</p>;
   }
 
-  const [meetings, dataspaces, plans, texts] = await Promise.all([
+  const [meetings, dataspaces, flows, texts] = await Promise.all([
     prisma.meeting.findMany({
       orderBy: { createdAt: "desc" },
       include: {
@@ -90,7 +90,7 @@ export default async function GlobalDashboardPage() {
     }))
   ];
 
-  const planRows = plans.map((plan: (typeof plans)[number]) => ({
+  const planRows = flows.map((plan: (typeof flows)[number]) => ({
     id: plan.id,
     title: plan.title,
     startLabel: formatDateTime(plan.startAt, plan.timezone),
@@ -134,12 +134,12 @@ export default async function GlobalDashboardPage() {
         <h1 className="text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
           Global dashboard
         </h1>
-        <p className="text-sm text-slate-600">All meetings and plans across the platform.</p>
+        <p className="text-sm text-slate-600">All meetings and templates across the platform.</p>
       </div>
       <MeetingsTable
         initialMeetings={rows}
         dataspaceOptions={dataspaceOptions}
-        plans={planRows}
+        flows={planRows}
         texts={textRows}
         showCreatedBy
         showFlagFilters

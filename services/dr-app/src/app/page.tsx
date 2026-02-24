@@ -250,7 +250,7 @@ export default async function Home() {
               Ready to start a new collaboration?
             </h3>
             <p className="mt-2 text-sm text-slate-600">
-              Sign in to launch meetings, design plans, and invite participants.
+              Sign in to launch meetings, design templates, and invite participants.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">

@@ -102,7 +102,7 @@ export function TranscriptionJobsTable({ initialJobs }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Transcription jobs</h2>
-          <p className="text-xs text-slate-500">Latest 50 attempts across meetings and plans.</p>
+          <p className="text-xs text-slate-500">Latest 50 attempts across meetings and templates.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -194,7 +194,7 @@ export function TranscriptionJobsTable({ initialJobs }: Props) {
                 const href = job.meeting?.id
                   ? `/meetings/${job.meeting.id}`
                   : job.plan?.id
-                    ? `/plans/${job.plan.id}`
+                    ? `/flows/${job.plan.id}`
                     : null;
                 return (
                   <div key={job.id} className="grid grid-cols-10 gap-3 px-3 py-3 text-xs text-slate-700">

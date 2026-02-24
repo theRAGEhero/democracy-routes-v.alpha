@@ -152,7 +152,7 @@ export default async function AdminHomePage() {
             Vosk admin
           </Link>
           <Link href="/flows/new" className="dr-button-outline px-4 py-2 text-sm text-center">
-            Create flow
+            Create template
           </Link>
         </div>
       </div>

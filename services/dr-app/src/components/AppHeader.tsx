@@ -79,8 +79,8 @@ export function AppHeader() {
             <Link href="/dashboard" className="hover:text-slate-900">
               Dashboard
             </Link>
-            <Link href="/plans" className="hover:text-slate-900">
-              Plans
+            <Link href="/flows" className="hover:text-slate-900">
+              Templates
             </Link>
             <Link href="/dataspace" className="hover:text-slate-900">
               Dataspace
@@ -107,11 +107,11 @@ export function AppHeader() {
               {showNewMenu ? (
                 <div className="absolute left-0 mt-2 w-44 rounded-xl border border-slate-200 bg-white/95 p-2 text-xs shadow-[0_16px_40px_rgba(15,23,42,0.12)]">
                   <Link
-                    href="/plans/new"
+                    href="/flows/new"
                     onClick={() => setShowNewMenu(false)}
                     className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
                   >
-                    New plan
+                    New template
                   </Link>
                 </div>
               ) : null}

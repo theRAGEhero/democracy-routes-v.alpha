@@ -166,7 +166,7 @@ export default async function AboutPage() {
               Join the next session
             </h3>
             <p className="mt-2 text-sm text-slate-600">
-              Sign in to create a meeting or explore public plans in your dataspace.
+              Sign in to create a meeting or explore public templates in your dataspace.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">

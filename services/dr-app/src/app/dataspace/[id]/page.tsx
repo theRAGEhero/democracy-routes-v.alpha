@@ -23,7 +23,7 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
         createdBy: { select: { email: true } },
         members: { include: { user: { select: { email: true } } } },
         meetings: { where: { isHidden: false }, orderBy: { createdAt: "desc" } },
-        plans: { orderBy: { startAt: "desc" } },
+        flows: { orderBy: { startAt: "desc" } },
         texts: { orderBy: { updatedAt: "desc" } }
       }
     }),
@@ -81,8 +81,8 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
     (meeting: (typeof dataspace.meetings)[number]) =>
       meeting.scheduledStartAt && meeting.scheduledStartAt > now
   );
-  const upcomingPlans = dataspace.plans.filter(
-    (plan: (typeof dataspace.plans)[number]) => plan.startAt > now
+  const upcomingPlans = dataspace.flows.filter(
+    (plan: (typeof dataspace.flows)[number]) => plan.startAt > now
   );
   const meetingMemberIds = new Set(
     meetingMembers.map(
@@ -174,9 +174,9 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
               )}
             </div>
             <div className="space-y-2 text-sm text-slate-700">
-              <p className="text-xs font-semibold uppercase text-slate-500">Plans</p>
+              <p className="text-xs font-semibold uppercase text-slate-500">Templates</p>
               {upcomingPlans.length === 0 ? (
-                <p className="text-slate-500">No upcoming plans.</p>
+                <p className="text-slate-500">No upcoming templates.</p>
               ) : (
                 upcomingPlans.map((plan: (typeof upcomingPlans)[number]) => {
                   const joinStatus =
@@ -318,12 +318,12 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
           </div>
 
           <div className="dr-card p-6">
-            <h2 className="text-sm font-semibold uppercase text-slate-500">Plans</h2>
+            <h2 className="text-sm font-semibold uppercase text-slate-500">Templates</h2>
             <div className="mt-3 space-y-3 text-sm text-slate-700">
-              {dataspace.plans.length === 0 ? (
-                <p className="text-slate-500">No plans yet.</p>
+              {dataspace.flows.length === 0 ? (
+                <p className="text-slate-500">No templates yet.</p>
               ) : (
-                dataspace.plans.map((plan: (typeof dataspace.plans)[number]) => {
+                dataspace.flows.map((plan: (typeof dataspace.flows)[number]) => {
                   const joinStatus =
                     plan.createdById === session.user.id || planPairIds.has(plan.id)
                       ? "JOINED"
@@ -350,7 +350,7 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
                           />
                         ) : null}
                         <Link
-                          href={`/plans/${plan.id}`}
+                          href={`/flows/${plan.id}`}
                           className="text-xs font-semibold text-slate-700 hover:underline"
                         >
                           Open

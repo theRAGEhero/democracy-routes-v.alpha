@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 const DEFAULT_PROMPT =
-  "Analyze this dataspace activity across plans and meetings. Highlight key themes, agreements, disagreements, and notable quotes.";
+  "Analyze this dataspace activity across templates and meetings. Highlight key themes, agreements, disagreements, and notable quotes.";
 
 type DataspaceAnalysisPanelProps = {
   dataspaceId: string;
@@ -218,7 +218,7 @@ export function DataspaceAnalysisPanel({ dataspaceId }: DataspaceAnalysisPanelPr
             Analysis Prompt
           </h2>
           <p className="text-sm text-slate-600">
-            Ask the AI to read all plans and meetings in this dataspace.
+            Ask the AI to read all templates and meetings in this dataspace.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
