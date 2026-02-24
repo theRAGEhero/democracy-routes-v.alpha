@@ -23,7 +23,7 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
         createdBy: { select: { email: true } },
         members: { include: { user: { select: { email: true } } } },
         meetings: { where: { isHidden: false }, orderBy: { createdAt: "desc" } },
-        flows: { orderBy: { startAt: "desc" } },
+        plans: { orderBy: { startAt: "desc" } },
         texts: { orderBy: { updatedAt: "desc" } }
       }
     }),
@@ -81,8 +81,8 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
     (meeting: (typeof dataspace.meetings)[number]) =>
       meeting.scheduledStartAt && meeting.scheduledStartAt > now
   );
-  const upcomingPlans = dataspace.flows.filter(
-    (plan: (typeof dataspace.flows)[number]) => plan.startAt > now
+  const upcomingPlans = dataspace.plans.filter(
+    (plan: (typeof dataspace.plans)[number]) => plan.startAt > now
   );
   const meetingMemberIds = new Set(
     meetingMembers.map(
@@ -320,10 +320,10 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
           <div className="dr-card p-6">
             <h2 className="text-sm font-semibold uppercase text-slate-500">Templates</h2>
             <div className="mt-3 space-y-3 text-sm text-slate-700">
-              {dataspace.flows.length === 0 ? (
+              {dataspace.plans.length === 0 ? (
                 <p className="text-slate-500">No templates yet.</p>
               ) : (
-                dataspace.flows.map((plan: (typeof dataspace.flows)[number]) => {
+                dataspace.plans.map((plan: (typeof dataspace.plans)[number]) => {
                   const joinStatus =
                     plan.createdById === session.user.id || planPairIds.has(plan.id)
                       ? "JOINED"

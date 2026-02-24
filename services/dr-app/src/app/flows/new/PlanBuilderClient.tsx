@@ -858,7 +858,7 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
   function handleLoadTemplate(template: PlanTemplate) {
     const posterSet = new Set(posters.map((poster) => poster.id));
     const hasPosterCatalog = posterSet.size > 0;
-    const nextBlocks = flow.blocks.map((block) => ({
+    const nextBlocks = template.blocks.map((block) => ({
       id: makeId(),
       type: block.type,
       durationSeconds: block.durationSeconds,

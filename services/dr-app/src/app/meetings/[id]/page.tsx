@@ -85,6 +85,12 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
   const active = isMeetingActive(meeting);
   const isConcluded = !meeting.isActive || (meeting.expiresAt ? meeting.expiresAt.getTime() < Date.now() : false);
   const canEdit = (isAdmin || membership?.role === "HOST" || meeting.createdById === session.user.id) && !isConcluded;
+  const currentUser = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { email: true }
+  });
+  const callDisplayName =
+    String(currentUser?.email || "").trim() || session.user.email;
   const baseUrl = normalizeCallBaseUrl(process.env.DEMOCRACYROUTES_CALL_BASE_URL || "");
   const langCode = meeting.language === "IT" ? "it" : "en";
   const transcriptionLanguage =
@@ -93,16 +99,21 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
   const embedUrl = buildCallJoinUrl({
     baseUrl,
     roomId: meeting.roomId,
-    name: session.user.email,
+    meetingId: meeting.id,
+    name: callDisplayName,
     autojoin: true,
     embed: true,
+    hideDock: true,
+    autoRecordVideo: true,
     transcriptionLanguage
   });
   const joinUrl = buildCallJoinUrl({
     baseUrl,
     roomId: meeting.roomId,
-    name: session.user.email,
+    meetingId: meeting.id,
+    name: callDisplayName,
     autojoin: true,
+    autoRecordVideo: true,
     transcriptionLanguage
   });
 
