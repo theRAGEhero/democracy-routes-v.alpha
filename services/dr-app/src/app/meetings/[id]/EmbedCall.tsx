@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { CallFrame } from "@/components/CallFrame";
 
 type Props = {
   embedUrl: string;
@@ -208,17 +209,18 @@ export function EmbedCall({
             ? "fixed inset-0 z-[10000] m-4 flex h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] flex-col"
             : immersiveActive
               ? "fixed inset-0 z-[9000] flex h-[100dvh] w-screen flex-col rounded-none border-0 bg-black"
-              : "flex h-[calc(100dvh-14rem)] min-h-[560px] flex-col"
+              : "flex h-[100dvh] min-h-[560px] flex-col"
         }`}
         onClick={(event) => event.stopPropagation()}
       >
         {showEmbed && isActive ? (
-          <iframe
-            ref={iframeRef}
-            title="Call"
+          <CallFrame
             src={embedUrl}
+            title="Call"
             className="w-full flex-1"
+            frameClassName="w-full h-full"
             allow="camera; microphone; fullscreen"
+            iframeRef={iframeRef}
           />
         ) : (
           <div
