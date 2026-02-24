@@ -54,6 +54,10 @@
         padding: 0 0 calc(92px + env(safe-area-inset-bottom, 0px));
       }
 
+      body.embed-mode.hide-dock .app {
+        padding: 0;
+      }
+
       .card {
         border: 1px solid var(--line);
         border-radius: 18px;
@@ -512,6 +516,11 @@
         box-shadow: none;
       }
 
+      body.embed-mode.hide-dock .stage {
+        height: 100vh;
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+      }
+
       body.embed-mode .tiles {
         height: 100%;
       }
@@ -591,6 +600,10 @@
         object-fit: contain;
         object-position: center center;
         background: #0f172a;
+      }
+
+      body.embed-mode.in-call .tile video {
+        object-fit: cover;
       }
 
       body.in-call .tiles.mode-auto[data-count="1"] {
