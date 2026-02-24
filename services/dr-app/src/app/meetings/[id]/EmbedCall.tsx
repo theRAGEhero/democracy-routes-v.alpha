@@ -81,12 +81,12 @@ export function EmbedCall({
   }
 
   useEffect(() => {
-    if (showModal || (immersiveEnabled && callConnected && isActive)) {
+    if (showModal || (immersiveEnabled && isActive)) {
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "";
     }
-  }, [showModal, immersiveEnabled, callConnected, isActive]);
+  }, [showModal, immersiveEnabled, isActive]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -184,7 +184,7 @@ export function EmbedCall({
     }
   }
 
-  const immersiveActive = immersiveEnabled && callConnected && isActive && !showModal;
+  const immersiveActive = immersiveEnabled && isActive && !showModal;
 
   return (
     <div>
