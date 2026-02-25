@@ -8,7 +8,7 @@ import { MeetingActions } from "@/app/meetings/[id]/MeetingActions";
 import { TranscriptionAutoLink } from "@/app/meetings/[id]/TranscriptionAutoLink";
 import { MeetingInviteActions } from "@/app/meetings/[id]/MeetingInviteActions";
 import { MeetingParticipation } from "@/app/meetings/[id]/MeetingParticipation";
-import { buildCallJoinUrl, normalizeCallBaseUrl } from "@/lib/callUrl";
+import { buildCallJoinUrl, buildDisplayName, normalizeCallBaseUrl } from "@/lib/callUrl";
 
 export default async function MeetingDetailPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -88,8 +88,7 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
     where: { id: session.user.id },
     select: { email: true }
   });
-  const callDisplayName =
-    String(currentUser?.email || "").trim() || session.user.email;
+  const callDisplayName = buildDisplayName(null, session.user.id);
   const baseUrl = normalizeCallBaseUrl(process.env.DEMOCRACYROUTES_CALL_BASE_URL || "");
   const langCode = meeting.language === "IT" ? "it" : "en";
   const transcriptionLanguage =

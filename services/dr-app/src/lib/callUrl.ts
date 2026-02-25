@@ -1,6 +1,7 @@
 type BuildCallJoinUrlOptions = {
   baseUrl?: string | null;
   roomId: string;
+  meetingId?: string | null;
   name?: string | null;
   autojoin?: boolean;
   embed?: boolean;
@@ -28,6 +29,9 @@ export function buildCallJoinUrl(options: BuildCallJoinUrlOptions) {
   const path = `${base}/meet/${encodeURIComponent(roomId)}`;
   const params = new URLSearchParams();
 
+  const meetingId = String(options.meetingId || "").trim();
+  if (meetingId) params.set("meetingId", meetingId);
+
   const name = String(options.name || "").trim();
   if (name) params.set("name", name);
   if (options.autojoin !== false) params.set("autojoin", "1");
@@ -47,4 +51,20 @@ export function buildCallJoinUrl(options: BuildCallJoinUrlOptions) {
 
   const query = params.toString();
   return query ? `${path}?${query}` : path;
+}
+
+function hashSeed(seed: string) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+export function buildDisplayName(preferred?: string | null, seed?: string | null) {
+  const trimmed = String(preferred || "").trim();
+  if (trimmed) return trimmed;
+  const safeSeed = String(seed || "").trim();
+  const suffix = safeSeed ? hashSeed(safeSeed).toString(36).slice(0, 6) : "guest";
+  return `Participant-${suffix}`;
 }

@@ -6,7 +6,7 @@ import { MeditationRoundEmbed } from "@/app/flows/[id]/MeditationRoundEmbed";
 import { RecordRoundEmbed } from "@/app/flows/[id]/RecordRoundEmbed";
 import { buildLegacySegments, buildPlanSegmentsFromBlocks, getSegmentAtTime } from "@/lib/planSchedule";
 import { renderPosterHtml } from "@/lib/poster";
-import { buildCallJoinUrl } from "@/lib/callUrl";
+import { buildCallJoinUrl, buildDisplayName } from "@/lib/callUrl";
 import { logClientWarn } from "@/lib/clientLog";
 import { CallFrame } from "@/components/CallFrame";
 
@@ -424,13 +424,14 @@ export function ParticipantViewClient({
     assignment?.meetingId ?? (assignment ? meetingByRound[assignment.roundNumber] : undefined);
   const transcriptionLanguageCode =
     transcriptionProvider === "DEEPGRAMLIVE" ? (language === "IT" ? "it" : "en") : "";
+  const displayName = buildDisplayName(callDisplayName, userEmail);
   const joinUrl =
     assignment && !assignment.isBreak
       ? buildCallJoinUrl({
           baseUrl,
           roomId: assignment.roomId,
           meetingId: currentMeetingId,
-          name: callDisplayName || userEmail,
+          name: displayName,
           autojoin: true,
           embed: true,
           autoRecordVideo: true,
