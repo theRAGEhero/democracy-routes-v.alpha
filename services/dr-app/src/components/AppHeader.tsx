@@ -16,11 +16,11 @@ export function AppHeader() {
 
   if (!session?.user) {
     return (
-      <header className="sticky top-4 z-20">
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 rounded-2xl border border-[color:var(--stroke)] bg-[color:var(--card)] px-4 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.08)] backdrop-blur lg:flex-row lg:items-center lg:justify-between lg:rounded-full">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
+      <header className="sticky top-3 z-20">
+        <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-2 rounded-2xl border border-[color:var(--stroke)] bg-[color:var(--card)] px-3 py-2 shadow-[0_12px_32px_rgba(0,0,0,0.08)] backdrop-blur sm:top-4 sm:px-4 sm:py-3 lg:rounded-full">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4">
             <Link href="/" className="flex items-center gap-2">
-              <span className="h-8 w-8 overflow-hidden rounded-full border border-emerald-200/80 bg-white/80">
+              <span className="h-6 w-6 overflow-hidden rounded-full border border-emerald-200/80 bg-white/80 sm:h-8 sm:w-8">
                 <img
                   src="/logo-120.png"
                   alt="Democracy Routes logo"
@@ -28,13 +28,13 @@ export function AppHeader() {
                 />
               </span>
               <span
-                className="text-lg font-semibold text-slate-900"
+                className="text-base font-semibold text-slate-900 sm:text-lg"
                 style={{ fontFamily: "var(--font-serif)" }}
               >
                 Democracy Routes
               </span>
             </Link>
-            <nav className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+            <nav className="flex items-center gap-2 text-xs text-slate-600 sm:text-sm">
               <Link href="/" className="hover:text-slate-900">
                 Home
               </Link>
@@ -43,11 +43,11 @@ export function AppHeader() {
               </Link>
             </nav>
           </div>
-          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
-            <Link href="/login" className="dr-button px-4 py-2 text-sm">
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 sm:text-xs">
+            <Link href="/login" className="dr-button px-3 py-1.5 text-xs sm:px-4 sm:py-2 sm:text-sm">
               Log in
             </Link>
-            <Link href="/register" className="dr-button-outline px-4 py-2 text-sm">
+            <Link href="/register" className="dr-button-outline px-3 py-1.5 text-xs sm:px-4 sm:py-2 sm:text-sm">
               Create account
             </Link>
           </div>
@@ -57,11 +57,11 @@ export function AppHeader() {
   }
 
   return (
-    <header className="sticky top-4 z-20">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 rounded-2xl border border-[color:var(--stroke)] bg-[color:var(--card)] px-4 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.08)] backdrop-blur lg:flex-row lg:items-center lg:justify-between lg:rounded-full">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-4">
+    <header className="sticky top-3 z-20">
+      <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-2 rounded-2xl border border-[color:var(--stroke)] bg-[color:var(--card)] px-3 py-2 shadow-[0_12px_32px_rgba(0,0,0,0.08)] backdrop-blur sm:top-4 sm:px-4 sm:py-3 lg:rounded-full">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
             <Link href="/dashboard" className="flex items-center gap-2">
-              <span className="h-8 w-8 overflow-hidden rounded-full border border-emerald-200/80 bg-white/80">
+              <span className="h-6 w-6 overflow-hidden rounded-full border border-emerald-200/80 bg-white/80 sm:h-8 sm:w-8">
                 <img
                   src="/logo-120.png"
                   alt="Democracy Routes logo"
@@ -69,13 +69,13 @@ export function AppHeader() {
                 />
               </span>
               <span
-                className="text-lg font-semibold text-slate-900"
+                className="text-base font-semibold text-slate-900 sm:text-lg"
                 style={{ fontFamily: "var(--font-serif)" }}
               >
                 Democracy Routes
               </span>
             </Link>
-          <nav className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+          <nav className="flex flex-wrap items-center gap-2 text-xs text-slate-600 sm:text-sm">
             <Link href="/dashboard" className="hover:text-slate-900">
               Dashboard
             </Link>
@@ -159,10 +159,10 @@ export function AppHeader() {
             ) : null}
           </nav>
         </div>
-        <div className="flex flex-col items-start gap-1 text-xs text-slate-500 lg:items-end">
-          <span className="break-all">{session.user.email}</span>
-          <div className="flex items-center gap-3">
-            <Link href="/account" className="text-xs font-semibold text-slate-600 hover:text-slate-900">
+        <div className="flex items-center gap-2 text-[11px] text-slate-500 sm:text-xs">
+          <span className="hidden break-all sm:inline">{session.user.email}</span>
+          <div className="flex items-center gap-2">
+            <Link href="/account" className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 sm:text-xs">
               Profile settings
             </Link>
             <SignOutButton />
