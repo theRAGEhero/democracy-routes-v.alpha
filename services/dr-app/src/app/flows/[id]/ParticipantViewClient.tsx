@@ -422,8 +422,8 @@ export function ParticipantViewClient({
       : baseAssignment;
   const currentMeetingId =
     assignment?.meetingId ?? (assignment ? meetingByRound[assignment.roundNumber] : undefined);
-  const transcriptionLanguageCode =
-    transcriptionProvider === "DEEPGRAMLIVE" ? (language === "IT" ? "it" : "en") : "";
+  const liveTranscriptionEnabled = transcriptionProvider === "DEEPGRAMLIVE";
+  const transcriptionLanguageCode = liveTranscriptionEnabled ? (language === "IT" ? "it" : "en") : "";
   const displayName = buildDisplayName(callDisplayName, userEmail);
   const joinUrl =
     assignment && !assignment.isBreak
@@ -434,7 +434,7 @@ export function ParticipantViewClient({
           name: displayName,
           autojoin: true,
           embed: true,
-          autoRecordVideo: true,
+          autoRecordVideo: liveTranscriptionEnabled,
           transcriptionLanguage: transcriptionLanguageCode
         })
       : "";

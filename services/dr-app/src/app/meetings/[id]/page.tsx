@@ -91,8 +91,8 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
   const callDisplayName = buildDisplayName(null, session.user.id);
   const baseUrl = normalizeCallBaseUrl(process.env.DEMOCRACYROUTES_CALL_BASE_URL || "");
   const langCode = meeting.language === "IT" ? "it" : "en";
-  const transcriptionLanguage =
-    meeting.transcriptionProvider === "DEEPGRAMLIVE" ? langCode : "";
+  const liveTranscriptionEnabled = meeting.transcriptionProvider === "DEEPGRAMLIVE";
+  const transcriptionLanguage = liveTranscriptionEnabled ? langCode : "";
 
   const embedUrl = buildCallJoinUrl({
     baseUrl,
@@ -101,7 +101,7 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
     name: callDisplayName,
     autojoin: true,
     embed: true,
-    autoRecordVideo: true,
+    autoRecordVideo: liveTranscriptionEnabled,
     transcriptionLanguage
   });
   const joinUrl = buildCallJoinUrl({
@@ -110,7 +110,7 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
     meetingId: meeting.id,
     name: callDisplayName,
     autojoin: true,
-    autoRecordVideo: true,
+    autoRecordVideo: liveTranscriptionEnabled,
     transcriptionLanguage
   });
 
