@@ -673,6 +673,9 @@ function initializeJoinFields() {
   syncTranscriptionJoinControls();
   if (transcriptionLanguage) {
     log("Live transcription enabled (" + transcriptionLanguage.toUpperCase() + ")");
+    if (EMBED_MODE) {
+      setTranscriptPanelVisible(true);
+    }
   }
 
   updateRoomBadge(initialRoom);
