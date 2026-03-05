@@ -21,10 +21,30 @@ type Job = {
 
 type Props = {
   initialJobs: Job[];
+  initialMetrics: {
+    drVideo: { ok: boolean; rooms: number; peers: number };
+    hub: {
+      ok: boolean;
+      hubConfigured: boolean;
+      pendingQueueSize: number;
+      metrics: {
+        totalAttempts: number;
+        successCount: number;
+        failedCount: number;
+        queuedCount: number;
+        drainedCount: number;
+        droppedCount: number;
+        lastError: string;
+        lastAttemptAt: string | null;
+        lastSuccessAt: string | null;
+      } | null;
+    };
+  };
 };
 
-export function TranscriptionJobsTable({ initialJobs }: Props) {
+export function TranscriptionJobsTable({ initialJobs, initialMetrics }: Props) {
   const [jobs, setJobs] = useState(initialJobs);
+  const [metrics, setMetrics] = useState(initialMetrics);
   const [loading, setLoading] = useState(false);
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [retryingAll, setRetryingAll] = useState(false);
@@ -51,6 +71,9 @@ export function TranscriptionJobsTable({ initialJobs }: Props) {
       return;
     }
     setJobs(payload?.jobs ?? []);
+    if (payload?.metrics) {
+      setMetrics(payload.metrics);
+    }
   }
 
   async function retryFailed() {
@@ -101,8 +124,8 @@ export function TranscriptionJobsTable({ initialJobs }: Props) {
     <div className="dr-card p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">Transcription jobs</h2>
-          <p className="text-xs text-slate-500">Latest 50 attempts across meetings and templates.</p>
+          <h2 className="text-lg font-semibold text-slate-900">Transcription activity</h2>
+          <p className="text-xs text-slate-500">Live pipeline health plus the latest 50 transcription jobs.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -145,25 +168,44 @@ export function TranscriptionJobsTable({ initialJobs }: Props) {
 
       <div className="mt-4 grid gap-3 md:grid-cols-4">
         <div className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3">
-          <p className="text-[11px] uppercase text-slate-500">Total</p>
-          <p className="mt-1 text-lg font-semibold text-slate-900">{statusCounts.total}</p>
+          <p className="text-[11px] uppercase text-slate-500">Live rooms</p>
+          <p className="mt-1 text-lg font-semibold text-slate-900">
+            {metrics.drVideo.ok ? metrics.drVideo.rooms : "-"}
+          </p>
+          <p className="text-[11px] text-slate-400">Active peers: {metrics.drVideo.ok ? metrics.drVideo.peers : "-"}</p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3">
+          <p className="text-[11px] uppercase text-slate-500">Hub queue</p>
+          <p className="mt-1 text-lg font-semibold text-slate-900">
+            {metrics.hub.ok ? metrics.hub.pendingQueueSize : "-"}
+          </p>
+          <p className="text-[11px] text-slate-400">
+            {metrics.hub.hubConfigured ? "Hub configured" : "Hub not configured"}
+          </p>
         </div>
         <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3">
-          <p className="text-[11px] uppercase text-emerald-700">Done</p>
-          <p className="mt-1 text-lg font-semibold text-emerald-700">{statusCounts.done}</p>
-        </div>
-        <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3">
-          <p className="text-[11px] uppercase text-amber-700">Running</p>
-          <p className="mt-1 text-lg font-semibold text-amber-700">{statusCounts.running}</p>
+          <p className="text-[11px] uppercase text-emerald-700">Hub success</p>
+          <p className="mt-1 text-lg font-semibold text-emerald-700">
+            {metrics.hub.metrics ? metrics.hub.metrics.successCount : "-"}
+          </p>
+          <p className="text-[11px] text-emerald-700">
+            Last ok: {metrics.hub.metrics?.lastSuccessAt ? new Date(metrics.hub.metrics.lastSuccessAt).toLocaleString() : "-"}
+          </p>
         </div>
         <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3">
-          <p className="text-[11px] uppercase text-rose-700">Failed</p>
-          <p className="mt-1 text-lg font-semibold text-rose-700">{statusCounts.failed}</p>
+          <p className="text-[11px] uppercase text-rose-700">Hub errors</p>
+          <p className="mt-1 text-lg font-semibold text-rose-700">
+            {metrics.hub.metrics ? metrics.hub.metrics.failedCount : "-"}
+          </p>
+          <p className="text-[11px] text-rose-700">
+            {metrics.hub.metrics?.lastError ? metrics.hub.metrics.lastError : "No errors"}
+          </p>
         </div>
       </div>
 
       <p className="mt-3 text-[11px] text-slate-500">
-        Auto-refresh polls every 15 seconds. Use Retry failed to reprocess jobs after services recover.
+        Live stats come from dr-video and the transcription hub. The table below tracks legacy transcription jobs.
+        Auto-refresh polls every 15 seconds.
       </p>
 
       {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
@@ -189,7 +231,7 @@ export function TranscriptionJobsTable({ initialJobs }: Props) {
                   job.meeting?.title
                     ? `Meeting · ${job.meeting.title}`
                     : job.plan?.title
-                      ? `Plan · ${job.plan.title}`
+                      ? `Template · ${job.plan.title}`
                       : job.kind;
                 const href = job.meeting?.id
                   ? `/meetings/${job.meeting.id}`

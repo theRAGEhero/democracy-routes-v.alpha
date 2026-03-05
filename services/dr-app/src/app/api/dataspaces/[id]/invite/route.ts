@@ -52,7 +52,8 @@ export async function POST(
 
   const normalizedEmail = parsed.data.email.toLowerCase();
   const user = await prisma.user.findUnique({
-    where: { email: normalizedEmail }
+    where: { email: normalizedEmail },
+    select: { id: true, email: true, notifyEmailDataspaceInvites: true }
   });
 
   if (user) {
@@ -102,13 +103,16 @@ export async function POST(
     }
 
     const appBaseUrl = process.env.APP_BASE_URL || "http://localhost:3015";
-    const emailResult = await sendMail({
-      to: user.email,
-      subject: "You are invited to a dataspace",
-      html: `<p>You have been invited to the dataspace <strong>${dataspace.name}</strong>.</p>
-        <p>Open the dataspace: <a href="${appBaseUrl}/dataspace">${appBaseUrl}/dataspace</a></p>`,
-      text: `You have been invited to the dataspace ${dataspace.name}. Open: ${appBaseUrl}/dataspace`
-    });
+    const dataspaceUrl = `${appBaseUrl}/dataspace/${dataspace.id}`;
+    const emailResult = user.notifyEmailDataspaceInvites
+      ? await sendMail({
+          to: user.email,
+          subject: "You are invited to a dataspace",
+          html: `<p>You have been invited to the dataspace <strong>${dataspace.name}</strong>.</p>
+            <p>Open the dataspace: <a href="${dataspaceUrl}">${dataspaceUrl}</a></p>`,
+          text: `You have been invited to the dataspace ${dataspace.name}. Open: ${dataspaceUrl}`
+        })
+      : { ok: false };
 
     return NextResponse.json({
       message: "Invite sent",
@@ -150,12 +154,14 @@ export async function POST(
   }
 
   const appBaseUrl = process.env.APP_BASE_URL || "http://localhost:3015";
+  const dataspaceUrl = `${appBaseUrl}/dataspace/${dataspace.id}`;
   const emailResult = await sendMail({
     to: normalizedEmail,
     subject: "You are invited to a dataspace",
     html: `<p>You have been invited to the dataspace <strong>${dataspace.name}</strong>.</p>
+      <p>Open the dataspace: <a href="${dataspaceUrl}">${dataspaceUrl}</a></p>
       <p>Create an account to join: <a href="${appBaseUrl}/register">${appBaseUrl}/register</a></p>`,
-    text: `You have been invited to the dataspace ${dataspace.name}. Register: ${appBaseUrl}/register`
+    text: `You have been invited to the dataspace ${dataspace.name}. Open: ${dataspaceUrl} Register: ${appBaseUrl}/register`
   });
 
   return NextResponse.json({

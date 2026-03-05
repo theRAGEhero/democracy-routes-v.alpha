@@ -74,7 +74,7 @@ export default async function PlansLibraryPage() {
             Choose a template to start quickly or customize before saving.
           </p>
         </div>
-        <Link href="/flows/new" className="dr-button px-4 py-2 text-sm">
+        <Link href="/flows/new?mode=template" className="dr-button px-4 py-2 text-sm">
           New template
         </Link>
       </div>

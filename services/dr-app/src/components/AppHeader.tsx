@@ -2,13 +2,148 @@
 
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useMemo, useRef, useState } from "react";
 import { SignOutButton } from "@/components/SignOutButton";
+import { DEFAULT_DATASPACE_COLOR } from "@/lib/dataspaceColor";
 
 export function AppHeader() {
   const { data: session, status } = useSession();
+  const pathname = usePathname();
+  const router = useRouter();
   const [showNewMenu, setShowNewMenu] = useState(false);
-  const [showAdminMenu, setShowAdminMenu] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [showMeetingMenu, setShowMeetingMenu] = useState(false);
+  const [creatingMeeting, setCreatingMeeting] = useState(false);
+  const [createMeetingError, setCreateMeetingError] = useState<string | null>(null);
+  const [showDataspaceMenu, setShowDataspaceMenu] = useState(false);
+  const [recentDataspaces, setRecentDataspaces] = useState<
+    Array<{ id: string; name: string; color: string | null }>
+  >([]);
+  const [recentError, setRecentError] = useState<string | null>(null);
+  const [loadingRecent, setLoadingRecent] = useState(false);
+  const userMenuCloseTimeout = useRef<number | null>(null);
+  const dataspaceMenuCloseTimeout = useRef<number | null>(null);
+  const templatesMenuCloseTimeout = useRef<number | null>(null);
+  const meetingMenuCloseTimeout = useRef<number | null>(null);
+  const MENU_CLOSE_DELAY = 300;
+
+  const dataspaceIdFromPath = useMemo(() => {
+    const match = pathname?.match(/^\/dataspace\/([^/]+)$/);
+    return match?.[1] ?? "";
+  }, [pathname]);
+
+  const dataspaceMeetingLink = useMemo(() => {
+    if (!dataspaceIdFromPath) return "/meetings/new";
+    return `/meetings/new?dataspaceId=${encodeURIComponent(dataspaceIdFromPath)}`;
+  }, [dataspaceIdFromPath]);
+
+  async function handleInstantMeeting() {
+    if (creatingMeeting) return;
+    setCreateMeetingError(null);
+    setCreatingMeeting(true);
+    try {
+      const response = await fetch("/api/meetings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dataspaceId: dataspaceIdFromPath || null,
+          transcriptionProvider: "DEEPGRAMLIVE"
+        })
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = payload?.error?.formErrors?.[0] ?? payload?.error ?? "Unable to create meeting";
+        setCreateMeetingError(message);
+        return;
+      }
+      if (payload?.id) {
+        router.push(`/meetings/${payload.id}`);
+        return;
+      }
+      setCreateMeetingError("Meeting created, but no ID returned.");
+    } catch {
+      setCreateMeetingError("Unable to create meeting.");
+    } finally {
+      setCreatingMeeting(false);
+      setShowMeetingMenu(false);
+    }
+  }
+
+  async function loadRecentDataspaces() {
+    if (loadingRecent || recentDataspaces.length > 0) return;
+    setLoadingRecent(true);
+    setRecentError(null);
+    try {
+      const response = await fetch("/api/dataspaces/recent");
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        setRecentError(payload?.error ?? "Unable to load dataspaces");
+      } else {
+        const items = Array.isArray(payload?.dataspaces) ? payload.dataspaces : [];
+        setRecentDataspaces(items);
+      }
+    } catch {
+      setRecentError("Unable to load dataspaces");
+    } finally {
+      setLoadingRecent(false);
+    }
+  }
+
+  function clearMenuTimer(timerRef: React.MutableRefObject<number | null>) {
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }
+
+  function scheduleMenuClose(
+    timerRef: React.MutableRefObject<number | null>,
+    close: () => void
+  ) {
+    clearMenuTimer(timerRef);
+    timerRef.current = window.setTimeout(() => {
+      close();
+    }, MENU_CLOSE_DELAY);
+  }
+
+  function openUserMenu() {
+    clearMenuTimer(userMenuCloseTimeout);
+    setShowUserMenu(true);
+  }
+
+  function scheduleCloseUserMenu() {
+    scheduleMenuClose(userMenuCloseTimeout, () => setShowUserMenu(false));
+  }
+
+  function openDataspaceMenu() {
+    clearMenuTimer(dataspaceMenuCloseTimeout);
+    setShowDataspaceMenu(true);
+    loadRecentDataspaces();
+  }
+
+  function scheduleCloseDataspaceMenu() {
+    scheduleMenuClose(dataspaceMenuCloseTimeout, () => setShowDataspaceMenu(false));
+  }
+
+  function openTemplatesMenu() {
+    clearMenuTimer(templatesMenuCloseTimeout);
+    setShowNewMenu(true);
+  }
+
+  function scheduleCloseTemplatesMenu() {
+    scheduleMenuClose(templatesMenuCloseTimeout, () => setShowNewMenu(false));
+  }
+
+  function openMeetingMenu() {
+    clearMenuTimer(meetingMenuCloseTimeout);
+    setShowMeetingMenu(true);
+  }
+
+  function scheduleCloseMeetingMenu() {
+    scheduleMenuClose(meetingMenuCloseTimeout, () => setShowMeetingMenu(false));
+  }
 
   if (status === "loading") {
     return null;
@@ -17,40 +152,66 @@ export function AppHeader() {
   if (!session?.user) {
     return (
       <header className="sticky top-3 z-20">
-        <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-2 rounded-2xl border border-[color:var(--stroke)] bg-[color:var(--card)] px-3 py-2 shadow-[0_12px_32px_rgba(0,0,0,0.08)] backdrop-blur sm:top-4 sm:px-4 sm:py-3 lg:rounded-full">
-          <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-            <Link href="/" className="flex items-center gap-2">
-              <span className="h-6 w-6 overflow-hidden rounded-full border border-emerald-200/80 bg-white/80 sm:h-8 sm:w-8">
-                <img
-                  src="/logo-120.png"
-                  alt="Democracy Routes logo"
-                  className="h-full w-full object-contain"
-                />
-              </span>
-              <span
+        <div className="mx-auto w-full max-w-6xl rounded-[28px] border border-[color:var(--stroke)] bg-[color:var(--card)] px-3 py-3 shadow-[0_18px_45px_rgba(15,23,42,0.12)] backdrop-blur sm:px-5">
+          <div className="flex items-center justify-between gap-3">
+          <a
+            href="https://democracyroutes.com"
+            className="flex items-center gap-3"
+            aria-label="Democracy Routes home"
+          >
+            <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-2xl border border-emerald-200/80 bg-white/80 shadow-[0_8px_20px_rgba(16,185,129,0.2)]">
+              <img
+                src="/logo-120.png"
+                alt="Democracy Routes logo"
+                className="h-full w-full object-contain"
+              />
+            </span>
+            <div className="leading-tight">
+              <div
                 className="text-base font-semibold text-slate-900 sm:text-lg"
                 style={{ fontFamily: "var(--font-serif)" }}
               >
                 Democracy Routes
-              </span>
-            </Link>
-            <nav className="flex items-center gap-2 text-xs text-slate-600 sm:text-sm">
-              <Link href="/" className="hover:text-slate-900">
-                Home
-              </Link>
-              <Link href="/about" className="hover:text-slate-900">
+              </div>
+              <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                Civic collaboration
+              </div>
+            </div>
+          </a>
+            <div className="hidden items-center gap-2 text-xs text-slate-600 sm:flex">
+              <Link href="/about" className="rounded-full px-3 py-1 hover:bg-white/70">
                 About
               </Link>
-            </nav>
+              <Link href="/login" className="dr-button px-4 py-2 text-xs sm:text-sm">
+                Log in
+              </Link>
+              <Link href="/register" className="dr-button-outline px-4 py-2 text-xs sm:text-sm">
+                Create account
+              </Link>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowMobileMenu((prev) => !prev)}
+              className="sm:hidden rounded-full border border-slate-200/80 bg-white/80 px-3 py-2 text-[11px] font-semibold text-slate-700"
+              aria-label="Toggle menu"
+              aria-expanded={showMobileMenu}
+            >
+              Menu
+            </button>
           </div>
-          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 sm:text-xs">
-            <Link href="/login" className="dr-button px-3 py-1.5 text-xs sm:px-4 sm:py-2 sm:text-sm">
-              Log in
-            </Link>
-            <Link href="/register" className="dr-button-outline px-3 py-1.5 text-xs sm:px-4 sm:py-2 sm:text-sm">
-              Create account
-            </Link>
-          </div>
+          {showMobileMenu ? (
+            <div className="mt-3 flex flex-col gap-2 rounded-2xl border border-slate-200/70 bg-white/90 p-3 text-sm text-slate-700 sm:hidden">
+              <Link href="/about" onClick={() => setShowMobileMenu(false)}>
+                About
+              </Link>
+              <Link href="/login" onClick={() => setShowMobileMenu(false)}>
+                Log in
+              </Link>
+              <Link href="/register" onClick={() => setShowMobileMenu(false)}>
+                Create account
+              </Link>
+            </div>
+          ) : null}
         </div>
       </header>
     );
@@ -58,56 +219,138 @@ export function AppHeader() {
 
   return (
     <header className="sticky top-3 z-20">
-      <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-2 rounded-2xl border border-[color:var(--stroke)] bg-[color:var(--card)] px-3 py-2 shadow-[0_12px_32px_rgba(0,0,0,0.08)] backdrop-blur sm:top-4 sm:px-4 sm:py-3 lg:rounded-full">
-        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-            <Link href="/dashboard" className="flex items-center gap-2">
-              <span className="h-6 w-6 overflow-hidden rounded-full border border-emerald-200/80 bg-white/80 sm:h-8 sm:w-8">
-                <img
-                  src="/logo-120.png"
-                  alt="Democracy Routes logo"
-                  className="h-full w-full object-contain"
-                />
-              </span>
-              <span
+      <div className="mx-auto w-full max-w-6xl rounded-[28px] border border-[color:var(--stroke)] bg-[color:var(--card)] px-3 py-3 shadow-[0_18px_45px_rgba(15,23,42,0.12)] backdrop-blur sm:px-5">
+        <div className="flex items-center justify-between gap-3">
+          <a
+            href="https://democracyroutes.com"
+            className="flex items-center gap-3"
+            aria-label="Democracy Routes home"
+          >
+            <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-2xl border border-emerald-200/80 bg-white/80 shadow-[0_8px_20px_rgba(16,185,129,0.2)]">
+              <img
+                src="/logo-120.png"
+                alt="Democracy Routes logo"
+                className="h-full w-full object-contain"
+              />
+            </span>
+            <div className="leading-tight">
+              <div
                 className="text-base font-semibold text-slate-900 sm:text-lg"
                 style={{ fontFamily: "var(--font-serif)" }}
               >
                 Democracy Routes
-              </span>
-            </Link>
-          <nav className="flex flex-wrap items-center gap-2 text-xs text-slate-600 sm:text-sm">
-            <Link href="/dashboard" className="hover:text-slate-900">
+              </div>
+              <div className="text-[11px] uppercase tracking-[0.2em] text-slate-500">
+                Civic operations
+              </div>
+            </div>
+          </a>
+
+          <nav className="hidden items-center gap-2 text-sm text-slate-600 lg:flex">
+            <Link href="/dashboard" className="rounded-full px-3 py-1 hover:bg-white/70">
               Dashboard
             </Link>
-            <Link href="/flows" className="hover:text-slate-900">
-              Templates
-            </Link>
-            <Link href="/dataspace" className="hover:text-slate-900">
-              Dataspace
-            </Link>
             <div
-              className="relative pb-2"
-              onMouseEnter={() => setShowNewMenu(true)}
-              onMouseLeave={() => setShowNewMenu(false)}
+              className="relative"
+              onMouseEnter={openDataspaceMenu}
+              onMouseLeave={scheduleCloseDataspaceMenu}
             >
-              <div className="inline-flex items-center gap-1 rounded-full border border-slate-200/80 bg-gradient-to-r from-white/80 via-white/60 to-white/80 px-2 py-1 text-xs font-semibold text-slate-700 shadow-[0_10px_20px_rgba(15,23,42,0.08)] transition hover:border-slate-300 hover:text-slate-900">
-                <Link href="/meetings/new" className="px-1">
-                  New meeting
-                </Link>
-                <button
-                  type="button"
-                  aria-label="Open new menu"
-                  aria-expanded={showNewMenu}
-                  onClick={() => setShowNewMenu((prev) => !prev)}
-                  className="px-1 text-[10px] font-semibold text-slate-600 hover:text-slate-900"
+              <button
+                type="button"
+                aria-label="Open dataspace menu"
+                aria-expanded={showDataspaceMenu}
+                onClick={() => {
+                  setShowDataspaceMenu((prev) => !prev);
+                  loadRecentDataspaces();
+                }}
+                className="rounded-full px-3 py-1 hover:bg-white/70"
+              >
+                Dataspace
+              </button>
+              {showDataspaceMenu ? (
+                <div
+                  className="absolute left-0 mt-2 w-60 rounded-xl border border-slate-200 bg-white/95 p-2 text-xs shadow-[0_16px_40px_rgba(15,23,42,0.12)]"
+                  onMouseEnter={openDataspaceMenu}
+                  onMouseLeave={scheduleCloseDataspaceMenu}
                 >
-                  v
-                </button>
-              </div>
-              {showNewMenu ? (
-                <div className="absolute left-0 mt-2 w-44 rounded-xl border border-slate-200 bg-white/95 p-2 text-xs shadow-[0_16px_40px_rgba(15,23,42,0.12)]">
                   <Link
-                    href="/flows/new"
+                    href="/dataspace"
+                    onClick={() => setShowDataspaceMenu(false)}
+                    className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
+                  >
+                    All dataspaces
+                  </Link>
+                  <div className="px-2 pt-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                    Recent
+                  </div>
+                  {loadingRecent ? (
+                    <div className="px-2 py-2 text-[11px] text-slate-500">Loading…</div>
+                  ) : recentError ? (
+                    <div className="px-2 py-2 text-[11px] text-red-600">{recentError}</div>
+                  ) : recentDataspaces.length === 0 ? (
+                    <div className="px-2 py-2 text-[11px] text-slate-500">No recent dataspaces.</div>
+                  ) : (
+                    recentDataspaces.map((space) => (
+                      <Link
+                        key={space.id}
+                        href={`/dataspace/${space.id}`}
+                        onClick={() => setShowDataspaceMenu(false)}
+                        className="flex items-center gap-2 rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
+                      >
+                        <span
+                          className="h-2.5 w-2.5 rounded-full border border-white/70"
+                          style={{ backgroundColor: space.color ?? DEFAULT_DATASPACE_COLOR }}
+                        />
+                        <span className="truncate">{space.name}</span>
+                      </Link>
+                    ))
+                  )}
+                </div>
+              ) : null}
+            </div>
+            <div
+              className="relative"
+              onMouseEnter={openTemplatesMenu}
+              onMouseLeave={scheduleCloseTemplatesMenu}
+            >
+              <button
+                type="button"
+                aria-label="Open templates menu"
+                aria-expanded={showNewMenu}
+                onClick={() => setShowNewMenu((prev) => !prev)}
+                className="rounded-full px-3 py-1 hover:bg-white/70"
+              >
+                Templates
+              </button>
+              {showNewMenu ? (
+                <div
+                  className="absolute left-0 mt-2 w-48 rounded-xl border border-slate-200 bg-white/95 p-2 text-xs shadow-[0_16px_40px_rgba(15,23,42,0.12)]"
+                  onMouseEnter={openTemplatesMenu}
+                  onMouseLeave={scheduleCloseTemplatesMenu}
+                >
+                  <Link
+                    href="/flows"
+                    onClick={() => setShowNewMenu(false)}
+                    className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
+                  >
+                    All templates
+                  </Link>
+                  <Link
+                    href="/modular"
+                    onClick={() => setShowNewMenu(false)}
+                    className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
+                  >
+                    Modular builder
+                  </Link>
+                  <Link
+                    href="/templates/ai"
+                    onClick={() => setShowNewMenu(false)}
+                    className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
+                  >
+                    Template AI
+                  </Link>
+                  <Link
+                    href="/flows/new?mode=template"
                     onClick={() => setShowNewMenu(false)}
                     className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
                   >
@@ -116,58 +359,194 @@ export function AppHeader() {
                 </div>
               ) : null}
             </div>
-            {session.user.role === "ADMIN" ? (
-              <div
-                className="relative pb-2"
-                onMouseEnter={() => setShowAdminMenu(true)}
-                onMouseLeave={() => setShowAdminMenu(false)}
+            <div
+              className="relative"
+              onMouseEnter={openMeetingMenu}
+              onMouseLeave={scheduleCloseMeetingMenu}
+            >
+              <button
+                type="button"
+                aria-label="Open meeting menu"
+                aria-expanded={showMeetingMenu}
+                onClick={() => setShowMeetingMenu((prev) => !prev)}
+                className="rounded-full bg-[color:var(--accent)] px-4 py-1 text-white hover:bg-[color:var(--accent-deep)]"
               >
-                <button
-                  type="button"
-                  onClick={() => setShowAdminMenu((prev) => !prev)}
-                  aria-expanded={showAdminMenu}
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-gradient-to-r from-slate-900/10 via-white/70 to-white/80 px-3 py-1 text-xs font-semibold text-slate-700 shadow-[0_10px_20px_rgba(15,23,42,0.08)] transition hover:border-slate-300 hover:text-slate-900"
+                New meeting
+              </button>
+              {showMeetingMenu ? (
+                <div
+                  className="absolute right-0 mt-2 w-52 rounded-xl border border-slate-200 bg-white/95 p-2 text-xs shadow-[0_16px_40px_rgba(15,23,42,0.12)]"
+                  onMouseEnter={openMeetingMenu}
+                  onMouseLeave={scheduleCloseMeetingMenu}
                 >
-                  Admin
-                </button>
-                {showAdminMenu ? (
-                  <div className="absolute left-0 mt-2 w-44 rounded-xl border border-slate-200 bg-white/95 p-2 text-xs shadow-lg">
-                    <Link
-                      href="/admin/users"
-                      onClick={() => setShowAdminMenu(false)}
-                      className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
-                    >
-                      Users
-                    </Link>
-                    <Link
-                      href="/admin/global-dashboard"
-                      onClick={() => setShowAdminMenu(false)}
-                      className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
-                    >
-                      Global dashboard
-                    </Link>
-                    <Link
-                      href="/admin"
-                      onClick={() => setShowAdminMenu(false)}
-                      className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
-                    >
+                  <button
+                    type="button"
+                    onClick={handleInstantMeeting}
+                    disabled={creatingMeeting}
+                    className="block w-full rounded px-2 py-2 text-left text-slate-700 hover:bg-slate-100"
+                  >
+                    {creatingMeeting ? "Starting instant meeting..." : "Start instant meeting"}
+                  </button>
+                  <Link
+                    href={dataspaceMeetingLink}
+                    onClick={() => setShowMeetingMenu(false)}
+                    className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
+                  >
+                    Plan a meeting
+                  </Link>
+                  {createMeetingError ? (
+                    <div className="px-2 pt-1 text-[11px] text-red-600">
+                      {createMeetingError}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </nav>
+
+          <div className="hidden items-center gap-3 lg:flex">
+            <div className="relative" />
+            {session.user.role === "ADMIN" ? null : null}
+            <div
+              className="relative"
+              onMouseEnter={openUserMenu}
+              onMouseLeave={scheduleCloseUserMenu}
+            >
+              <button
+                type="button"
+                aria-label="Open user menu"
+                aria-expanded={showUserMenu}
+                onClick={() => setShowUserMenu((prev) => !prev)}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700 shadow-[0_10px_20px_rgba(15,23,42,0.08)]"
+              >
+                <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-white/70 bg-white text-[10px] font-semibold text-slate-600">
+                  {session.user.avatarUrl ? (
+                    <img
+                      src={session.user.avatarUrl}
+                      alt="Profile"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    session.user.email.slice(0, 2).toUpperCase()
+                  )}
+                </span>
+                <span className="max-w-[140px] truncate">{session.user.email}</span>
+                <span className="text-[10px]">v</span>
+              </button>
+              {showUserMenu ? (
+                <div
+                  className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-slate-200 bg-white/95 p-2 text-xs shadow-[0_16px_40px_rgba(15,23,42,0.12)]"
+                  onMouseEnter={openUserMenu}
+                  onMouseLeave={scheduleCloseUserMenu}
+                >
+                  <Link
+                    href="/account"
+                    onClick={() => setShowUserMenu(false)}
+                    className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
+                  >
+                    Profile settings
+                  </Link>
+                  {session.user.role === "ADMIN" ? (
+                    <>
+                      <Link
+                        href="/admin"
+                        onClick={() => setShowUserMenu(false)}
+                        className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
+                      >
+                        Admin overview
+                      </Link>
+                      <Link
+                        href="/admin/users"
+                        onClick={() => setShowUserMenu(false)}
+                        className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
+                      >
+                        Users
+                      </Link>
+                      <Link
+                        href="/admin/global-dashboard"
+                        onClick={() => setShowUserMenu(false)}
+                        className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
+                      >
+                        Global dashboard
+                      </Link>
+                    </>
+                  ) : null}
+                  <div className="mt-1 border-t border-slate-200 pt-1">
+                    <SignOutButton />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowMobileMenu((prev) => !prev)}
+            className="lg:hidden rounded-full border border-slate-200/80 bg-white/80 px-3 py-2 text-[11px] font-semibold text-slate-700"
+            aria-label="Toggle menu"
+            aria-expanded={showMobileMenu}
+          >
+            Menu
+          </button>
+        </div>
+
+        {showMobileMenu ? (
+          <div className="mt-3 flex flex-col gap-3 rounded-2xl border border-slate-200/70 bg-white/90 p-4 text-sm text-slate-700 lg:hidden">
+            <div className="flex flex-col gap-2">
+              <Link href="/dashboard" onClick={() => setShowMobileMenu(false)}>
+                Dashboard
+              </Link>
+              <Link href="/dataspace" onClick={() => setShowMobileMenu(false)}>
+                Dataspace
+              </Link>
+              <Link href="/flows" onClick={() => setShowMobileMenu(false)}>
+                Templates
+              </Link>
+              <Link href="/modular" onClick={() => setShowMobileMenu(false)}>
+                Modular builder
+              </Link>
+              <Link href="/templates/ai" onClick={() => setShowMobileMenu(false)}>
+                Template AI
+              </Link>
+              <button
+                type="button"
+                onClick={handleInstantMeeting}
+                disabled={creatingMeeting}
+                className="text-left"
+              >
+                {creatingMeeting ? "Starting instant meeting..." : "Start instant meeting"}
+              </button>
+              <Link href={dataspaceMeetingLink} onClick={() => setShowMobileMenu(false)}>
+                Plan a meeting
+              </Link>
+              <Link href="/flows/new?mode=template" onClick={() => setShowMobileMenu(false)}>
+                New template
+              </Link>
+            </div>
+            <div className="border-t border-slate-200/80 pt-3 text-xs text-slate-600">
+              <div className="mb-2 uppercase tracking-[0.2em]">Account</div>
+              <div className="flex flex-col gap-2">
+                <Link href="/account" onClick={() => setShowMobileMenu(false)}>
+                  Profile settings
+                </Link>
+                {session.user.role === "ADMIN" ? (
+                  <>
+                    <Link href="/admin" onClick={() => setShowMobileMenu(false)}>
                       Admin overview
                     </Link>
-                  </div>
+                    <Link href="/admin/users" onClick={() => setShowMobileMenu(false)}>
+                      Users
+                    </Link>
+                    <Link href="/admin/global-dashboard" onClick={() => setShowMobileMenu(false)}>
+                      Global dashboard
+                    </Link>
+                  </>
                 ) : null}
+                <SignOutButton />
               </div>
-            ) : null}
-          </nav>
-        </div>
-        <div className="flex items-center gap-2 text-[11px] text-slate-500 sm:text-xs">
-          <span className="hidden break-all sm:inline">{session.user.email}</span>
-          <div className="flex items-center gap-2">
-            <Link href="/account" className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 sm:text-xs">
-              Profile settings
-            </Link>
-            <SignOutButton />
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </header>
   );

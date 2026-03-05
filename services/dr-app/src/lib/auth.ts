@@ -51,7 +51,8 @@ export const authOptions: NextAuthOptions = {
           id: user.id,
           email: user.email,
           role: user.role as "ADMIN" | "USER",
-          mustChangePassword: user.mustChangePassword
+          mustChangePassword: user.mustChangePassword,
+          avatarUrl: user.avatarUrl ?? null
         };
       }
     })
@@ -65,6 +66,7 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         token.role = user.role;
         token.mustChangePassword = user.mustChangePassword;
+        token.avatarUrl = user.avatarUrl ?? null;
       }
       return token;
     },
@@ -73,6 +75,17 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.id as string;
         session.user.role = token.role as "ADMIN" | "USER";
         session.user.mustChangePassword = token.mustChangePassword as boolean;
+        session.user.avatarUrl = token.avatarUrl ?? null;
+      }
+      if (token.id) {
+        const profile = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { avatarUrl: true }
+        });
+        if (session.user) {
+          session.user.avatarUrl = profile?.avatarUrl ?? null;
+        }
+        token.avatarUrl = profile?.avatarUrl ?? null;
       }
       return session;
     }

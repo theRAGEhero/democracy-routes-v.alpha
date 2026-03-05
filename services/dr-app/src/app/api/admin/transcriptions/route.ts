@@ -2,6 +2,23 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 
+async function fetchJson(url: string, timeoutMs = 3000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { cache: "no-store", signal: controller.signal });
+    clearTimeout(timer);
+    if (!response.ok) {
+      return { ok: false, status: response.status, data: null };
+    }
+    const data = await response.json().catch(() => null);
+    return { ok: true, status: response.status, data };
+  } catch (error) {
+    clearTimeout(timer);
+    return { ok: false, status: 0, data: null };
+  }
+}
+
 export async function GET() {
   const session = await getSession();
   if (!session?.user || session.user.role !== "ADMIN") {
@@ -30,7 +47,7 @@ export async function GET() {
     const key =
       job.kind === "MEETING" && job.meetingId
         ? `MEETING:${job.meetingId}`
-        : job.kind === "MEDITATION" && job.planId
+        : job.kind === "PAUSE" && job.planId
           ? `MEDITATION:${job.planId}:${job.meditationIndex ?? "unknown"}`
           : `${job.kind}:${job.id}`;
     const existing = grouped.get(key);
@@ -43,6 +60,12 @@ export async function GET() {
       }
     }
   }
+
+  const drVideoBase = process.env.DR_VIDEO_INTERNAL_URL || "http://dr-video:3020";
+  const [health, hubMetrics] = await Promise.all([
+    fetchJson(`${drVideoBase.replace(/\/$/, "")}/api/health`),
+    fetchJson(`${drVideoBase.replace(/\/$/, "")}/api/metrics/hub`)
+  ]);
 
   return NextResponse.json({
     jobs: Array.from(grouped.values())
@@ -61,6 +84,19 @@ export async function GET() {
         meeting: entry.latest.meeting,
         plan: entry.latest.plan,
         userEmail: entry.latest.user?.email ?? null
-      }))
+      })),
+    metrics: {
+      drVideo: {
+        ok: health.ok,
+        rooms: health.data?.rooms ?? 0,
+        peers: health.data?.peers ?? 0
+      },
+      hub: {
+        ok: hubMetrics.ok,
+        hubConfigured: hubMetrics.data?.hubConfigured ?? false,
+        pendingQueueSize: hubMetrics.data?.pendingQueueSize ?? 0,
+        metrics: hubMetrics.data?.metrics ?? null
+      }
+    }
   });
 }

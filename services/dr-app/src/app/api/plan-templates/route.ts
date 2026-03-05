@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 
 const blockSchema = z.object({
-  type: z.enum(["ROUND", "MEDITATION", "POSTER", "TEXT", "RECORD", "FORM"]),
+  type: z.enum(["PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING"]),
   durationSeconds: z.number().int().min(1).max(7200),
   roundMaxParticipants: z.number().int().min(2).max(12).optional().nullable(),
   formQuestion: z.string().trim().max(240).optional().nullable(),
@@ -18,6 +18,8 @@ const blockSchema = z.object({
     .optional()
     .nullable(),
   posterId: z.string().optional().nullable(),
+  embedUrl: z.string().trim().max(500).optional().nullable(),
+  matchingMode: z.enum(["polar", "anti"]).optional().nullable(),
   meditationAnimationId: z.string().optional().nullable(),
   meditationAudioUrl: z.string().optional().nullable()
 });

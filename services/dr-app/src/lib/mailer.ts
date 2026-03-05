@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { logError, logWarn } from "@/lib/logger";
 
 type MailPayload = {
   to: string;
@@ -28,7 +29,7 @@ function isSmtpConfigured() {
 
 export async function sendMail({ to, subject, html, text }: MailPayload) {
   if (!isSmtpConfigured()) {
-    console.warn("SMTP not configured. Skipping email to", to);
+    logWarn("smtp_not_configured_skip_email", { to });
     return { ok: false, error: "SMTP not configured" };
   }
 
@@ -57,7 +58,7 @@ export async function sendMail({ to, subject, html, text }: MailPayload) {
 
     return { ok: true };
   } catch (error) {
-    console.error("Email send failed", error);
+    logError("email_send_failed", error, { to, subject });
     return { ok: false, error: "Email send failed" };
   }
 }

@@ -1,4 +1,5 @@
 import { getServerSession } from "next-auth";
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -7,6 +8,9 @@ import { DataspaceJoinLeave } from "@/app/dataspace/[id]/DataspaceJoinLeave";
 import { DataspaceInviteForm } from "@/app/dataspace/[id]/DataspaceInviteForm";
 import { DataspaceAnalysisPanel } from "@/app/dataspace/[id]/DataspaceAnalysisPanel";
 import { JoinButton } from "@/components/JoinButton";
+import { DataspaceSettingsModal } from "@/app/dataspace/[id]/DataspaceSettingsModal";
+import { DataspaceImportSources } from "@/app/dataspace/[id]/DataspaceImportSources";
+import { DEFAULT_DATASPACE_COLOR, getDataspaceTheme } from "@/lib/dataspaceColor";
 
 export default async function DataspaceDetailPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -70,6 +74,7 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
   const isAdmin = session.user.role === "ADMIN";
   const isOwner =
     dataspace.personalOwnerId === session.user.id || dataspace.createdById === session.user.id;
+  const canEdit = isAdmin || isOwner;
   const canInvite = isAdmin || isOwner;
 
   if (!isAdmin && !isMember) {
@@ -108,17 +113,45 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
       .filter((planId: string | null): planId is string => Boolean(planId))
   );
 
+  const theme = getDataspaceTheme(dataspace.color ?? DEFAULT_DATASPACE_COLOR);
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="dataspace-theme" style={theme as CSSProperties}>
+      <div className="space-y-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
-            {dataspace.name}
-          </h1>
+          <div className="flex items-center gap-3">
+            <span className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full border border-white/70 bg-white text-sm font-semibold text-slate-600">
+              {dataspace.imageUrl ? (
+                <img
+                  src={dataspace.imageUrl}
+                  alt={`${dataspace.name} avatar`}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                dataspace.name.slice(0, 2).toUpperCase()
+              )}
+            </span>
+            <h1 className="text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
+              {dataspace.name}
+            </h1>
+          </div>
           <p className="text-sm text-slate-600">{dataspace.description || "No description"}</p>
           <p className="mt-1 text-xs text-slate-500">
             Created by {dataspace.createdBy.email} · {formatDateTime(dataspace.createdAt)}
           </p>
+          <div className="mt-2 flex items-center gap-3 text-xs text-slate-500">
+            <span
+              className="h-3 w-3 rounded-full border border-white/70 shadow-sm"
+              style={{ backgroundColor: dataspace.color ?? DEFAULT_DATASPACE_COLOR }}
+            />
+            <span>Dataspace color</span>
+            {dataspace.rssEnabled ? (
+              <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-orange-700">
+                RSS
+              </span>
+            ) : null}
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <DataspaceJoinLeave
@@ -129,6 +162,32 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
             isOwner={isOwner}
             isSubscribed={Boolean(subscription)}
             hasTelegramHandle={Boolean(currentUser?.telegramHandle)}
+          />
+          <Link
+            href={`/dataspace/${dataspace.id}#import-sources`}
+            className="dr-button-outline px-3 py-2 text-xs"
+          >
+            Import Sources
+          </Link>
+          <DataspaceSettingsModal
+            dataspaceId={dataspace.id}
+            canEdit={canEdit}
+            isSubscribed={Boolean(subscription)}
+            initialName={dataspace.name}
+            initialDescription={dataspace.description}
+            initialColor={dataspace.color}
+            initialImageUrl={dataspace.imageUrl}
+            initialNotifyAllActivity={dataspace.notifyAllActivity}
+            initialNotifyMeetings={dataspace.notifyMeetings}
+            initialNotifyPlans={dataspace.notifyPlans}
+            initialNotifyTexts={dataspace.notifyTexts}
+            initialRssEnabled={dataspace.rssEnabled}
+            initialTelegramGroupChatId={dataspace.telegramGroupChatId}
+            initialTelegramGroupLinkCode={dataspace.telegramGroupLinkCode}
+            subscriptionNotifyAll={subscription?.notifyAllActivity ?? true}
+            subscriptionNotifyMeetings={subscription?.notifyMeetings ?? true}
+            subscriptionNotifyPlans={subscription?.notifyPlans ?? true}
+            subscriptionNotifyTexts={subscription?.notifyTexts ?? true}
           />
           <Link href="/dataspace" className="text-sm font-medium text-slate-600 hover:text-slate-900">
             Back to dataspaces
@@ -250,9 +309,11 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
                 );
               })
             )}
-          </div>
+            </div>
           </div>
         </div>
+
+        <DataspaceImportSources dataspaceId={dataspace.id} />
 
         <div className="space-y-4">
           <div className="dr-card p-6">
@@ -365,6 +426,7 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
 
           <DataspaceAnalysisPanel dataspaceId={dataspace.id} />
         </div>
+      </div>
       </div>
     </div>
   );

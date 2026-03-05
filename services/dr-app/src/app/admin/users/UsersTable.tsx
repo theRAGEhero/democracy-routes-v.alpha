@@ -6,6 +6,7 @@ type UserRow = {
   id: string;
   email: string;
   role: string;
+  emailVerifiedAtLabel: string | null;
   mustChangePassword: boolean;
   isDeleted: boolean;
   deletedAtLabel: string | null;
@@ -24,8 +25,7 @@ export function UsersTable({ initialUsers }: Props) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [resettingId, setResettingId] = useState<string | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [validatingId, setValidatingId] = useState<string | null>(null);
   const [updatingRoleId, setUpdatingRoleId] = useState<string | null>(null);
 
   async function handleDelete(userId: string) {
@@ -89,31 +89,32 @@ export function UsersTable({ initialUsers }: Props) {
     setMessage("Role updated");
   }
 
-  async function handleResetPassword(event: React.FormEvent) {
-    event.preventDefault();
-    if (!resettingId) return;
+  async function handleResetPassword(userId: string, email: string) {
+    const confirmed = window.confirm(`Reset password for ${email}? A new password will be emailed.`);
+    if (!confirmed) return;
 
     setMessage(null);
     setError(null);
+    setResettingId(userId);
 
-    const response = await fetch(`/api/admin/users/${resettingId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ newPassword, confirmPassword })
+    const response = await fetch(`/api/admin/users/${userId}/reset-password`, {
+      method: "POST"
     });
 
     const data = await response.json().catch(() => null);
+    setResettingId(null);
 
     if (!response.ok) {
-      const message = data?.error?.formErrors?.[0] ?? data?.error ?? "Unable to reset password";
+      const message = data?.error ?? "Unable to reset password";
       setError(message);
       return;
     }
 
-    setMessage("Password reset. User must change it on next login.");
-    setResettingId(null);
-    setNewPassword("");
-    setConfirmPassword("");
+    if (data?.emailSent === false) {
+      setMessage("Password reset, but email was not sent.");
+    } else {
+      setMessage("Password reset email sent.");
+    }
   }
 
   async function handleResendInvite(userId: string) {
@@ -140,13 +141,49 @@ export function UsersTable({ initialUsers }: Props) {
     }
   }
 
+  async function handleValidate(userId: string, email: string) {
+    const confirmed = window.confirm(`Validate ${email} and send welcome email?`);
+    if (!confirmed) return;
+
+    setMessage(null);
+    setError(null);
+    setValidatingId(userId);
+
+    const response = await fetch(`/api/admin/users/${userId}/validate`, {
+      method: "POST"
+    });
+
+    const data = await response.json().catch(() => null);
+    setValidatingId(null);
+
+    if (!response.ok) {
+      setError(data?.error ?? "Unable to validate user");
+      return;
+    }
+
+    setUsers((prev) =>
+      prev.map((user) =>
+        user.id === userId
+          ? { ...user, emailVerifiedAtLabel: data?.verifiedAt ? new Date(data.verifiedAt).toLocaleString() : user.emailVerifiedAtLabel }
+          : user
+      )
+    );
+
+    if (data?.emailSent === false) {
+      setMessage("User validated, but email was not sent.");
+    } else {
+      setMessage("User validated and welcome email sent.");
+    }
+  }
+
   return (
     <div className="dr-card">
       <div className="overflow-x-auto">
         <div className="min-w-[760px]">
-          <div className="grid grid-cols-[2fr,0.8fr,0.9fr,0.8fr,0.7fr,1fr,1.4fr] gap-4 border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase text-slate-500">
+          <div className="grid grid-cols-[2fr,0.8fr,1.1fr,0.9fr,0.8fr,0.7fr,1fr,1.6fr] gap-4 border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase text-slate-500">
             <span>Email</span>
             <span>Role</span>
+            <span>Verified</span>
             <span>Status</span>
             <span>Must change</span>
             <span>Meetings</span>
@@ -158,7 +195,7 @@ export function UsersTable({ initialUsers }: Props) {
               <div className="px-4 py-6 text-sm text-slate-500">No users yet.</div>
             ) : (
               users.map((user) => (
-                <div key={user.id} className="grid grid-cols-[2fr,0.8fr,0.9fr,0.8fr,0.7fr,1fr,1.4fr] gap-4 px-4 py-3 text-sm">
+                <div key={user.id} className="grid grid-cols-[2fr,0.8fr,1.1fr,0.9fr,0.8fr,0.7fr,1fr,1.6fr] gap-4 px-4 py-3 text-sm">
                   <div className="text-slate-900">{user.email}</div>
                   <div className="text-slate-700">
                     <select
@@ -170,6 +207,17 @@ export function UsersTable({ initialUsers }: Props) {
                       <option value="USER">USER</option>
                       <option value="ADMIN">ADMIN</option>
                     </select>
+                  </div>
+                  <div className="text-slate-600">
+                    {user.emailVerifiedAtLabel ? (
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">
+                        Verified · {user.emailVerifiedAtLabel}
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">
+                        Pending
+                      </span>
+                    )}
                   </div>
                   <div className="text-slate-600">
                     {user.isDeleted ? (
@@ -184,13 +232,23 @@ export function UsersTable({ initialUsers }: Props) {
                   <div className="text-slate-500">{user.meetingsCount}</div>
                   <div className="text-slate-500">{user.createdAtLabel}</div>
                   <div className="flex flex-col items-end gap-2 text-right">
+                    {!user.emailVerifiedAtLabel ? (
+                      <button
+                        type="button"
+                        onClick={() => handleValidate(user.id, user.email)}
+                        className="text-xs font-semibold text-slate-700 hover:text-slate-900"
+                        disabled={user.isDeleted || validatingId === user.id}
+                      >
+                        {validatingId === user.id ? "Validating..." : "Validate + welcome"}
+                      </button>
+                    ) : null}
                     <button
                       type="button"
-                      onClick={() => setResettingId(user.id)}
+                      onClick={() => handleResetPassword(user.id, user.email)}
                       className="text-xs font-semibold text-slate-700 hover:text-slate-900"
-                      disabled={user.isDeleted}
+                      disabled={user.isDeleted || resettingId === user.id}
                     >
-                      Change password
+                      {resettingId === user.id ? "Resetting..." : "Reset password"}
                     </button>
                     <button
                       type="button"
@@ -219,45 +277,6 @@ export function UsersTable({ initialUsers }: Props) {
           </div>
         </div>
       </div>
-      {resettingId ? (
-        <form onSubmit={handleResetPassword} className="border-t border-slate-200 px-4 py-4">
-          <p className="text-sm font-semibold text-slate-900">Reset password</p>
-          <div className="mt-3 grid gap-3 md:grid-cols-3">
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(event) => setNewPassword(event.target.value)}
-              className="dr-input w-full rounded px-3 py-2 text-sm"
-              placeholder="New password"
-              required
-            />
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-              className="dr-input w-full rounded px-3 py-2 text-sm"
-              placeholder="Confirm password"
-              required
-            />
-            <div className="flex items-center gap-2">
-              <button type="submit" className="dr-button px-4 py-2 text-sm">
-                Save
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setResettingId(null);
-                  setNewPassword("");
-                  setConfirmPassword("");
-                }}
-                className="dr-button-outline px-4 py-2 text-sm"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </form>
-      ) : null}
       {message ? <p className="px-4 py-3 text-sm text-emerald-600">{message}</p> : null}
       {error ? <p className="px-4 py-3 text-sm text-red-600">{error}</p> : null}
     </div>

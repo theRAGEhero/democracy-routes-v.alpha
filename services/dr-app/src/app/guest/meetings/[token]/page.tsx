@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { isMeetingActive } from "@/lib/utils";
 import { normalizeCallBaseUrl } from "@/lib/callUrl";
+import { buildVideoAccessToken } from "@/lib/videoAccess";
 import { GuestJoinCard } from "@/app/guest/meetings/[token]/GuestJoinCard";
 
 export default async function GuestMeetingPage({
@@ -40,6 +41,11 @@ export default async function GuestMeetingPage({
       : meeting.transcriptionProvider === "DEEPGRAMLIVE"
         ? "deepgramlive"
         : "deepgram";
+  const accessToken = buildVideoAccessToken({
+    roomId: meeting.roomId,
+    meetingId: meeting.id,
+    userEmail: invite.email
+  });
 
   return (
     <div className="mx-auto mt-10 max-w-2xl space-y-6">
@@ -59,9 +65,11 @@ export default async function GuestMeetingPage({
         active={active}
         baseUrl={baseUrl}
         roomId={meeting.roomId}
+        meetingId={meeting.id}
         language={langCode}
         provider={providerCode}
         inviteEmail={invite.email}
+        accessToken={accessToken}
       />
 
       <p className="text-xs text-slate-500">

@@ -24,6 +24,20 @@ export async function POST(
     return NextResponse.json({ error: "Not a dataspace member" }, { status: 403 });
   }
 
+  const dataspace = await prisma.dataspace.findUnique({
+    where: { id: params.id },
+    select: {
+      notifyAllActivity: true,
+      notifyMeetings: true,
+      notifyPlans: true,
+      notifyTexts: true
+    }
+  });
+
+  if (!dataspace) {
+    return NextResponse.json({ error: "Dataspace not found" }, { status: 404 });
+  }
+
   await prisma.dataspaceSubscription.upsert({
     where: {
       dataspaceId_userId: {
@@ -34,7 +48,11 @@ export async function POST(
     update: {},
     create: {
       dataspaceId: params.id,
-      userId: session.user.id
+      userId: session.user.id,
+      notifyAllActivity: dataspace.notifyAllActivity,
+      notifyMeetings: dataspace.notifyMeetings,
+      notifyPlans: dataspace.notifyPlans,
+      notifyTexts: dataspace.notifyTexts
     }
   });
 

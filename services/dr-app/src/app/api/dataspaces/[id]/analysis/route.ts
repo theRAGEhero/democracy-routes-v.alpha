@@ -259,6 +259,18 @@ export async function POST(
   }
 
   const payload = await response.json();
+  try {
+    await prisma.dataspaceAnalysis.create({
+      data: {
+        dataspaceId: dataspace.id,
+        prompt: parsed.data.prompt,
+        provider,
+        analysis: payload.analysis
+      }
+    });
+  } catch {
+    // If the table isn't available yet, still return the analysis.
+  }
   return NextResponse.json({
     analysis: payload.analysis,
     createdAt: payload.timestamp ?? new Date().toISOString(),

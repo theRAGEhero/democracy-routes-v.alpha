@@ -21,6 +21,7 @@ type Props = {
   users: UserOption[];
   dataspaces: DataspaceOption[];
   mode?: "create" | "edit";
+  builderModeOverride?: "template" | "plan";
   initialPlan?: {
     id: string;
     title: string;
@@ -48,13 +49,15 @@ type Props = {
     participantIds: string[];
     blocks?: Array<{
       id: string;
-      type: "ROUND" | "MEDITATION" | "POSTER" | "TEXT" | "RECORD" | "FORM";
+      type: "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING";
       durationSeconds: number;
       roundNumber: number | null;
       roundMaxParticipants?: number | null;
       formQuestion?: string | null;
       formChoices?: Array<{ key: string; label: string }> | null;
       posterId: string | null;
+      embedUrl?: string | null;
+      matchingMode?: "polar" | "anti" | null;
       meditationAnimationId?: string | null;
       meditationAudioUrl?: string | null;
     }>;
@@ -73,12 +76,14 @@ function toLocalTimeInput(date: Date) {
 
 type PlanBlockDraft = {
   id: string;
-  type: "ROUND" | "MEDITATION" | "POSTER" | "TEXT" | "RECORD" | "FORM";
+  type: "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING";
   durationSeconds: number;
   roundMaxParticipants?: number | null;
   formQuestion?: string | null;
   formChoices?: Array<{ key: string; label: string }> | null;
   posterId?: string | null;
+  embedUrl?: string | null;
+  matchingMode?: "polar" | "anti" | null;
   meditationAnimationId?: string | null;
   meditationAudioUrl?: string | null;
 };
@@ -98,12 +103,14 @@ type PlanTemplate = {
   isPublic: boolean;
   createdById: string;
   blocks: Array<{
-    type: "ROUND" | "MEDITATION" | "POSTER" | "TEXT" | "RECORD" | "FORM";
+    type: "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING";
     durationSeconds: number;
     roundMaxParticipants?: number | null;
     formQuestion?: string | null;
     formChoices?: Array<{ key: string; label: string }> | null;
     posterId?: string | null;
+    embedUrl?: string | null;
+    matchingMode?: "polar" | "anti" | null;
     meditationAnimationId?: string | null;
     meditationAudioUrl?: string | null;
   }>;
@@ -156,6 +163,33 @@ function normalizeEmailList(raw: string) {
     .filter((value) => value.length > 0);
 }
 
+function normalizeEmbedUrl(raw: string) {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  try {
+    const url = new URL(trimmed);
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return "";
+    }
+    if (url.hostname === "youtu.be") {
+      const id = url.pathname.replace("/", "").trim();
+      return id ? `https://www.youtube.com/embed/${id}` : trimmed;
+    }
+    if (url.hostname.includes("youtube.com")) {
+      if (url.pathname.startsWith("/embed/")) {
+        return url.toString();
+      }
+      const id = url.searchParams.get("v");
+      if (id) {
+        return `https://www.youtube.com/embed/${id}`;
+      }
+    }
+    return url.toString();
+  } catch {
+    return trimmed;
+  }
+}
+
 function defaultRoundBlocks(config: {
   roundsCount: number;
   roundDurationMinutes: number;
@@ -166,7 +200,7 @@ function defaultRoundBlocks(config: {
   for (let round = 0; round < config.roundsCount; round += 1) {
     blocks.push({
       id: makeId(),
-      type: "ROUND",
+      type: "PAIRING",
       durationSeconds: roundSeconds,
       roundMaxParticipants: null
     });
@@ -200,7 +234,7 @@ function legacyBlocksFromPlan(config: {
   if (config.meditationAtStart) {
     blocks.push({
       id: makeId(),
-      type: "MEDITATION",
+      type: "PAUSE",
       durationSeconds: meditationSeconds,
       meditationAnimationId: config.meditationAnimationId ?? null,
       meditationAudioUrl: config.meditationAudioUrl ?? null
@@ -210,14 +244,14 @@ function legacyBlocksFromPlan(config: {
   for (let round = 0; round < config.roundsCount; round += 1) {
     blocks.push({
       id: makeId(),
-      type: "ROUND",
+      type: "PAIRING",
       durationSeconds: roundSeconds,
       roundMaxParticipants: null
     });
     if (config.meditationBetweenRounds && round < config.roundsCount - 1) {
       blocks.push({
         id: makeId(),
-        type: "MEDITATION",
+        type: "PAUSE",
         durationSeconds: meditationSeconds,
         meditationAnimationId: config.meditationAnimationId ?? null,
         meditationAudioUrl: config.meditationAudioUrl ?? null
@@ -228,7 +262,7 @@ function legacyBlocksFromPlan(config: {
   if (config.meditationAtEnd) {
     blocks.push({
       id: makeId(),
-      type: "MEDITATION",
+      type: "PAUSE",
       durationSeconds: meditationSeconds,
       meditationAnimationId: config.meditationAnimationId ?? null,
       meditationAudioUrl: config.meditationAudioUrl ?? null
@@ -238,7 +272,13 @@ function legacyBlocksFromPlan(config: {
   return blocks;
 }
 
-export function PlanBuilderClient({ users, dataspaces, mode = "create", initialPlan }: Props) {
+export function PlanBuilderClient({
+  users,
+  dataspaces,
+  mode = "create",
+  builderModeOverride,
+  initialPlan
+}: Props) {
   const router = useRouter();
   const [title, setTitle] = useState("1v1 Rotation");
   const [description, setDescription] = useState("");
@@ -310,6 +350,11 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
   const searchParams = useSearchParams();
   const templateIdFromQuery = searchParams?.get("templateId") ?? null;
   const customizeFromQuery = searchParams?.get("customize") === "1";
+  const builderMode =
+    mode === "edit"
+      ? "plan"
+      : builderModeOverride ?? (searchParams?.get("mode") === "template" ? "template" : "plan");
+  const isTemplateMode = builderMode === "template";
 
   useEffect(() => {
     setOrigin(window.location.origin);
@@ -326,6 +371,7 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
   }, [inviteEmails]);
 
   useEffect(() => {
+    if (isTemplateMode) return;
     if (!inviteQuery) {
       setInviteSuggestions([]);
       return;
@@ -353,7 +399,7 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
       active = false;
       clearTimeout(timeout);
     };
-  }, [inviteQuery, inviteExclude]);
+  }, [inviteQuery, inviteExclude, isTemplateMode]);
 
   useEffect(() => {
     if (!portalReady) return;
@@ -376,6 +422,7 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
   }, [portalReady]);
 
   useEffect(() => {
+    if (isTemplateMode) return;
     if (!currentUserId) return;
     setSelected((prev) => {
       const hasSelf = prev.includes(currentUserId);
@@ -383,7 +430,7 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
       if (!includeMyself && hasSelf) return prev.filter((id) => id !== currentUserId);
       return prev;
     });
-  }, [currentUserId, includeMyself]);
+  }, [currentUserId, includeMyself, isTemplateMode]);
 
   useEffect(() => {
     if (!initialPlan) return;
@@ -425,6 +472,8 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
           formQuestion: block.formQuestion ?? null,
           formChoices: block.formChoices ?? null,
           posterId: block.posterId ?? null,
+          embedUrl: block.embedUrl ?? null,
+          matchingMode: block.matchingMode ?? null,
           meditationAnimationId: block.meditationAnimationId ?? null,
           meditationAudioUrl: block.meditationAudioUrl ?? null
         }))
@@ -470,11 +519,11 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
 
   useEffect(() => {
     if (planBlocks.length === 0) return;
-    const roundCount = planBlocks.filter((block) => block.type === "ROUND").length;
+    const roundCount = planBlocks.filter((block) => block.type === "PAIRING").length;
     if (roundCount > 0 && roundCount !== roundsCount) {
       setRoundsCount(roundCount);
     }
-    const firstRound = planBlocks.find((block) => block.type === "ROUND");
+    const firstRound = planBlocks.find((block) => block.type === "PAIRING");
     if (firstRound) {
       const minutes = Math.max(1, Math.round(firstRound.durationSeconds / 60));
       if (minutes !== roundDurationMinutes) {
@@ -534,7 +583,7 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
 
   useEffect(() => {
     const needsAudio =
-      showMeditationLibrary || planBlocks.some((block) => block.type === "MEDITATION");
+      showMeditationLibrary || planBlocks.some((block) => block.type === "PAUSE");
     if (!needsAudio) return;
     let active = true;
     async function loadAudio() {
@@ -555,7 +604,7 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
     const needsPosters =
       showMeditationLibrary ||
       showTemplatesModal ||
-      planBlocks.some((block) => block.type === "POSTER");
+      planBlocks.some((block) => block.type === "PROMPT");
     if (!needsPosters || posters.length > 0) return;
     let active = true;
     setPosterError(null);
@@ -714,6 +763,8 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
           formQuestion: block.formQuestion ?? null,
           formChoices: block.formChoices ?? null,
           posterId: block.posterId ?? null,
+          embedUrl: block.embedUrl ?? null,
+          matchingMode: block.matchingMode ?? null,
           meditationAnimationId: block.meditationAnimationId ?? null,
           meditationAudioUrl: block.meditationAudioUrl ?? null
         })),
@@ -743,6 +794,8 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
           formQuestion: block.formQuestion ?? null,
           formChoices: block.formChoices ?? null,
           posterId: block.posterId ?? null,
+          embedUrl: block.embedUrl ?? null,
+          matchingMode: block.matchingMode ?? null,
           meditationAnimationId: block.meditationAnimationId ?? null,
           meditationAudioUrl: block.meditationAudioUrl ?? null
         }))
@@ -776,6 +829,8 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
           formQuestion: block.formQuestion ?? null,
           formChoices: block.formChoices ?? null,
           posterId: block.posterId ?? null,
+          embedUrl: block.embedUrl ?? null,
+          matchingMode: block.matchingMode ?? null,
           meditationAnimationId: block.meditationAnimationId ?? null,
           meditationAudioUrl: block.meditationAudioUrl ?? null
         }))
@@ -802,6 +857,8 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
                 formQuestion: block.formQuestion ?? null,
                 formChoices: block.formChoices ?? null,
                 posterId: block.posterId ?? null,
+                embedUrl: block.embedUrl ?? null,
+                matchingMode: block.matchingMode ?? null,
                 meditationAnimationId: block.meditationAnimationId ?? null,
                 meditationAudioUrl: block.meditationAudioUrl ?? null
               }))
@@ -869,6 +926,8 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
         block.posterId && (hasPosterCatalog ? posterSet.has(block.posterId) : true)
           ? block.posterId
           : null,
+      embedUrl: block.embedUrl ?? null,
+      matchingMode: block.matchingMode ?? null,
       meditationAnimationId: block.meditationAnimationId ?? defaultMeditationAnimationId,
       meditationAudioUrl: block.meditationAudioUrl ?? defaultMeditationAudioUrl
     }));
@@ -884,12 +943,14 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
 
   function addBlock(type: PlanBlockDraft["type"]) {
     const defaults: Record<PlanBlockDraft["type"], number> = {
-      ROUND: roundDurationMinutes * 60,
-      MEDITATION: 5 * 60,
-      POSTER: 30,
-      TEXT: 300,
+      PAIRING: roundDurationMinutes * 60,
+      PAUSE: 5 * 60,
+      PROMPT: 30,
+      NOTES: 300,
       RECORD: 180,
-      FORM: 120
+      FORM: 120,
+      EMBED: 180,
+      MATCHING: 60
     };
     setPlanBlocks((prev) => [
       ...prev,
@@ -897,13 +958,15 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
         id: makeId(),
         type,
         durationSeconds: defaults[type],
-        roundMaxParticipants: type === "ROUND" ? null : null,
+        roundMaxParticipants: type === "PAIRING" ? null : null,
         formQuestion: type === "FORM" ? "" : null,
         formChoices: type === "FORM" ? defaultFormChoices() : null,
         posterId: null,
+        embedUrl: type === "EMBED" ? "" : null,
+        matchingMode: type === "MATCHING" ? "polar" : null,
         meditationAnimationId:
-          type === "MEDITATION" ? defaultMeditationAnimationId || null : null,
-        meditationAudioUrl: type === "MEDITATION" ? defaultMeditationAudioUrl || null : null
+          type === "PAUSE" ? defaultMeditationAnimationId || null : null,
+        meditationAudioUrl: type === "PAUSE" ? defaultMeditationAudioUrl || null : null
       }
     ]);
   }
@@ -912,7 +975,7 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
     setRoundDurationMinutes(nextMinutes);
     setPlanBlocks((prev) =>
       prev.map((block) =>
-        block.type === "ROUND"
+        block.type === "PAIRING"
           ? { ...block, durationSeconds: Math.max(10, nextMinutes * 60) }
           : block
       )
@@ -923,14 +986,14 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
     const clamped = Math.max(1, nextCount);
     setRoundsCount(clamped);
     setPlanBlocks((prev) => {
-      const currentRounds = prev.filter((block) => block.type === "ROUND");
+      const currentRounds = prev.filter((block) => block.type === "PAIRING");
       const delta = clamped - currentRounds.length;
       if (delta === 0) return prev;
       if (delta < 0) {
         let toRemove = Math.abs(delta);
         const next: PlanBlockDraft[] = [];
         for (const block of prev) {
-          if (block.type === "ROUND" && toRemove > 0) {
+          if (block.type === "PAIRING" && toRemove > 0) {
             toRemove -= 1;
             continue;
           }
@@ -940,7 +1003,7 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
       }
       const additions = Array.from({ length: delta }, () => ({
         id: makeId(),
-        type: "ROUND" as const,
+        type: "PAIRING" as const,
         durationSeconds: Math.max(10, roundDurationMinutes * 60),
         roundMaxParticipants: null,
         posterId: null
@@ -983,19 +1046,22 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
     setInviteStatus(null);
     setLoading(true);
 
-    if (isPublic && !dataspaceId) {
-      setLoading(false);
-      setError("Select a dataspace for public templates.");
-      return;
+    if (!isTemplateMode) {
+      if (isPublic && !dataspaceId) {
+        setLoading(false);
+        setError("Select a dataspace for public templates.");
+        return;
+      }
+      if (!startDate || !startTime) {
+        setLoading(false);
+        setError("Select both date and time.");
+        return;
+      }
     }
 
-    if (!startDate || !startTime) {
-      setLoading(false);
-      setError("Select both date and time.");
-      return;
-    }
-
-    const startAt = new Date(`${startDate}T${startTime}`).toISOString();
+    const startAt = isTemplateMode
+      ? ""
+      : new Date(`${startDate}T${startTime}`).toISOString();
     const effectiveBlocks =
       planBlocks.length > 0
         ? planBlocks
@@ -1003,73 +1069,119 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
             roundsCount,
             roundDurationMinutes
           });
-    const roundBlocks = effectiveBlocks.filter((block) => block.type === "ROUND");
-    const meditationBlocks = effectiveBlocks.filter((block) => block.type === "MEDITATION");
+    const normalizedBlocks = effectiveBlocks.map((block) =>
+      block.type === "EMBED"
+        ? {
+            ...block,
+            embedUrl: normalizeEmbedUrl(block.embedUrl ?? "") || null
+          }
+        : block
+    );
+    const roundBlocks = normalizedBlocks.filter((block) => block.type === "PAIRING");
+    const meditationBlocks = normalizedBlocks.filter((block) => block.type === "PAUSE");
     const firstMeditationBlock = meditationBlocks[0] ?? null;
-    if (roundBlocks.length === 0) {
+    const missingEmbed = normalizedBlocks.some(
+      (block) => block.type === "EMBED" && !block.embedUrl
+    );
+    if (missingEmbed) {
       setLoading(false);
-      setError("Add at least one pairing block.");
+      setError("Enter a URL for every embed block.");
       return;
     }
-    const roundDuration = Math.max(
-      1,
-      Math.round((roundBlocks[0]?.durationSeconds ?? roundDurationMinutes * 60) / 60)
-    );
+    const roundDuration = roundBlocks.length
+      ? Math.max(
+          1,
+          Math.round((roundBlocks[0]?.durationSeconds ?? roundDurationMinutes * 60) / 60)
+        )
+      : roundDurationMinutes;
 
     const isEdit = mode === "edit" && initialPlan?.id;
-    const response = await fetch(isEdit ? `/api/flows/${initialPlan?.id}` : "/api/flows", {
-      method: isEdit ? "PATCH" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title,
-        description,
-        startAt,
-        roundDurationMinutes: roundDuration,
-        roundsCount: roundBlocks.length,
-        participantIds: (() => {
-          const base = selected.filter((id) => id !== currentUserId);
-          if (includeMyself && currentUserId) {
-            return [currentUserId, ...base];
-          }
-          return base;
-        })(),
-        inviteEmails: normalizeEmailList(inviteEmails),
-        syncMode,
-        maxParticipantsPerRoom,
-        allowOddGroup,
-        language,
-        transcriptionProvider: provider,
-        timezone: timezone || resolvedTimezone,
-        meditationEnabled: meditationBlocks.length > 0,
-        meditationAtStart: false,
-        meditationBetweenRounds: false,
-        meditationAtEnd: false,
-        meditationDurationMinutes:
-          firstMeditationBlock ? Math.max(1, Math.round(firstMeditationBlock.durationSeconds / 60)) : 5,
-        meditationAnimationId: firstMeditationBlock?.meditationAnimationId ?? null,
-        meditationAudioUrl: firstMeditationBlock?.meditationAudioUrl ?? null,
-        dataspaceId: dataspaceId || null,
-        isPublic,
-        requiresApproval,
-        capacity: capacity === "" ? null : Number(capacity),
-        blocks: effectiveBlocks.map((block) => ({
-          type: block.type,
-          durationSeconds: block.durationSeconds,
-          roundMaxParticipants: block.roundMaxParticipants ?? null,
-          formQuestion: block.formQuestion ?? null,
-          formChoices: block.formChoices ?? null,
-          posterId: block.posterId ?? null,
-          meditationAnimationId: block.meditationAnimationId ?? null,
-          meditationAudioUrl: block.meditationAudioUrl ?? null
-        }))
-      })
-    });
+    const response = await fetch(
+      isTemplateMode
+        ? "/api/plan-templates"
+        : isEdit
+          ? `/api/flows/${initialPlan?.id}`
+          : "/api/flows",
+      {
+        method: isTemplateMode ? "POST" : isEdit ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          isTemplateMode
+            ? {
+                name: title.trim(),
+                description: description.trim() || null,
+                isPublic: templateIsPublic,
+                blocks: normalizedBlocks.map((block) => ({
+                  type: block.type,
+                  durationSeconds: block.durationSeconds,
+                  roundMaxParticipants: block.roundMaxParticipants ?? null,
+                  formQuestion: block.formQuestion ?? null,
+                  formChoices: block.formChoices ?? null,
+                  posterId: block.posterId ?? null,
+                  embedUrl: block.embedUrl ?? null,
+                  matchingMode: block.matchingMode ?? null,
+                  meditationAnimationId: block.meditationAnimationId ?? null,
+                  meditationAudioUrl: block.meditationAudioUrl ?? null
+                }))
+              }
+            : {
+                title,
+                description,
+                startAt,
+                roundDurationMinutes: roundDuration,
+                roundsCount: roundBlocks.length,
+                participantIds: (() => {
+                  const base = selected.filter((id) => id !== currentUserId);
+                  if (includeMyself && currentUserId) {
+                    return [currentUserId, ...base];
+                  }
+                  return base;
+                })(),
+                inviteEmails: normalizeEmailList(inviteEmails),
+                syncMode,
+                maxParticipantsPerRoom,
+                allowOddGroup,
+                language,
+                transcriptionProvider: provider,
+                timezone: timezone || resolvedTimezone,
+                meditationEnabled: meditationBlocks.length > 0,
+                meditationAtStart: false,
+                meditationBetweenRounds: false,
+                meditationAtEnd: false,
+                meditationDurationMinutes:
+                  firstMeditationBlock
+                    ? Math.max(1, Math.round(firstMeditationBlock.durationSeconds / 60))
+                    : 5,
+                meditationAnimationId: firstMeditationBlock?.meditationAnimationId ?? null,
+                meditationAudioUrl: firstMeditationBlock?.meditationAudioUrl ?? null,
+                dataspaceId: dataspaceId || null,
+                isPublic,
+                requiresApproval,
+                capacity: capacity === "" ? null : Number(capacity),
+                blocks: normalizedBlocks.map((block) => ({
+                  type: block.type,
+                  durationSeconds: block.durationSeconds,
+                  roundMaxParticipants: block.roundMaxParticipants ?? null,
+                  formQuestion: block.formQuestion ?? null,
+                  formChoices: block.formChoices ?? null,
+                  posterId: block.posterId ?? null,
+                  embedUrl: block.embedUrl ?? null,
+                  meditationAnimationId: block.meditationAnimationId ?? null,
+                  meditationAudioUrl: block.meditationAudioUrl ?? null
+                }))
+              }
+        )
+      }
+    );
 
     const payload = await response.json().catch(() => null);
     setLoading(false);
 
     if (!response.ok) {
-      const message = normalizeFormError(payload, "Unable to save plan");
+      const message = normalizeFormError(
+        payload,
+        isTemplateMode ? "Unable to save template" : "Unable to save plan"
+      );
       setError(message);
       const loggedId = await logClientError("plan.save", message, {
         status: response.status,
@@ -1080,47 +1192,52 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
       return;
     }
 
-    const targetPlanId = isEdit ? initialPlan?.id : payload.id;
-    if (targetPlanId) {
-      const inviteList = normalizeEmailList(inviteEmails);
-      if (inviteList.length > 0) {
-        setInviteLoading(true);
-        const results = await Promise.all(
-          inviteList.map(async (email) => {
-            try {
-              const inviteResponse = await fetch(`/api/flows/${targetPlanId}/invite`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email })
-              });
-              if (!inviteResponse.ok) {
-                const invitePayload = await inviteResponse.json().catch(() => null);
-                return { email, error: invitePayload?.error ?? "Invite failed" };
+    if (!isTemplateMode) {
+      const targetPlanId = isEdit ? initialPlan?.id : payload.id;
+      if (targetPlanId) {
+        const inviteList = normalizeEmailList(inviteEmails);
+        if (inviteList.length > 0) {
+          setInviteLoading(true);
+          const results = await Promise.all(
+            inviteList.map(async (email) => {
+              try {
+                const inviteResponse = await fetch(`/api/flows/${targetPlanId}/invite`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ email })
+                });
+                if (!inviteResponse.ok) {
+                  const invitePayload = await inviteResponse.json().catch(() => null);
+                  return { email, error: invitePayload?.error ?? "Invite failed" };
+                }
+                return null;
+              } catch (inviteError) {
+                return { email, error: "Invite failed" };
               }
-              return null;
-            } catch (inviteError) {
-              return { email, error: "Invite failed" };
-            }
-          })
-        );
-        setInviteLoading(false);
-        const failures = results.filter(Boolean) as Array<{ email: string; error: string }>;
-        if (failures.length > 0) {
-          setInviteStatus(
-            `Some invites failed: ${failures.map((item) => item.email).join(", ")}`
+            })
           );
-        } else {
-          setInviteStatus("Invites sent.");
+          setInviteLoading(false);
+          const failures = results.filter(Boolean) as Array<{ email: string; error: string }>;
+          if (failures.length > 0) {
+            setInviteStatus(
+              `Some invites failed: ${failures.map((item) => item.email).join(", ")}`
+            );
+          } else {
+            setInviteStatus("Invites sent.");
+          }
         }
       }
-    }
 
-    if (isEdit) {
-      router.push(`/flows/${initialPlan?.id}`);
+      if (isEdit) {
+        router.push(`/flows/${initialPlan?.id}`);
+        return;
+      }
+
+      setPlanId(payload.id);
       return;
     }
 
-    setPlanId(payload.id);
+    router.push("/flows");
   }
 
   const libraryActiveBlock = libraryTargetBlockId
@@ -1133,17 +1250,21 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
   return (
     <div className="dr-card p-6">
       <h2 className="text-xl font-semibold" style={{ fontFamily: "var(--font-serif)" }}>
-        {mode === "edit" ? "Edit plan" : "Plan Builder"}
+        {mode === "edit" ? "Edit template" : "Template Builder"}
       </h2>
       <p className="mt-2 text-sm text-slate-600">
         {mode === "edit"
-          ? "Update the rotation plan before it concludes."
-          : "Create a rotation plan and share the participant link."}
+          ? "Update the template definition."
+          : isTemplateMode
+            ? "Design the template structure and save it."
+            : "Create a rotation plan and share the participant link."}
       </p>
 
       <form onSubmit={handleSubmit} className="mt-4 space-y-4">
         <div>
-          <label className="text-sm font-medium">Plan title</label>
+          <label className="text-sm font-medium">
+            {isTemplateMode ? "Template title" : "Template title"}
+          </label>
           <input
             value={title}
             onChange={(event) => setTitle(event.target.value)}
@@ -1164,26 +1285,6 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
         </div>
 
         <div className="grid gap-4 md:grid-cols-4">
-          <div>
-            <label className="text-sm font-medium">Start date</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(event) => setStartDate(event.target.value)}
-              className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
-              required
-            />
-          </div>
-          <div>
-            <label className="text-sm font-medium">Start time</label>
-            <input
-              type="time"
-              value={startTime}
-              onChange={(event) => setStartTime(event.target.value)}
-              className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
-              required
-            />
-          </div>
           <div>
             <label className="text-sm font-medium">Minutes per pairing</label>
             <input
@@ -1206,72 +1307,102 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
               className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
             />
           </div>
+          {!isTemplateMode ? (
+            <>
+              <div>
+                <label className="text-sm font-medium">Start date</label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(event) => setStartDate(event.target.value)}
+                  className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Start time</label>
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(event) => setStartTime(event.target.value)}
+                  className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
+                  required
+                />
+              </div>
+            </>
+          ) : null}
         </div>
 
-        <div>
-          <label className="text-sm font-medium">Max participants per room</label>
-          <select
-            value={maxParticipantsPerRoom}
-            onChange={(event) => setMaxParticipantsPerRoom(Number(event.target.value))}
-            className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
-          >
-            {Array.from({ length: 11 }, (_, index) => {
-              const value = index + 2;
-              return (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              );
-            })}
-          </select>
-          <label className="mt-2 flex items-center gap-2 text-xs text-slate-600">
-            <input
-              type="checkbox"
-              checked={allowOddGroup}
-              onChange={(event) => setAllowOddGroup(event.target.checked)}
-              className="h-4 w-4"
-            />
-            Allow a 3-person call when participants are odd.
-          </label>
-        </div>
+        {!isTemplateMode ? (
+          <div>
+            <label className="text-sm font-medium">Max participants per room</label>
+            <select
+              value={maxParticipantsPerRoom}
+              onChange={(event) => setMaxParticipantsPerRoom(Number(event.target.value))}
+              className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
+            >
+              {Array.from({ length: 11 }, (_, index) => {
+                const value = index + 2;
+                return (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                );
+              })}
+            </select>
+            <label className="mt-2 flex items-center gap-2 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={allowOddGroup}
+                onChange={(event) => setAllowOddGroup(event.target.checked)}
+                className="h-4 w-4"
+              />
+              Allow a 3-person call when participants are odd.
+            </label>
+          </div>
+        ) : null}
 
-        <div>
-          <label className="text-sm font-medium">Language</label>
-          <select
-            value={language}
-            onChange={(event) => setLanguage(event.target.value)}
-            className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
-          >
-            <option value="EN">English</option>
-            <option value="IT">Italian</option>
-          </select>
-        </div>
+        {!isTemplateMode ? (
+          <div>
+            <label className="text-sm font-medium">Language</label>
+            <select
+              value={language}
+              onChange={(event) => setLanguage(event.target.value)}
+              className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
+            >
+              <option value="EN">English</option>
+              <option value="IT">Italian</option>
+            </select>
+          </div>
+        ) : null}
 
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Transcription engine</p>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="radio"
-              name="provider"
-              value="DEEPGRAM"
-              checked={provider === "DEEPGRAM"}
-              onChange={(event) => setProvider(event.target.value)}
-              className="h-4 w-4"
-            />
-            Deepgram (fast)
-          </label>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="radio"
-              name="provider"
-              value="VOSK"
-              checked={provider === "VOSK"}
-              onChange={(event) => setProvider(event.target.value)}
-              className="h-4 w-4"
-            />
-            Vosk (slow, privacy friendly)
-          </label>
-        </div>
+        {!isTemplateMode ? (
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Transcription engine</p>
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="radio"
+                name="provider"
+                value="DEEPGRAM"
+                checked={provider === "DEEPGRAM"}
+                onChange={(event) => setProvider(event.target.value)}
+                className="h-4 w-4"
+              />
+              Deepgram (fast)
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="radio"
+                name="provider"
+                value="VOSK"
+                checked={provider === "VOSK"}
+                onChange={(event) => setProvider(event.target.value)}
+                className="h-4 w-4"
+              />
+              Vosk (slow, privacy friendly)
+            </label>
+          </div>
+        ) : null}
 
         <div className="rounded-xl border border-slate-200 bg-white/70 px-4 py-3 text-xs text-slate-600">
           Pause settings are configured per block in the plan timeline. Add a Pause block
@@ -1284,9 +1415,9 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-medium text-slate-900">Plan timeline</p>
+              <p className="text-sm font-medium text-slate-900">Template timeline</p>
               <p className="text-xs text-slate-500">
-                Arrange the sequence of pairings, pauses, prompts, and notes blocks.
+                Arrange the sequence of pairings, pauses, prompts, notes, matching, and embed blocks.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1314,13 +1445,15 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
               >
                 Open library
               </button>
-              <button
-                type="button"
-                onClick={() => setShowTemplatesModal(true)}
-                className="text-xs font-semibold text-slate-600 hover:text-slate-900"
-              >
-                Flows
-              </button>
+              {!isTemplateMode ? (
+                <button
+                  type="button"
+                  onClick={() => setShowTemplatesModal(true)}
+                  className="text-xs font-semibold text-slate-600 hover:text-slate-900"
+                >
+                  Templates
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -1356,17 +1489,21 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
                           Drag
                         </span>
                         <span className="text-xs font-semibold uppercase text-slate-500">
-                          {block.type === "ROUND"
-                            ? `Pairing ${planBlocks.slice(0, index + 1).filter((item) => item.type === "ROUND").length}`
-                            : block.type === "MEDITATION"
+                          {block.type === "PAIRING"
+                            ? `Pairing ${planBlocks.slice(0, index + 1).filter((item) => item.type === "PAIRING").length}`
+                            : block.type === "PAUSE"
                               ? "Pause"
-                              : block.type === "POSTER"
+                              : block.type === "PROMPT"
                                 ? "Prompt"
-                                : block.type === "TEXT"
+                                : block.type === "NOTES"
                                   ? "Notes"
                                   : block.type === "FORM"
                                     ? "Form"
-                                    : "Record"}
+                                    : block.type === "EMBED"
+                                      ? "Embed"
+                                      : block.type === "MATCHING"
+                                        ? "Matching"
+                                        : "Record"}
                         </span>
                         <select
                           value={block.type}
@@ -1374,7 +1511,7 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
                             updateBlock(block.id, {
                               type: event.target.value as PlanBlockDraft["type"],
                               roundMaxParticipants:
-                                event.target.value === "ROUND"
+                                event.target.value === "PAIRING"
                                   ? block.roundMaxParticipants ?? null
                                   : null,
                               formQuestion:
@@ -1384,23 +1521,31 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
                                   ? block.formChoices ?? defaultFormChoices()
                                   : null,
                               posterId:
-                                event.target.value === "POSTER" ? block.posterId ?? null : null,
+                                event.target.value === "PROMPT" ? block.posterId ?? null : null,
+                              embedUrl:
+                                event.target.value === "EMBED" ? block.embedUrl ?? "" : null,
+                              matchingMode:
+                                event.target.value === "MATCHING"
+                                  ? block.matchingMode ?? "polar"
+                                  : null,
                               meditationAnimationId:
-                                event.target.value === "MEDITATION"
+                                event.target.value === "PAUSE"
                                   ? block.meditationAnimationId ?? defaultMeditationAnimationId
                                   : null,
                               meditationAudioUrl:
-                                event.target.value === "MEDITATION"
+                                event.target.value === "PAUSE"
                                   ? block.meditationAudioUrl ?? defaultMeditationAudioUrl
                                   : null
                             })
                           }
                           className="dr-input h-8 rounded px-2 text-xs"
                         >
-                          <option value="ROUND">Pairing</option>
-                          <option value="MEDITATION">Pause</option>
-                          <option value="POSTER">Prompt</option>
-                          <option value="TEXT">Notes</option>
+                          <option value="PAIRING">Pairing</option>
+                          <option value="PAUSE">Pause</option>
+                          <option value="PROMPT">Prompt</option>
+                          <option value="NOTES">Notes</option>
+                          <option value="EMBED">Embed</option>
+                          <option value="MATCHING">Matching</option>
                           <option value="RECORD">Record</option>
                           <option value="FORM">Form</option>
                         </select>
@@ -1414,7 +1559,7 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
                             value={minutes}
                             onChange={(event) => {
                               const nextMinutes = Number(event.target.value);
-                              const minSeconds = block.type === "ROUND" ? 10 : 1;
+                              const minSeconds = block.type === "PAIRING" ? 10 : 1;
                               updateBlock(block.id, {
                                 durationSeconds: Math.max(
                                   minSeconds,
@@ -1434,7 +1579,7 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
                             value={seconds}
                             onChange={(event) => {
                               const nextSeconds = Math.min(59, Math.max(0, Number(event.target.value)));
-                              const minSeconds = block.type === "ROUND" ? 10 : 1;
+                              const minSeconds = block.type === "PAIRING" ? 10 : 1;
                               updateBlock(block.id, {
                                 durationSeconds: Math.max(minSeconds, minutes * 60 + nextSeconds)
                               });
@@ -1453,7 +1598,7 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
                         </button>
                       </div>
                     </div>
-                    {block.type === "ROUND" ? (
+                    {block.type === "PAIRING" ? (
                       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-600">
                         <label className="flex items-center gap-1">
                           Max participants
@@ -1547,7 +1692,7 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
                         </div>
                       </div>
                     ) : null}
-                    {block.type === "POSTER" ? (
+                    {block.type === "PROMPT" ? (
                       <div className="mt-3 grid gap-2 md:grid-cols-2">
                         <select
                           value={block.posterId ?? ""}
@@ -1577,7 +1722,63 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
                         </button>
                       </div>
                     ) : null}
-                    {block.type === "MEDITATION" ? (
+                    {block.type === "EMBED" ? (
+                      <div className="mt-3 space-y-2">
+                        <label className="text-xs font-semibold uppercase text-slate-500">
+                          Embed URL
+                        </label>
+                        <input
+                          value={block.embedUrl ?? ""}
+                          onChange={(event) =>
+                            updateBlock(block.id, { embedUrl: event.target.value })
+                          }
+                          onBlur={(event) => {
+                            const normalized = normalizeEmbedUrl(event.target.value);
+                            updateBlock(block.id, { embedUrl: normalized });
+                          }}
+                          className="dr-input w-full rounded px-2 py-2 text-xs"
+                          placeholder="Paste a YouTube or embeddable URL"
+                        />
+                        <p className="text-[11px] text-slate-500">
+                          YouTube links are converted to embed URLs automatically.
+                        </p>
+                        {block.embedUrl ? (
+                          <a
+                            className="text-[11px] font-semibold text-slate-600 hover:text-slate-900"
+                            href={block.embedUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Preview link
+                          </a>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {block.type === "MATCHING" ? (
+                      <div className="mt-3 space-y-2">
+                        <label className="text-xs font-semibold uppercase text-slate-500">
+                          Matching mode
+                        </label>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                          <select
+                            value={block.matchingMode ?? "polar"}
+                            onChange={(event) =>
+                              updateBlock(block.id, {
+                                matchingMode: event.target.value as "polar" | "anti"
+                              })
+                            }
+                            className="dr-input h-8 rounded px-2 text-xs"
+                          >
+                            <option value="polar">Polarize (similar)</option>
+                            <option value="anti">Anti-polarize (contrast)</option>
+                          </select>
+                          <span className="text-[11px] text-slate-500">
+                            Uses transcripts to reshape groups when this block starts.
+                          </span>
+                        </div>
+                      </div>
+                    ) : null}
+                    {block.type === "PAUSE" ? (
                       <div className="mt-3 grid gap-2 md:grid-cols-2">
                         <select
                           value={block.meditationAnimationId ?? ""}
@@ -1646,17 +1847,23 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
           </div>
 
           <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
-            <button type="button" onClick={() => addBlock("ROUND")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
+            <button type="button" onClick={() => addBlock("PAIRING")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
               + Pairing
             </button>
-            <button type="button" onClick={() => addBlock("MEDITATION")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
+            <button type="button" onClick={() => addBlock("PAUSE")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
               + Pause
             </button>
-            <button type="button" onClick={() => addBlock("POSTER")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
+            <button type="button" onClick={() => addBlock("PROMPT")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
               + Prompt
             </button>
-            <button type="button" onClick={() => addBlock("TEXT")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
+            <button type="button" onClick={() => addBlock("NOTES")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
               + Notes
+            </button>
+            <button type="button" onClick={() => addBlock("EMBED")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
+              + Embed
+            </button>
+            <button type="button" onClick={() => addBlock("MATCHING")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
+              + Matching
             </button>
             <button type="button" onClick={() => addBlock("FORM")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
               + Form
@@ -1667,151 +1874,175 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
           </div>
         </div>
 
-        <div>
-          <label className="text-sm font-medium">Dataspace (optional)</label>
-          <select
-            value={dataspaceId}
-            onChange={(event) => setDataspaceId(event.target.value)}
-            className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
-          >
-            <option value="">No dataspace</option>
-            {dataspaces.map((dataspace) => (
-              <option key={dataspace.id} value={dataspace.id}>
-                {dataspace.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={isPublic}
-              onChange={(event) => setIsPublic(event.target.checked)}
-              className="h-4 w-4"
-            />
-            Public listed (visible to dataspace members)
-          </label>
-          {isPublic ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="flex items-center gap-2 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={requiresApproval}
-                  onChange={(event) => setRequiresApproval(event.target.checked)}
-                  className="h-4 w-4"
-                />
-                Requires approval
-              </label>
-              <div>
-                <label className="text-sm font-medium">Capacity (optional)</label>
-                <input
-                  type="number"
-                  min={2}
-                  value={capacity}
-                  onChange={(event) => setCapacity(event.target.value === "" ? "" : Number(event.target.value))}
-                  className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
-                  placeholder="No limit"
-                />
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        <div>
-          <p className="text-sm font-medium">Switching mode</p>
-          <div className="mt-2 flex flex-wrap gap-4 text-sm text-slate-700">
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="syncMode"
-                value="SERVER"
-                checked={syncMode === "SERVER"}
-                onChange={() => setSyncMode("SERVER")}
-              />
-              Server-driven (recommended)
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="syncMode"
-                value="CLIENT"
-                checked={syncMode === "CLIENT"}
-                onChange={() => setSyncMode("CLIENT")}
-              />
-              Client-driven
-            </label>
+        {!isTemplateMode ? (
+          <div>
+            <label className="text-sm font-medium">Dataspace (optional)</label>
+            <select
+              value={dataspaceId}
+              onChange={(event) => setDataspaceId(event.target.value)}
+              className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
+            >
+              <option value="">No dataspace</option>
+              {dataspaces.map((dataspace) => (
+                <option key={dataspace.id} value={dataspace.id}>
+                  {dataspace.name}
+                </option>
+              ))}
+            </select>
           </div>
-        </div>
-
-        <div>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-medium">Participants</p>
-            <label className="flex items-center gap-2 text-xs text-slate-600">
+        ) : (
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm text-slate-700">
               <input
                 type="checkbox"
-                checked={includeMyself}
-                onChange={(event) => setIncludeMyself(event.target.checked)}
+                checked={templateIsPublic}
+                onChange={(event) => setTemplateIsPublic(event.target.checked)}
                 className="h-4 w-4"
               />
-              Include myself
+              Public template (visible to all users)
             </label>
           </div>
-          <div className="mt-2 grid gap-2 md:grid-cols-2">
-            {users.map((user) => (
-              <label key={user.id} className="flex items-center gap-2 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={user.id === currentUserId ? includeMyself : selected.includes(user.id)}
-                  onChange={() =>
-                    user.id === currentUserId
-                      ? setIncludeMyself((prev) => !prev)
-                      : toggleUser(user.id)
-                  }
-                  disabled={user.id === currentUserId}
-                  className="h-4 w-4"
-                />
-                {user.email}
-              </label>
-            ))}
-          </div>
-        </div>
+        )}
 
-        <div>
-          <label className="text-sm font-medium">Invite users (optional)</label>
-          <div className="relative mt-1">
-            <textarea
-              value={inviteEmails}
-              onChange={(event) => setInviteEmails(event.target.value)}
-              className="dr-input w-full rounded px-3 py-2 text-sm"
-              rows={3}
-              placeholder="email1@example.com, email2@example.com"
-              onFocus={() => setShowInviteSuggestions(true)}
-              onBlur={() => setTimeout(() => setShowInviteSuggestions(false), 150)}
-            />
-            {showInviteSuggestions && inviteSuggestions.length > 0 ? (
-              <div className="absolute z-10 mt-1 w-full rounded border border-slate-200 bg-white shadow-lg">
-                {inviteSuggestions.map((user) => (
-                  <button
-                    key={user.id}
-                    type="button"
-                    onClick={() => handleInviteSelect(user.email)}
-                    className="flex w-full items-center px-3 py-2 text-left text-sm hover:bg-slate-100"
-                  >
-                    {user.email}
-                  </button>
-                ))}
+        {!isTemplateMode ? (
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={isPublic}
+                onChange={(event) => setIsPublic(event.target.checked)}
+                className="h-4 w-4"
+              />
+              Public listed (visible to dataspace members)
+            </label>
+            {isPublic ? (
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={requiresApproval}
+                    onChange={(event) => setRequiresApproval(event.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  Requires approval
+                </label>
+                <div>
+                  <label className="text-sm font-medium">Capacity (optional)</label>
+                  <input
+                    type="number"
+                    min={2}
+                    value={capacity}
+                    onChange={(event) =>
+                      setCapacity(event.target.value === "" ? "" : Number(event.target.value))
+                    }
+                    className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
+                    placeholder="No limit"
+                  />
+                </div>
               </div>
             ) : null}
           </div>
-          <p className="mt-1 text-xs text-slate-500">Separate emails with commas or new lines.</p>
-          {inviteLoading ? (
-            <p className="mt-2 text-xs text-slate-500">Sending invites...</p>
-          ) : inviteStatus ? (
-            <p className="mt-2 text-xs text-slate-600">{inviteStatus}</p>
-          ) : null}
-        </div>
+        ) : null}
+
+        {!isTemplateMode ? (
+          <div>
+            <p className="text-sm font-medium">Switching mode</p>
+            <div className="mt-2 flex flex-wrap gap-4 text-sm text-slate-700">
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="syncMode"
+                  value="SERVER"
+                  checked={syncMode === "SERVER"}
+                  onChange={() => setSyncMode("SERVER")}
+                />
+                Server-driven (recommended)
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="syncMode"
+                  value="CLIENT"
+                  checked={syncMode === "CLIENT"}
+                  onChange={() => setSyncMode("CLIENT")}
+                />
+                Client-driven
+              </label>
+            </div>
+          </div>
+        ) : null}
+
+        {!isTemplateMode ? (
+          <>
+            <div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-medium">Participants</p>
+                <label className="flex items-center gap-2 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={includeMyself}
+                    onChange={(event) => setIncludeMyself(event.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  Include myself
+                </label>
+              </div>
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                {users.map((user) => (
+                  <label key={user.id} className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={user.id === currentUserId ? includeMyself : selected.includes(user.id)}
+                      onChange={() =>
+                        user.id === currentUserId
+                          ? setIncludeMyself((prev) => !prev)
+                          : toggleUser(user.id)
+                      }
+                      disabled={user.id === currentUserId}
+                      className="h-4 w-4"
+                    />
+                    {user.email}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Invite users (optional)</label>
+              <div className="relative mt-1">
+                <textarea
+                  value={inviteEmails}
+                  onChange={(event) => setInviteEmails(event.target.value)}
+                  className="dr-input w-full rounded px-3 py-2 text-sm"
+                  rows={3}
+                  placeholder="email1@example.com, email2@example.com"
+                  onFocus={() => setShowInviteSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowInviteSuggestions(false), 150)}
+                />
+                {showInviteSuggestions && inviteSuggestions.length > 0 ? (
+                  <div className="absolute z-10 mt-1 w-full rounded border border-slate-200 bg-white shadow-lg">
+                    {inviteSuggestions.map((user) => (
+                      <button
+                        key={user.id}
+                        type="button"
+                        onClick={() => handleInviteSelect(user.email)}
+                        className="flex w-full items-center px-3 py-2 text-left text-sm hover:bg-slate-100"
+                      >
+                        {user.email}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <p className="mt-1 text-xs text-slate-500">Separate emails with commas or new lines.</p>
+              {inviteLoading ? (
+                <p className="mt-2 text-xs text-slate-500">Sending invites...</p>
+              ) : inviteStatus ? (
+                <p className="mt-2 text-xs text-slate-600">{inviteStatus}</p>
+              ) : null}
+            </div>
+          </>
+        ) : null}
 
         {error ? (
           <div className="space-y-1 text-sm">
@@ -1825,12 +2056,18 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
         ) : null}
 
         <button type="submit" className="dr-button px-4 py-2 text-sm" disabled={loading}>
-          {loading ? (mode === "edit" ? "Saving..." : "Creating...") : mode === "edit" ? "Save changes" : "Create plan"}
+          {loading
+            ? "Saving..."
+            : isTemplateMode
+              ? "Create template"
+              : mode === "edit"
+                ? "Save changes"
+                : "Create plan"}
         </button>
 
-        {mode !== "edit" && planId ? (
+        {!isTemplateMode && mode !== "edit" && planId ? (
           <div className="mt-4 rounded border border-slate-200 bg-white/70 p-4 text-sm text-slate-700">
-            Plan created. Share this link with participants:
+            Template created. Share this link with participants:
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <a
                 href={origin ? `${origin}/flows/${planId}` : `/flows/${planId}`}
@@ -1903,10 +2140,10 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
       {showMeditationLibrary && portalReady
         ? createPortal(
             <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/70 p-4">
-              <div className="relative h-[90vh] w-[90vw] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.3)]">
+              <div className="relative h-[90dvh] w-[90vw] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.3)]">
                 <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
                   <div>
-                    <p className="text-sm font-semibold uppercase text-slate-500">Plan library</p>
+                    <p className="text-sm font-semibold uppercase text-slate-500">Template library</p>
                     <p className="text-lg font-semibold text-slate-900">
                       Audio, effects, and prompts
                     </p>
@@ -1922,7 +2159,7 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
                     Close
                   </button>
                 </div>
-                <div className="grid h-[calc(90vh-84px)] gap-6 overflow-y-auto px-6 py-6 lg:grid-cols-3">
+                <div className="grid h-[calc(90dvh-84px)] gap-6 overflow-y-auto px-6 py-6 lg:grid-cols-3">
                   <div>
                     <p className="text-xs font-semibold uppercase text-slate-500">Audio tracks</p>
                     <div className="mt-3 space-y-3">
@@ -2065,10 +2302,10 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
             document.body
           )
         : null}
-      {showTemplatesModal && portalReady
+      {!isTemplateMode && showTemplatesModal && portalReady
         ? createPortal(
             <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/70 p-4">
-              <div className="relative h-[90vh] w-[90vw] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.3)]">
+              <div className="relative h-[90dvh] w-[90vw] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.3)]">
                 <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
                   <div>
                     <p className="text-sm font-semibold uppercase text-slate-500">Timeline templates</p>
@@ -2082,7 +2319,7 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
                     Close
                   </button>
                 </div>
-                <div className="grid h-[calc(90vh-84px)] gap-6 overflow-y-auto px-6 py-6 lg:grid-cols-[1fr,1.2fr]">
+                <div className="grid h-[calc(90dvh-84px)] gap-6 overflow-y-auto px-6 py-6 lg:grid-cols-[1fr,1.2fr]">
                   <div>
                     <p className="text-xs font-semibold uppercase text-slate-500">Save timeline</p>
                     <form onSubmit={handleCreateTemplate} className="mt-3 space-y-3 rounded border border-slate-200 bg-white/80 p-3">
@@ -2169,75 +2406,124 @@ export function PlanBuilderClient({ users, dataspaces, mode = "create", initialP
                     ) : null}
                   </div>
                   <div>
-                    <p className="text-xs font-semibold uppercase text-slate-500">Your templates</p>
+                    <p className="text-xs font-semibold uppercase text-slate-500">Personal templates</p>
                     <div className="mt-3 space-y-3">
-                      {flows.length === 0 ? (
-                        <p className="text-xs text-slate-500">No templates yet.</p>
+                      {flows.filter((flow) => currentUserId && flow.createdById === currentUserId).length === 0 ? (
+                        <p className="text-xs text-slate-500">No personal templates yet.</p>
                       ) : (
-                        flows.map((flow) => {
-                          const isOwner = currentUserId && flow.createdById === currentUserId;
-                          const canEdit = Boolean(isOwner);
-                          return (
-                            <div key={flow.id} className="rounded border border-slate-200 bg-white px-3 py-3">
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <div>
-                                  <p className="text-sm font-semibold text-slate-900">{flow.name}</p>
-                                  <p className="text-xs text-slate-500">
-                                    {flow.description || "No description"}
-                                  </p>
-                                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                                    {flow.isPublic ? (
-                                      <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-700">
-                                        Public
-                                      </span>
-                                    ) : null}
-                                    {currentUserId && !isOwner ? (
+                        flows
+                          .filter((flow) => currentUserId && flow.createdById === currentUserId)
+                          .map((flow) => {
+                            const isOwner = currentUserId && flow.createdById === currentUserId;
+                            const canEdit = Boolean(isOwner);
+                            return (
+                              <div key={flow.id} className="rounded border border-slate-200 bg-white px-3 py-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div>
+                                    <p className="text-sm font-semibold text-slate-900">{flow.name}</p>
+                                    <p className="text-xs text-slate-500">
+                                      {flow.description || "No description"}
+                                    </p>
+                                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                                      {flow.isPublic ? (
+                                        <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-700">
+                                          Public
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-600">
+                                          Private
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleLoadTemplate(flow)}
+                                      className="rounded-full border border-slate-200 px-3 py-1 font-semibold text-slate-600 hover:text-slate-900"
+                                    >
+                                      Load
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateTemplate(flow.id)}
+                                      className="rounded-full border border-slate-200 px-3 py-1 font-semibold text-slate-600 hover:text-slate-900"
+                                      disabled={templateLoading || !canEdit}
+                                    >
+                                      Update
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingTemplateId(flow.id);
+                                        setEditingTemplateName(flow.name);
+                                        setEditingTemplateDescription(flow.description || "");
+                                        setEditingTemplateIsPublic(flow.isPublic);
+                                      }}
+                                      className="rounded-full border border-slate-200 px-3 py-1 font-semibold text-slate-600 hover:text-slate-900"
+                                      disabled={!canEdit}
+                                    >
+                                      Edit
+                                    </button>
+                                  </div>
+                                </div>
+                                <p className="mt-2 text-[11px] text-slate-400">
+                                  Updated {new Date(flow.updatedAt).toLocaleString()}
+                                </p>
+                              </div>
+                            );
+                          })
+                      )}
+                    </div>
+
+                    <p className="mt-6 text-xs font-semibold uppercase text-slate-500">Shared templates</p>
+                    <div className="mt-3 space-y-3">
+                      {flows.filter((flow) => !currentUserId || flow.createdById !== currentUserId).length === 0 ? (
+                        <p className="text-xs text-slate-500">No shared templates yet.</p>
+                      ) : (
+                        flows
+                          .filter((flow) => !currentUserId || flow.createdById !== currentUserId)
+                          .map((flow) => {
+                            const isOwner = currentUserId && flow.createdById === currentUserId;
+                            const canEdit = Boolean(isOwner);
+                            return (
+                              <div key={flow.id} className="rounded border border-slate-200 bg-white px-3 py-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div>
+                                    <p className="text-sm font-semibold text-slate-900">{flow.name}</p>
+                                    <p className="text-xs text-slate-500">
+                                      {flow.description || "No description"}
+                                    </p>
+                                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                                      {flow.isPublic ? (
+                                        <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-700">
+                                          Public
+                                        </span>
+                                      ) : null}
                                       <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-600">
                                         Shared
                                       </span>
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                                    {!canEdit ? (
+                                      <span className="text-[11px] text-slate-400">Read only</span>
                                     ) : null}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleLoadTemplate(flow)}
+                                      className="rounded-full border border-slate-200 px-3 py-1 font-semibold text-slate-600 hover:text-slate-900"
+                                    >
+                                      Load
+                                    </button>
                                   </div>
                                 </div>
-                                <div className="flex flex-wrap items-center gap-2 text-xs">
-                                  {!canEdit ? (
-                                    <span className="text-[11px] text-slate-400">Read only</span>
-                                  ) : null}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleLoadTemplate(flow)}
-                                    className="rounded-full border border-slate-200 px-3 py-1 font-semibold text-slate-600 hover:text-slate-900"
-                                  >
-                                    Load
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdateTemplate(flow.id)}
-                                    className="rounded-full border border-slate-200 px-3 py-1 font-semibold text-slate-600 hover:text-slate-900"
-                                    disabled={templateLoading || !canEdit}
-                                  >
-                                    Update
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setEditingTemplateId(flow.id);
-                                      setEditingTemplateName(flow.name);
-                                      setEditingTemplateDescription(flow.description || "");
-                                      setEditingTemplateIsPublic(flow.isPublic);
-                                    }}
-                                    className="rounded-full border border-slate-200 px-3 py-1 font-semibold text-slate-600 hover:text-slate-900"
-                                    disabled={!canEdit}
-                                  >
-                                    Edit
-                                  </button>
-                                </div>
+                                <p className="mt-2 text-[11px] text-slate-400">
+                                  Updated {new Date(flow.updatedAt).toLocaleString()}
+                                </p>
                               </div>
-                              <p className="mt-2 text-[11px] text-slate-400">
-                                Updated {new Date(flow.updatedAt).toLocaleString()}
-                              </p>
-                            </div>
-                          );
-                        })
+                            );
+                          })
                       )}
                     </div>
                   </div>

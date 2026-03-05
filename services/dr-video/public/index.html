@@ -507,7 +507,7 @@
       }
 
       body.embed-mode .stage {
-        height: calc(100vh - 90px);
+        height: 100vh;
         padding: 8px;
         border: none;
         border-radius: 0;
@@ -608,6 +608,14 @@
       body.embed-mode .tile video {
         height: 100%;
         object-fit: cover;
+      }
+
+      @media (max-width: 768px) {
+        body.embed-mode.in-call .tile video,
+        body.embed-mode .tile video {
+          object-fit: contain;
+          background: #0f172a;
+        }
       }
 
       body.in-call .tiles.mode-auto[data-count="1"] {

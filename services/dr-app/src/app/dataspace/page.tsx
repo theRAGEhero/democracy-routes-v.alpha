@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { DataspaceClient } from "@/app/dataspace/DataspaceClient";
+import { DEFAULT_DATASPACE_COLOR } from "@/lib/dataspaceColor";
 
 export default async function DataspacePage() {
   const session = await getServerSession(authOptions);
@@ -52,10 +53,16 @@ export default async function DataspacePage() {
       data: {
         name: "My Data Space",
         description: "Private dataspace owned by you.",
+        color: DEFAULT_DATASPACE_COLOR,
         createdById: session.user.id,
         personalOwnerId: session.user.id,
         isPrivate: true,
         members: {
+          create: {
+            userId: session.user.id
+          }
+        },
+        subscriptions: {
           create: {
             userId: session.user.id
           }
@@ -90,6 +97,8 @@ export default async function DataspacePage() {
     id: space.id,
     name: space.name,
     description: space.description,
+    color: space.color,
+    imageUrl: space.imageUrl ?? null,
     createdByEmail: space.createdBy.email,
     members: space.members.map(
       (member: (typeof space.members)[number]) => ({
@@ -125,6 +134,8 @@ export default async function DataspacePage() {
           id: ensuredPersonal.id,
           name: ensuredPersonal.name,
           description: ensuredPersonal.description,
+          color: ensuredPersonal.color,
+          imageUrl: ensuredPersonal.imageUrl ?? null,
           createdByEmail: ensuredPersonal.createdBy.email,
           members: ensuredPersonal.members.map(
             (member: (typeof ensuredPersonal.members)[number]) => ({
@@ -136,7 +147,7 @@ export default async function DataspacePage() {
           meetingsCount: ensuredPersonal.meetings.length,
           plansCount: ensuredPersonal.plans.length,
           textsCount: ensuredPersonal.texts.length,
-          isSubscribed: subscribedIds.has(ensuredPersonal.id)
+    isSubscribed: subscribedIds.has(ensuredPersonal.id)
         }}
       />
     </div>

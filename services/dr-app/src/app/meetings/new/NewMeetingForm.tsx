@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { logClientError } from "@/lib/clientLog";
 
@@ -68,13 +68,14 @@ function toLocalTimeInput(date: Date) {
 
 export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [language, setLanguage] = useState("EN");
-  const [provider, setProvider] = useState("DEEPGRAM");
+  const [provider, setProvider] = useState("DEEPGRAMLIVE");
   const [dataspaceId, setDataspaceId] = useState("");
   const [inviteEmails, setInviteEmails] = useState("");
   const [inviteSuggestions, setInviteSuggestions] = useState<
@@ -97,6 +98,10 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
   const resolvedTimezone = useMemo(
     () => Intl.DateTimeFormat().resolvedOptions().timeZone,
     []
+  );
+  const dataspaceIds = useMemo(
+    () => new Set(dataspaces.map((space) => space.id)),
+    [dataspaces]
   );
 
   useEffect(() => {
@@ -121,13 +126,22 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
       setDurationMinutes(closest);
     }
     setLanguage(initialMeeting.language || "EN");
-    setProvider(initialMeeting.transcriptionProvider || "DEEPGRAM");
+    setProvider(initialMeeting.transcriptionProvider || "DEEPGRAMLIVE");
     setTimezone(initialMeeting.timezone ?? "");
     setDataspaceId(initialMeeting.dataspaceId ?? "");
     setIsPublic(Boolean(initialMeeting.isPublic));
     setRequiresApproval(Boolean(initialMeeting.requiresApproval));
     setCapacity(initialMeeting.capacity ?? "");
   }, [initialMeeting]);
+
+  useEffect(() => {
+    if (mode !== "create") return;
+    if (dataspaceId) return;
+    const paramId = searchParams?.get("dataspaceId") ?? "";
+    if (!paramId) return;
+    if (!dataspaceIds.has(paramId)) return;
+    setDataspaceId(paramId);
+  }, [dataspaceId, dataspaceIds, mode, searchParams]);
 
   useEffect(() => {
     let active = true;
@@ -321,12 +335,11 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <div>
-        <label className="text-sm font-medium">Title</label>
+        <label className="text-sm font-medium">Title (optional)</label>
         <input
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
-          required
         />
       </div>
       <div>

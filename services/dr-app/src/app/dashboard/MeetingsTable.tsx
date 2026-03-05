@@ -13,6 +13,7 @@ type MeetingRow = {
   providerLabel: string;
   dataspaceLabel: string;
   dataspaceKey: string;
+  dataspaceColor?: string | null;
   isPublic: boolean;
   isHidden: boolean;
   isPast: boolean;
@@ -32,6 +33,7 @@ type PlanRow = {
   roundsCount: number;
   dataspaceLabel: string;
   dataspaceKey: string;
+  dataspaceColor?: string | null;
   isPublic: boolean;
   joinStatus: "JOINED" | "PENDING" | "NONE";
   canJoin: boolean;
@@ -45,6 +47,7 @@ type TextRow = {
   isPast: boolean;
   dataspaceLabel: string;
   dataspaceKey: string;
+  dataspaceColor?: string | null;
 };
 
 type Props = {
@@ -54,6 +57,8 @@ type Props = {
   texts: TextRow[];
   showCreatedBy?: boolean;
   showFlagFilters?: boolean;
+  initialMode?: "MEETINGS" | "PLANS" | "TEXTS";
+  showModeTabs?: boolean;
 };
 
 export function MeetingsTable({
@@ -62,7 +67,9 @@ export function MeetingsTable({
   flows,
   texts,
   showCreatedBy = false,
-  showFlagFilters = false
+  showFlagFilters = false,
+  initialMode = "MEETINGS",
+  showModeTabs = true
 }: Props) {
   const [meetings, setMeetings] = useState(initialMeetings);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -72,7 +79,7 @@ export function MeetingsTable({
     initialMeetings.filter((meeting) => !meeting.isPast)
   );
   const [dataspaceFilter, setDataspaceFilter] = useState("all");
-  const [mode, setMode] = useState<"MEETINGS" | "PLANS" | "TEXTS">("MEETINGS");
+  const [mode, setMode] = useState<"MEETINGS" | "PLANS" | "TEXTS">(initialMode);
   const [meetingFlagFilter, setMeetingFlagFilter] = useState("all");
   const [planFlagFilter, setPlanFlagFilter] = useState("all");
   const [showPast, setShowPast] = useState(false);
@@ -213,35 +220,37 @@ export function MeetingsTable({
             }
             className="dr-input w-full rounded px-3 py-2 text-sm"
           />
-          <div className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/70 p-1 text-xs">
-            <button
-              type="button"
-              onClick={() => setMode("MEETINGS")}
-              className={`rounded-full px-3 py-1 font-semibold ${
-                mode === "MEETINGS" ? "bg-slate-900 text-white" : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              Meetings
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("PLANS")}
-              className={`rounded-full px-3 py-1 font-semibold ${
-                mode === "PLANS" ? "bg-slate-900 text-white" : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              Templates
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode("TEXTS")}
-              className={`rounded-full px-3 py-1 font-semibold ${
-                mode === "TEXTS" ? "bg-slate-900 text-white" : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              Texts
-            </button>
-          </div>
+          {showModeTabs ? (
+            <div className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white/70 p-1 text-xs">
+              <button
+                type="button"
+                onClick={() => setMode("MEETINGS")}
+                className={`rounded-full px-3 py-1 font-semibold ${
+                  mode === "MEETINGS" ? "bg-slate-900 text-white" : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Meetings
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("PLANS")}
+                className={`rounded-full px-3 py-1 font-semibold ${
+                  mode === "PLANS" ? "bg-slate-900 text-white" : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Templates
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("TEXTS")}
+                className={`rounded-full px-3 py-1 font-semibold ${
+                  mode === "TEXTS" ? "bg-slate-900 text-white" : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Texts
+              </button>
+            </div>
+          ) : null}
           <select
             value={dataspaceFilter}
             onChange={(event) => {
@@ -362,7 +371,15 @@ export function MeetingsTable({
                   <div className="text-slate-500">{meeting.expiresLabel}</div>
                   <div className="text-slate-700">{meeting.language}</div>
                   <div className="text-slate-700">{meeting.providerLabel}</div>
-                  <div className="text-slate-600">{meeting.dataspaceLabel}</div>
+                  <div className="flex items-center gap-2 text-slate-600">
+                    {meeting.dataspaceColor ? (
+                      <span
+                        className="h-2.5 w-2.5 rounded-full border border-white/70 shadow-sm"
+                        style={{ backgroundColor: meeting.dataspaceColor }}
+                      />
+                    ) : null}
+                    <span>{meeting.dataspaceLabel}</span>
+                  </div>
                     <div className="text-right">
                       <div className="flex items-center justify-end gap-3">
                         {meeting.isPublic ? (
@@ -434,7 +451,15 @@ export function MeetingsTable({
                     </div>
                     <div className="text-slate-600">{plan.startLabel}</div>
                     <div className="text-slate-600">{plan.roundsCount}</div>
-                    <div className="text-slate-600">{plan.dataspaceLabel}</div>
+                    <div className="flex items-center gap-2 text-slate-600">
+                      {plan.dataspaceColor ? (
+                        <span
+                          className="h-2.5 w-2.5 rounded-full border border-white/70 shadow-sm"
+                          style={{ backgroundColor: plan.dataspaceColor }}
+                        />
+                      ) : null}
+                      <span>{plan.dataspaceLabel}</span>
+                    </div>
                     <div className="text-right">
                       <div className="flex items-center justify-end gap-3">
                         {plan.isPublic ? (
@@ -490,7 +515,15 @@ export function MeetingsTable({
                       </Link>
                     </div>
                     <div className="text-slate-600">{text.updatedLabel}</div>
-                    <div className="text-slate-600">{text.dataspaceLabel}</div>
+                    <div className="flex items-center gap-2 text-slate-600">
+                      {text.dataspaceColor ? (
+                        <span
+                          className="h-2.5 w-2.5 rounded-full border border-white/70 shadow-sm"
+                          style={{ backgroundColor: text.dataspaceColor }}
+                        />
+                      ) : null}
+                      <span>{text.dataspaceLabel}</span>
+                    </div>
                   </div>
                 ))
               )}

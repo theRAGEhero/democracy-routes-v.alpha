@@ -10,17 +10,29 @@ services:
       NODE_ENV: production
       PORT: ${DR_APP_PORT:-3015}
       DATABASE_URL: ${DR_APP_DATABASE_URL:-file:/data/dev.db}
+      DEEPGRAM_BASE_URL: ${AUDIO_DEEPGRAM_BASE_URL:-http://audio-deepgram:3000}
+      VOSK_BASE_URL: ${AUDIO_VOSK_BASE_URL:-http://audio-vosk:3009}
+      TRANSCRIPTION_HUB_BASE_URL: ${TRANSCRIPTION_HUB_BASE_URL:-http://transcription-hub:3030}
+      EVENT_HUB_BASE_URL: ${EVENT_HUB_BASE_URL:-http://dr-event-hub:3040}
+      EVENT_HUB_API_KEY: ${EVENT_HUB_API_KEY:-}
+      NEXT_PUBLIC_BASE_PATH: /thinking-admin
+      BACKUP_DIR: /backups
+      BACKUP_SCRIPT_PATH: /app/scripts/backup-runner.sh
     expose:
       - "3015"
     volumes:
       - dr_app_data:/data
+      - ./backups:/backups
+      - ./services/dr-app/scripts:/app/scripts:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - dr_net
 
   dr-video:
-    image: node:20-alpine
+    build:
+      context: ./services/dr-video
+      dockerfile: Dockerfile
     container_name: dr-video
-    working_dir: /app
     env_file:
       - ./.env
     environment:
@@ -29,13 +41,176 @@ services:
       HOST: ${DR_VIDEO_HOST:-0.0.0.0}
       ANNOUNCED_IP: ${DR_VIDEO_ANNOUNCED_IP:-}
       DEEPGRAM_API_KEY: ${DR_VIDEO_DEEPGRAM_API_KEY:-}
-    command: sh -lc "npm ci && node server.js"
+      TRANSCRIPTION_HUB_URL: ${TRANSCRIPTION_HUB_BASE_URL:-http://transcription-hub:3030}
+      TRANSCRIPTION_HUB_API_KEY: ${TRANSCRIPTION_HUB_API_KEY:-}
+      EVENT_HUB_BASE_URL: ${EVENT_HUB_BASE_URL:-http://dr-event-hub:3040}
+      EVENT_HUB_API_KEY: ${EVENT_HUB_API_KEY:-}
     volumes:
-      - ./services/dr-video:/app
       - dr_video_recordings:/app/recordings
       - dr_video_logs:/app/logs
+    ports:
+      - "${DR_VIDEO_RTC_MIN_PORT:-41000}-${DR_VIDEO_RTC_MAX_PORT:-41100}:${DR_VIDEO_RTC_MIN_PORT:-41000}-${DR_VIDEO_RTC_MAX_PORT:-41100}/udp"
+      - "${DR_VIDEO_RTC_MIN_PORT:-41000}-${DR_VIDEO_RTC_MAX_PORT:-41100}:${DR_VIDEO_RTC_MIN_PORT:-41000}-${DR_VIDEO_RTC_MAX_PORT:-41100}/tcp"
     expose:
       - "3020"
+    networks:
+      - dr_net
+
+  transcription-db:
+    image: postgres:16-alpine
+    container_name: transcription-db
+    environment:
+      POSTGRES_DB: ${TRANSCRIPTION_DB_NAME:-transcriptions}
+      POSTGRES_USER: ${TRANSCRIPTION_DB_USER:-transcription}
+      POSTGRES_PASSWORD: ${TRANSCRIPTION_DB_PASSWORD:-transcription_change_me}
+    volumes:
+      - transcription_db_data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    networks:
+      - dr_net
+
+  transcription-hub:
+    build:
+      context: ./services/transcription-hub
+      dockerfile: Dockerfile
+    container_name: transcription-hub
+    depends_on:
+      - transcription-db
+    env_file:
+      - ./.env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: ${TRANSCRIPTION_HUB_PORT:-3030}
+      TRANSCRIPTION_HUB_DATABASE_URL: ${TRANSCRIPTION_HUB_DATABASE_URL:-postgresql://transcription:transcription_change_me@transcription-db:5432/transcriptions}
+      TRANSCRIPTION_HUB_API_KEY: ${TRANSCRIPTION_HUB_API_KEY:-}
+      EVENT_HUB_BASE_URL: ${EVENT_HUB_BASE_URL:-http://dr-event-hub:3040}
+      EVENT_HUB_API_KEY: ${EVENT_HUB_API_KEY:-}
+    expose:
+      - "3030"
+    networks:
+      - dr_net
+
+  dr-event-hub:
+    build:
+      context: ./services/dr-event-hub
+      dockerfile: Dockerfile
+    container_name: dr-event-hub
+    env_file:
+      - ./.env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      EVENT_HUB_PORT: ${EVENT_HUB_PORT:-3040}
+      EVENT_HUB_DB: /data/events.db
+      EVENT_HUB_API_KEY: ${EVENT_HUB_API_KEY:-}
+    expose:
+      - "3040"
+    volumes:
+      - dr_event_hub_data:/data
+    networks:
+      - dr_net
+
+  dr-thinker:
+    build:
+      context: ./services/dr-thinker
+      dockerfile: Dockerfile
+    container_name: dr-thinker
+    env_file:
+      - ./.env
+    environment:
+      NODE_ENV: production
+      PORT: ${DR_THINKER_PORT:-3001}
+      DEEPGRAM_API_URL: ${AUDIO_DEEPGRAM_BASE_URL:-http://audio-deepgram:3000}
+      NEXT_PUBLIC_DEEPGRAM_API_URL: ${AUDIO_DEEPGRAM_BASE_URL:-http://audio-deepgram:3000}
+      VOSK_API_URL: ${AUDIO_VOSK_BASE_URL:-http://audio-vosk:3009}
+      DEMOCRACY_ROUTES_API_URL: http://dr-app:3015
+      DEMOCRACY_ROUTES_WORKFLOW_API_KEY: ${WORKFLOW_API_KEY:-}
+      DEMOCRACY_ROUTES_ANALYSIS_WEBHOOK_URL: ${APP_BASE_URL:-}
+      ANALYZE_TABLES_API_KEY: ${ANALYZE_TABLES_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OLLAMA_API_URL: ${OLLAMA_API_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-deepseek-r1:1.5b}
+      EVENT_HUB_BASE_URL: ${EVENT_HUB_BASE_URL:-http://dr-event-hub:3040}
+      EVENT_HUB_API_KEY: ${EVENT_HUB_API_KEY:-}
+    expose:
+      - "3001"
+    networks:
+      - dr_net
+
+  dr-matching:
+    build:
+      context: ./services/dr-matching
+      dockerfile: Dockerfile
+    container_name: dr-matching
+    env_file:
+      - ./.env
+    environment:
+      NODE_ENV: production
+      DR_MATCHING_PORT: ${DR_MATCHING_PORT:-3002}
+      DR_MATCHING_API_KEY: ${DR_MATCHING_API_KEY:-}
+      DR_MATCHING_DATA_DIR: /app/data
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      EVENT_HUB_BASE_URL: ${EVENT_HUB_BASE_URL:-http://dr-event-hub:3040}
+      EVENT_HUB_API_KEY: ${EVENT_HUB_API_KEY:-}
+    expose:
+      - "3002"
+    volumes:
+      - dr_matching_data:/app/data
+    networks:
+      - dr_net
+
+  audio-deepgram:
+    build:
+      context: ./audio-api/deepgram
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_BASE_PATH: /audio-admin/deepgram
+    container_name: audio-deepgram
+    env_file:
+      - ./.env
+    environment:
+      NODE_ENV: production
+      PORT: ${AUDIO_DEEPGRAM_PORT:-3000}
+      DEEPGRAM_API_KEY: ${AUDIO_DEEPGRAM_API_KEY:-}
+      NEXT_PUBLIC_BASE_PATH: /audio-admin/deepgram
+      EVENT_HUB_BASE_URL: ${EVENT_HUB_BASE_URL:-http://dr-event-hub:3040}
+      EVENT_HUB_API_KEY: ${EVENT_HUB_API_KEY:-}
+    expose:
+      - "3000"
+    volumes:
+      - audio_deepgram_data:/app/data
+      - audio_deepgram_public_audio:/app/public/audio
+      - audio_deepgram_logs:/app/logs
+    networks:
+      - dr_net
+
+  audio-vosk:
+    build:
+      context: ./audio-api/vosk
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_BASE_PATH: /audio-admin/vosk
+    container_name: audio-vosk
+    env_file:
+      - ./.env
+    environment:
+      NODE_ENV: production
+      PORT: ${AUDIO_VOSK_PORT:-3009}
+      VOSK_PYTHON: /usr/bin/python3
+      VOSK_MODEL_EN: /app/models/vosk-model-en-us-0.22-lgraph
+      VOSK_MODEL_IT: /app/models/vosk-model-small-it-0.22
+      NEXT_PUBLIC_BASE_PATH: /audio-admin/vosk
+      EVENT_HUB_BASE_URL: ${EVENT_HUB_BASE_URL:-http://dr-event-hub:3040}
+      EVENT_HUB_API_KEY: ${EVENT_HUB_API_KEY:-}
+    expose:
+      - "3009"
+    volumes:
+      - audio_vosk_data:/app/data
+      - audio_vosk_public_audio:/app/public/audio
+      - audio_vosk_logs:/app/logs
+      - ./audio-api/vosk/models:/app/models:ro
     networks:
       - dr_net
 
@@ -45,6 +220,8 @@ services:
     depends_on:
       - dr-app
       - dr-video
+      - audio-deepgram
+      - audio-vosk
     ports:
       - "${PROXY_HTTP_PORT:-8088}:80"
     volumes:
@@ -56,6 +233,15 @@ volumes:
   dr_app_data:
   dr_video_recordings:
   dr_video_logs:
+  transcription_db_data:
+  audio_deepgram_data:
+  audio_deepgram_public_audio:
+  audio_deepgram_logs:
+  audio_vosk_data:
+  audio_vosk_public_audio:
+  audio_vosk_logs:
+  dr_matching_data:
+  dr_event_hub_data:
 
 networks:
   dr_net:

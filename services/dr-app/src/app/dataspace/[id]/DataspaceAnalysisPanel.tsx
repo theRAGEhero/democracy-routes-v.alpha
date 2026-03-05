@@ -5,6 +5,39 @@ import { useState } from "react";
 const DEFAULT_PROMPT =
   "Analyze this dataspace activity across templates and meetings. Highlight key themes, agreements, disagreements, and notable quotes.";
 
+const PROMPT_PRESETS = [
+  {
+    id: "summary",
+    label: "Summary",
+    prompt:
+      "Provide a concise summary of the dataspace activity across templates and meetings. Highlight key themes, outcomes, and notable quotes."
+  },
+  {
+    id: "conflicts",
+    label: "Conflict Finding",
+    prompt:
+      "Identify points of disagreement, conflict, or tension in the dataspace activity. Quote supporting excerpts and name the related topics."
+  },
+  {
+    id: "agreements",
+    label: "Agreements",
+    prompt:
+      "Extract points of agreement and alignment across participants. Include supporting quotes and note which meetings/templates they came from."
+  },
+  {
+    id: "actions",
+    label: "Action Items",
+    prompt:
+      "List actionable decisions, next steps, and responsibilities implied by the activity. Flag unclear ownership or missing follow-ups."
+  },
+  {
+    id: "insights",
+    label: "Insights",
+    prompt:
+      "Surface key insights, emerging patterns, and risks from the dataspace activity. Provide evidence snippets for each insight."
+  }
+];
+
 type DataspaceAnalysisPanelProps = {
   dataspaceId: string;
 };
@@ -70,9 +103,39 @@ function renderMarkdownBlocks(markdown: string) {
       continue;
     }
 
+    if (trimmed.startsWith("###### ")) {
+      blocks.push(
+        <h6 key={`h6-${index}`} className="text-xs font-semibold uppercase text-slate-600">
+          {renderInline(trimmed.slice(7))}
+        </h6>
+      );
+      index += 1;
+      continue;
+    }
+
+    if (trimmed.startsWith("##### ")) {
+      blocks.push(
+        <h5 key={`h5-${index}`} className="text-sm font-semibold text-slate-700">
+          {renderInline(trimmed.slice(6))}
+        </h5>
+      );
+      index += 1;
+      continue;
+    }
+
+    if (trimmed.startsWith("#### ")) {
+      blocks.push(
+        <h4 key={`h4-${index}`} className="text-base font-semibold text-slate-900">
+          {renderInline(trimmed.slice(5))}
+        </h4>
+      );
+      index += 1;
+      continue;
+    }
+
     if (trimmed.startsWith("### ")) {
       blocks.push(
-        <h3 key={`h3-${index}`} className="text-base font-semibold text-slate-900">
+        <h3 key={`h3-${index}`} className="text-lg font-semibold text-slate-900">
           {renderInline(trimmed.slice(4))}
         </h3>
       );
@@ -82,7 +145,7 @@ function renderMarkdownBlocks(markdown: string) {
 
     if (trimmed.startsWith("## ")) {
       blocks.push(
-        <h2 key={`h2-${index}`} className="text-lg font-semibold text-slate-900">
+        <h2 key={`h2-${index}`} className="text-xl font-semibold text-slate-900">
           {renderInline(trimmed.slice(3))}
         </h2>
       );
@@ -92,11 +155,30 @@ function renderMarkdownBlocks(markdown: string) {
 
     if (trimmed.startsWith("# ")) {
       blocks.push(
-        <h1 key={`h1-${index}`} className="text-xl font-semibold text-slate-900">
+        <h1 key={`h1-${index}`} className="text-2xl font-semibold text-slate-900">
           {renderInline(trimmed.slice(2))}
         </h1>
       );
       index += 1;
+      continue;
+    }
+
+    if (trimmed.startsWith("> ")) {
+      const quoteLines: string[] = [];
+      while (index < lines.length) {
+        const current = lines[index].trim();
+        if (!current.startsWith("> ")) break;
+        quoteLines.push(current.replace(/^>\s?/, ""));
+        index += 1;
+      }
+      blocks.push(
+        <blockquote
+          key={`quote-${index}`}
+          className="border-l-2 border-slate-300 pl-3 text-sm italic text-slate-600"
+        >
+          {renderInline(quoteLines.join(" "))}
+        </blockquote>
+      );
       continue;
     }
 
@@ -174,6 +256,7 @@ export function DataspaceAnalysisPanel({ dataspaceId }: DataspaceAnalysisPanelPr
   const [createdAt, setCreatedAt] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activePreset, setActivePreset] = useState<string>("summary");
 
   const handleAnalyze = async () => {
     setIsLoading(true);
@@ -237,6 +320,25 @@ export function DataspaceAnalysisPanel({ dataspaceId }: DataspaceAnalysisPanelPr
             Ollama
           </button>
         </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {PROMPT_PRESETS.map((preset) => {
+          const isActive = activePreset === preset.id;
+          return (
+            <button
+              key={preset.id}
+              type="button"
+              className={isActive ? "dr-button px-3 py-1 text-xs" : "dr-button-outline px-3 py-1 text-xs"}
+              onClick={() => {
+                setActivePreset(preset.id);
+                setPrompt(preset.prompt);
+              }}
+            >
+              {preset.label}
+            </button>
+          );
+        })}
       </div>
 
       <div className="space-y-2">

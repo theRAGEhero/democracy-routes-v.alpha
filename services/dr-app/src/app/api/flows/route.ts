@@ -7,6 +7,7 @@ import { getRequestId, logError } from "@/lib/logger";
 import crypto from "crypto";
 import bcrypt from "bcrypt";
 import { checkRateLimit, getRequestIp } from "@/lib/rateLimit";
+import { normalizeMatchingMode } from "@/lib/matchingMode";
 
 function generateRoomId(language: string, transcriptionProvider: string) {
   const providerLabel =
@@ -53,12 +54,14 @@ function rotate(userIds: string[]) {
 }
 
 type BlockInput = {
-  type: "ROUND" | "MEDITATION" | "POSTER" | "TEXT" | "RECORD" | "FORM";
+  type: "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING";
   durationSeconds: number;
   roundMaxParticipants?: number | null;
   formQuestion?: string | null;
   formChoices?: Array<{ key: string; label: string }> | null;
   posterId?: string | null;
+  embedUrl?: string | null;
+  matchingMode?: "polar" | "anti" | null;
   meditationAnimationId?: string | null;
   meditationAudioUrl?: string | null;
 };
@@ -80,7 +83,7 @@ function buildDefaultBlocks(data: {
 
   if (data.meditationEnabled && data.meditationAtStart) {
     blocks.push({
-      type: "MEDITATION",
+      type: "PAUSE",
       durationSeconds: meditationDurationSeconds,
       meditationAnimationId: data.meditationAnimationId ?? null,
       meditationAudioUrl: data.meditationAudioUrl ?? null
@@ -88,10 +91,10 @@ function buildDefaultBlocks(data: {
   }
 
   for (let round = 1; round <= data.roundsCount; round += 1) {
-    blocks.push({ type: "ROUND", durationSeconds: roundDurationSeconds });
+    blocks.push({ type: "PAIRING", durationSeconds: roundDurationSeconds });
     if (data.meditationEnabled && data.meditationBetweenRounds && round < data.roundsCount) {
       blocks.push({
-        type: "MEDITATION",
+        type: "PAUSE",
         durationSeconds: meditationDurationSeconds,
         meditationAnimationId: data.meditationAnimationId ?? null,
         meditationAudioUrl: data.meditationAudioUrl ?? null
@@ -101,7 +104,7 @@ function buildDefaultBlocks(data: {
 
   if (data.meditationEnabled && data.meditationAtEnd) {
     blocks.push({
-      type: "MEDITATION",
+      type: "PAUSE",
       durationSeconds: meditationDurationSeconds,
       meditationAnimationId: data.meditationAnimationId ?? null,
       meditationAudioUrl: data.meditationAudioUrl ?? null
@@ -237,9 +240,12 @@ export async function POST(request: Request) {
     parsed.data.blocks && parsed.data.blocks.length > 0
       ? parsed.data.blocks
       : buildDefaultBlocks(parsed.data);
-  const roundBlocks = blocksInput.filter((block) => block.type === "ROUND");
+  const roundBlocks = blocksInput.filter((block) => block.type === "PAIRING");
   const missingPoster = blocksInput.some(
-    (block) => block.type === "POSTER" && !block.posterId
+    (block) => block.type === "PROMPT" && !block.posterId
+  );
+  const missingEmbed = blocksInput.some(
+    (block) => block.type === "EMBED" && !block.embedUrl
   );
 
   if (roundBlocks.length < 1) {
@@ -249,6 +255,9 @@ export async function POST(request: Request) {
   }
   if (missingPoster) {
     return NextResponse.json({ error: "Select a poster for every poster block." }, { status: 400 });
+  }
+  if (missingEmbed) {
+    return NextResponse.json({ error: "Enter a URL for every embed block." }, { status: 400 });
   }
 
   const posterIds = Array.from(
@@ -300,7 +309,7 @@ export async function POST(request: Request) {
 
   let roundCounter = 0;
   const blocksData = blocksInput.map((block, index) => {
-    if (block.type === "ROUND") {
+    if (block.type === "PAIRING") {
       roundCounter += 1;
     }
     return {
@@ -311,13 +320,15 @@ export async function POST(request: Request) {
       formQuestion: block.formQuestion ?? null,
       formChoicesJson: block.formChoices ? JSON.stringify(block.formChoices) : null,
       posterId: block.posterId ?? null,
+      embedUrl: block.embedUrl ?? null,
+      matchingMode: normalizeMatchingMode(block.matchingMode),
       meditationAnimationId: block.meditationAnimationId ?? null,
       meditationAudioUrl: block.meditationAudioUrl ?? null,
-      roundNumber: block.type === "ROUND" ? roundCounter : null
+      roundNumber: block.type === "PAIRING" ? roundCounter : null
     };
   });
   const firstRoundSeconds = roundBlocks[0]?.durationSeconds ?? 600;
-  const firstMeditationBlock = blocksInput.find((block) => block.type === "MEDITATION");
+  const firstMeditationBlock = blocksInput.find((block) => block.type === "PAUSE");
   const firstMeditationSeconds = firstMeditationBlock?.durationSeconds ?? 300;
 
   const plan = await prisma.plan.create({
@@ -337,7 +348,7 @@ export async function POST(request: Request) {
       allowOddGroup,
       language: parsed.data.language,
       transcriptionProvider: parsed.data.transcriptionProvider,
-      meditationEnabled: blocksInput.some((block) => block.type === "MEDITATION"),
+      meditationEnabled: blocksInput.some((block) => block.type === "PAUSE"),
       meditationAtStart: false,
       meditationBetweenRounds: false,
       meditationAtEnd: false,

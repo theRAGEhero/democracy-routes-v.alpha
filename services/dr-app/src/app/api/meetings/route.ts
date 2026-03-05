@@ -6,13 +6,60 @@ import { generateRoomId } from "@/lib/utils";
 import { sendMail } from "@/lib/mailer";
 import { notifyDataspaceSubscribers } from "@/lib/dataspaceNotifications";
 import { checkRateLimit, getRequestIp } from "@/lib/rateLimit";
+import { getRequestId, logError } from "@/lib/logger";
 import crypto from "crypto";
+
+const GOVERNANCE_TITLE_ADJECTIVES = [
+  "Civic",
+  "Deliberative",
+  "Commons",
+  "Public",
+  "Democratic",
+  "Inclusive",
+  "Participatory",
+  "Community",
+  "Restorative",
+  "Mediation",
+  "Consensus",
+  "Bridge",
+  "Peace",
+  "Cooperative",
+  "Mutual",
+  "Solidarity",
+  "Dialogue"
+];
+
+const GOVERNANCE_TITLE_NOUNS = [
+  "Forum",
+  "Roundtable",
+  "Assembly",
+  "Council",
+  "Dialogue",
+  "Mediation",
+  "Commons",
+  "Policy Lab",
+  "Civic Lab",
+  "Listening Circle",
+  "Peace Table",
+  "Consensus Table",
+  "Conflict Lab",
+  "Governance Lab",
+  "Civic Session",
+  "Deliberation",
+  "Public Square"
+];
+
+function pickRandom(list: string[]) {
+  const idx = crypto.randomInt(0, list.length);
+  return list[idx] ?? list[0] ?? "Civic";
+}
 
 function generateToken() {
   return crypto.randomBytes(24).toString("base64url");
 }
 
 export async function POST(request: Request) {
+  const requestId = getRequestId(request);
   const session = await getSession();
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -38,7 +85,7 @@ export async function POST(request: Request) {
   }
 
   const {
-    title,
+    title: rawTitle,
     description,
     startAt: startAtRaw,
     date,
@@ -53,6 +100,8 @@ export async function POST(request: Request) {
     requiresApproval,
     capacity
   } = parsed.data;
+  const fallbackTitle = `${pickRandom(GOVERNANCE_TITLE_ADJECTIVES)} ${pickRandom(GOVERNANCE_TITLE_NOUNS)}`;
+  const title = String(rawTitle || "").trim() || fallbackTitle;
   const providerLabel =
     transcriptionProvider === "VOSK"
       ? "Vosk"
@@ -119,13 +168,18 @@ export async function POST(request: Request) {
     (email) => email !== session.user.email.toLowerCase()
   );
 
-  let invitedUsers: Array<{ id: string; email: string; isGuest: boolean }> = [];
+  let invitedUsers: Array<{
+    id: string;
+    email: string;
+    isGuest: boolean;
+    notifyEmailMeetingInvites?: boolean;
+  }> = [];
   let missingUsers: string[] = [];
 
   if (uniqueEmails.length > 0) {
     invitedUsers = await prisma.user.findMany({
       where: { email: { in: uniqueEmails } },
-      select: { id: true, email: true, isGuest: true }
+      select: { id: true, email: true, isGuest: true, notifyEmailMeetingInvites: true }
     });
 
     if (invitedUsers.length !== uniqueEmails.length) {
@@ -186,15 +240,17 @@ export async function POST(request: Request) {
 
     const appBaseUrl = process.env.APP_BASE_URL || "http://localhost:3000";
     await Promise.all(
-      registeredInvites.map((user) =>
-        sendMail({
-          to: user.email,
-          subject: "You are invited to a meeting",
-          html: `<p>You have been invited to the meeting <strong>${meeting.title}</strong>.</p>
-            <p>Open the meeting page: <a href="${appBaseUrl}/meetings/${meeting.id}">${appBaseUrl}/meetings/${meeting.id}</a></p>`,
-          text: `You have been invited to the meeting ${meeting.title}. Open: ${appBaseUrl}/meetings/${meeting.id}`
-        })
-      )
+      registeredInvites
+        .filter((user) => user.notifyEmailMeetingInvites !== false)
+        .map((user) =>
+          sendMail({
+            to: user.email,
+            subject: "You are invited to a meeting",
+            html: `<p>You have been invited to the meeting <strong>${meeting.title}</strong>.</p>
+              <p>Open the meeting page: <a href="${appBaseUrl}/meetings/${meeting.id}">${appBaseUrl}/meetings/${meeting.id}</a></p>`,
+            text: `You have been invited to the meeting ${meeting.title}. Open: ${appBaseUrl}/meetings/${meeting.id}`
+          })
+        )
     );
   }
 
@@ -257,7 +313,12 @@ export async function POST(request: Request) {
         type: "MEETING"
       });
     } catch (error) {
-      console.error("Telegram notify failed", error);
+      logError("telegram_notify_failed", error, {
+        requestId,
+        scope: "meeting",
+        dataspaceId: meeting.dataspaceId,
+        meetingId: meeting.id
+      });
     }
   }
 

@@ -33,13 +33,6 @@ export default async function EditMeetingPage({ params }: { params: { id: string
     return <p className="text-sm text-slate-500">Access denied.</p>;
   }
 
-  const isConcluded =
-    !meeting.isActive || (meeting.expiresAt ? meeting.expiresAt.getTime() < Date.now() : false);
-
-  if (isConcluded) {
-    return <p className="text-sm text-slate-500">This meeting is already concluded.</p>;
-  }
-
   const dataspaces = await prisma.dataspace.findMany({
     where: { members: { some: { userId: session.user.id } } },
     orderBy: { createdAt: "desc" },
@@ -52,7 +45,7 @@ export default async function EditMeetingPage({ params }: { params: { id: string
         <h1 className="text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
           Edit meeting
         </h1>
-        <p className="text-sm text-slate-500">Update meeting details before it concludes.</p>
+        <p className="text-sm text-slate-500">Update meeting details.</p>
       </div>
       <div className="dr-card p-6">
         <NewMeetingForm

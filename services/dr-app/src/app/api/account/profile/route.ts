@@ -25,6 +25,7 @@ export async function POST(request: Request) {
 
   const telegramHandle = normalizeTelegramHandle(parsed.data.telegramHandle ?? null);
   const calComLink = parsed.data.calComLink?.trim() || null;
+  const avatarUrl = parsed.data.avatarUrl?.trim() || null;
 
   const existing = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -47,6 +48,15 @@ export async function POST(request: Request) {
     data: {
       telegramHandle,
       calComLink,
+      avatarUrl,
+      notifyEmailMeetingInvites: parsed.data.notifyEmailMeetingInvites ?? undefined,
+      notifyTelegramMeetingInvites: parsed.data.notifyTelegramMeetingInvites ?? undefined,
+      notifyEmailPlanInvites: parsed.data.notifyEmailPlanInvites ?? undefined,
+      notifyTelegramPlanInvites: parsed.data.notifyTelegramPlanInvites ?? undefined,
+      notifyEmailDataspaceInvites: parsed.data.notifyEmailDataspaceInvites ?? undefined,
+      notifyTelegramDataspaceInvites: parsed.data.notifyTelegramDataspaceInvites ?? undefined,
+      notifyEmailDataspaceActivity: parsed.data.notifyEmailDataspaceActivity ?? undefined,
+      notifyTelegramDataspaceActivity: parsed.data.notifyTelegramDataspaceActivity ?? undefined,
       telegramChatId:
         existing?.telegramHandle !== telegramHandle ? null : undefined,
       telegramVerificationCode,

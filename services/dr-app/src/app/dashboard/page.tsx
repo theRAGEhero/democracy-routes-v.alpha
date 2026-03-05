@@ -1,10 +1,7 @@
-import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { MeetingsTable } from "@/app/dashboard/MeetingsTable";
-import { UpcomingInvites } from "@/app/dashboard/UpcomingInvites";
-import { CalendarPanel } from "@/app/dashboard/CalendarPanel";
+import { DashboardTabs } from "@/app/dashboard/DashboardTabs";
 import { formatDateTime, isMeetingActive } from "@/lib/utils";
 import {
   buildLegacySegments,
@@ -12,7 +9,7 @@ import {
   type PlanBlockInput,
   type PlanBlockType
 } from "@/lib/planSchedule";
-import { JoinButton } from "@/components/JoinButton";
+import { normalizeMatchingMode } from "@/lib/matchingMode";
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
@@ -21,7 +18,7 @@ export default async function DashboardPage() {
     return null;
   }
 
-  const [meetings, dataspaces, invites, plans, texts, dataspaceMembers, meetingMembers, meetingInvites, planParticipants, planPairs] =
+  const [meetings, dataspaces, invites, flows, texts, dataspaceMembers, meetingMembers, meetingInvites, planParticipants, planPairs] =
     await Promise.all([
     prisma.meeting.findMany({
       where: {
@@ -36,7 +33,7 @@ export default async function DashboardPage() {
         ]
       },
       orderBy: { createdAt: "desc" },
-      include: { dataspace: { select: { id: true, name: true, personalOwnerId: true } } }
+      include: { dataspace: { select: { id: true, name: true, personalOwnerId: true, color: true } } }
     }),
     prisma.dataspace.findMany({
       where: {
@@ -114,17 +111,19 @@ export default async function DashboardPage() {
             type: true,
             durationSeconds: true,
             roundNumber: true,
-            posterId: true
+            posterId: true,
+            embedUrl: true,
+            matchingMode: true
           }
         },
-        dataspace: { select: { id: true, name: true, personalOwnerId: true } }
+        dataspace: { select: { id: true, name: true, personalOwnerId: true, color: true } }
       }
     }),
     prisma.text.findMany({
       where: { createdById: session.user.id },
       orderBy: { updatedAt: "desc" },
       include: {
-        dataspace: { select: { id: true, name: true, personalOwnerId: true } }
+        dataspace: { select: { id: true, name: true, personalOwnerId: true, color: true } }
       }
     }),
     prisma.dataspaceMember.findMany({
@@ -221,6 +220,7 @@ export default async function DashboardPage() {
         meeting.dataspace?.personalOwnerId === session.user.id
           ? "personal"
           : meeting.dataspace?.id ?? "none",
+      dataspaceColor: meeting.dataspace?.color ?? null,
       isPublic: meeting.isPublic,
       isHidden: meeting.isHidden,
       isPast: Boolean(
@@ -234,25 +234,27 @@ export default async function DashboardPage() {
     };
   });
 
-  const planRows = plans
-    .map((plan: (typeof plans)[number]) => {
+  const planRows = flows
+    .map((plan: (typeof flows)[number]) => {
       const normalizedBlocks: PlanBlockInput[] = (plan.blocks ?? []).reduce(
         (acc: PlanBlockInput[], block: (typeof plan.blocks)[number]) => {
         const type = block.type as PlanBlockType;
-        if (!["ROUND", "MEDITATION", "POSTER", "TEXT", "RECORD", "FORM"].includes(type)) {
+        if (!["PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING"].includes(type)) {
           return acc;
         }
         acc.push({
           id: block.id,
           type,
-          durationSeconds: block.durationSeconds,
-          roundNumber: block.roundNumber ?? null,
-          posterId: block.posterId ?? null
-        });
+            durationSeconds: block.durationSeconds,
+            roundNumber: block.roundNumber ?? null,
+            posterId: block.posterId ?? null,
+            embedUrl: block.embedUrl ?? null,
+            matchingMode: normalizeMatchingMode(block.matchingMode)
+          });
         return acc;
-        },
-        []
-      );
+      },
+      []
+    );
     const schedule =
       normalizedBlocks.length > 0
         ? buildPlanSegmentsFromBlocks(plan.startAt, normalizedBlocks)
@@ -284,6 +286,7 @@ export default async function DashboardPage() {
         plan.dataspace?.personalOwnerId === session.user.id
           ? "personal"
           : plan.dataspace?.id ?? "none",
+      dataspaceColor: plan.dataspace?.color ?? null,
       isPast: totalEndMs < now.getTime(),
       isPublic: plan.isPublic,
       joinStatus:
@@ -319,7 +322,8 @@ export default async function DashboardPage() {
       dataspaceKey:
         text.dataspace?.personalOwnerId === session.user.id
           ? "personal"
-          : text.dataspace?.id ?? "none"
+          : text.dataspace?.id ?? "none",
+      dataspaceColor: text.dataspace?.color ?? null
     };
   });
 
@@ -337,28 +341,30 @@ export default async function DashboardPage() {
   );
 
   const upcomingMeetings = meetings
-    .filter(
-      (meeting: (typeof meetings)[number]) =>
-        meeting.scheduledStartAt && meeting.scheduledStartAt > now
-    )
+    .filter((meeting: (typeof meetings)[number]) => {
+      const startAt = meeting.scheduledStartAt ?? meeting.createdAt;
+      return startAt > now;
+    })
     .map((meeting: (typeof meetings)[number]) => ({
       id: meeting.id,
       title: meeting.title,
-      startsAt: meeting.scheduledStartAt as Date,
+      startsAt: (meeting.scheduledStartAt ?? meeting.createdAt) as Date,
       type: "Meeting" as const,
       href: `/meetings/${meeting.id}`,
-      join: meetingJoinMap.get(meeting.id)
+      join: meetingJoinMap.get(meeting.id),
+      dataspaceColor: meeting.dataspace?.color ?? null
     }));
 
-  const upcomingPlans = plans
-    .filter((plan: (typeof plans)[number]) => plan.startAt > now)
-    .map((plan: (typeof plans)[number]) => ({
+  const upcomingPlans = flows
+    .filter((plan: (typeof flows)[number]) => plan.startAt > now)
+    .map((plan: (typeof flows)[number]) => ({
       id: plan.id,
       title: plan.title,
       startsAt: plan.startAt,
-      type: "Plan" as const,
-      href: `/plans/${plan.id}`,
-      join: planJoinMap.get(plan.id)
+      type: "Template" as const,
+      href: `/flows/${plan.id}`,
+      join: planJoinMap.get(plan.id),
+      dataspaceColor: plan.dataspace?.color ?? null
     }));
 
   const upcomingItems = [...upcomingMeetings, ...upcomingPlans]
@@ -372,22 +378,25 @@ export default async function DashboardPage() {
       type: "Meeting" as const,
       date: meeting.createdAt,
       href: `/meetings/${meeting.id}`,
-      join: meetingJoinMap.get(meeting.id)
+      join: meetingJoinMap.get(meeting.id),
+      dataspaceColor: meeting.dataspace?.color ?? null
     })),
-    ...plans.map((plan: (typeof plans)[number]) => ({
+    ...flows.map((plan: (typeof flows)[number]) => ({
       id: plan.id,
       title: plan.title,
-      type: "Plan" as const,
+      type: "Template" as const,
       date: plan.createdAt,
-      href: `/plans/${plan.id}`,
-      join: planJoinMap.get(plan.id)
+      href: `/flows/${plan.id}`,
+      join: planJoinMap.get(plan.id),
+      dataspaceColor: plan.dataspace?.color ?? null
     })),
     ...texts.map((text: (typeof texts)[number]) => ({
       id: text.id,
       title: text.content.trim().split("\n")[0]?.slice(0, 60) || "Text draft",
       type: "Text" as const,
       date: text.updatedAt,
-      href: `/texts/${text.id}`
+      href: `/texts/${text.id}`,
+      dataspaceColor: text.dataspace?.color ?? null
     }))
   ]
     .sort((a, b) => b.date.getTime() - a.date.getTime())
@@ -404,12 +413,12 @@ export default async function DashboardPage() {
         href: `/meetings/${meeting.id}`
       };
     }),
-    ...plans.map((plan: (typeof plans)[number]) => ({
+    ...flows.map((plan: (typeof flows)[number]) => ({
       id: `plan-${plan.id}`,
       title: plan.title,
-      type: "Plan" as const,
+      type: "Template" as const,
       startsAt: plan.startAt.toISOString(),
-      href: `/plans/${plan.id}`
+      href: `/flows/${plan.id}`
     })),
     ...texts.map((text: (typeof texts)[number]) => ({
       id: `text-${text.id}`,
@@ -449,118 +458,23 @@ export default async function DashboardPage() {
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
-            Dashboard
-          </h1>
-          <p className="text-sm text-slate-500">Your meeting, plan, and text activity.</p>
-        </div>
-        <Link href="/meetings/new" className="dr-button px-4 py-2 text-sm">
-          New meeting
-        </Link>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="dr-card p-6">
-          <h2 className="text-sm font-semibold uppercase text-slate-500">Recent activity</h2>
-          <div className="mt-3 space-y-3 text-sm text-slate-700">
-            {recentItems.length === 0 ? (
-              <p className="text-slate-500">No recent activity yet.</p>
-            ) : (
-              recentItems.map((item) => (
-                <div
-                  key={`${item.type}-${item.id}`}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded border border-slate-200 bg-white/70 px-3 py-2"
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-600">
-                        {item.type}
-                      </span>
-                      <p className="font-medium text-slate-900">{item.title}</p>
-                    </div>
-                    <p className="text-xs text-slate-500">{formatDateTime(item.date)}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {"join" in item && item.join?.isPublic ? (
-                      <JoinButton
-                        resourceType={item.type === "Meeting" ? "meeting" : "plan"}
-                        resourceId={item.id}
-                        initialStatus={
-                          item.join.joinStatus as "PENDING" | "JOINED" | "NONE"
-                        }
-                        canJoin={item.join.canJoin}
-                      />
-                    ) : null}
-                    <Link
-                      href={item.href}
-                      className="text-xs font-semibold text-slate-700 hover:underline"
-                    >
-                      Open
-                    </Link>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-        <div className="dr-card p-6">
-          <h2 className="text-sm font-semibold uppercase text-slate-500">Upcoming events</h2>
-          <div className="mt-3 space-y-3 text-sm text-slate-700">
-            {upcomingItems.length === 0 ? (
-              <p className="text-slate-500">No upcoming events scheduled.</p>
-            ) : (
-              upcomingItems.map((item) => (
-                <div
-                  key={`${item.type}-${item.id}`}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded border border-slate-200 bg-white/70 px-3 py-2"
-                >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-600">
-                        {item.type}
-                      </span>
-                      <p className="font-medium text-slate-900">{item.title}</p>
-                    </div>
-                    <p className="text-xs text-slate-500">{formatDateTime(item.startsAt)}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {"join" in item && item.join?.isPublic ? (
-                      <JoinButton
-                        resourceType={item.type === "Meeting" ? "meeting" : "plan"}
-                        resourceId={item.id}
-                        initialStatus={
-                          item.join.joinStatus as "PENDING" | "JOINED" | "NONE"
-                        }
-                        canJoin={item.join.canJoin}
-                      />
-                    ) : null}
-                    <Link
-                      href={item.href}
-                      className="text-xs font-semibold text-slate-700 hover:underline"
-                    >
-                      Open
-                    </Link>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <UpcomingInvites invites={upcomingInvites} />
-      </div>
-
-      <MeetingsTable
-        initialMeetings={rows}
+    <div className="h-[calc(100dvh-140px)] max-h-[calc(100dvh-140px)] overflow-hidden">
+      <DashboardTabs
+        meetingRows={rows}
+        planRows={planRows}
+        textRows={textRows}
         dataspaceOptions={dataspaceOptions}
-        plans={planRows}
-        texts={textRows}
+        recentItems={recentItems.map((item) => ({
+          ...item,
+          date: formatDateTime(item.date)
+        }))}
+        upcomingItems={upcomingItems.map((item) => ({
+          ...item,
+          startsAt: formatDateTime(item.startsAt)
+        }))}
+        upcomingInvites={upcomingInvites}
+        calendarEvents={calendarEvents}
       />
-
-      <CalendarPanel events={calendarEvents} />
     </div>
   );
 }

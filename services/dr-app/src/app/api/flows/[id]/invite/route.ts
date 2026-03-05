@@ -41,7 +41,7 @@ export async function POST(
   });
 
   if (!plan) {
-    return NextResponse.json({ error: "Plan not found" }, { status: 404 });
+    return NextResponse.json({ error: "Template not found" }, { status: 404 });
   }
 
   const isAdmin = session.user.role === "ADMIN";
@@ -72,7 +72,8 @@ export async function POST(
 
   const targetEmail = parsed.data.email.toLowerCase();
   let user = await prisma.user.findUnique({
-    where: { email: targetEmail }
+    where: { email: targetEmail },
+    select: { id: true, email: true, isGuest: true, notifyEmailPlanInvites: true }
   });
 
   const needsGuestInvite = !user || user.isGuest;
@@ -150,7 +151,7 @@ export async function POST(
     });
 
     if (!plan.requiresApproval && plan.capacity && approvedCount + fixedUsers.size >= plan.capacity) {
-      return NextResponse.json({ error: "Plan is full" }, { status: 400 });
+      return NextResponse.json({ error: "Template is full" }, { status: 400 });
     }
 
     await prisma.planParticipant.create({
@@ -201,13 +202,15 @@ export async function POST(
     });
   }
 
-  const emailResult = await sendMail({
-    to: user.email,
-    subject: "You are invited to a plan",
-    html: `<p>You have been invited to the template <strong>${plan.title}</strong>.</p>
-      <p>Open the template: <a href="${appBaseUrl}/flows/${plan.id}">${appBaseUrl}/flows/${plan.id}</a></p>`,
-    text: `You have been invited to the template ${plan.title}. Open: ${appBaseUrl}/flows/${plan.id}`
-  });
+  const emailResult = user.notifyEmailPlanInvites
+    ? await sendMail({
+        to: user.email,
+        subject: "You are invited to a plan",
+        html: `<p>You have been invited to the template <strong>${plan.title}</strong>.</p>
+          <p>Open the template: <a href="${appBaseUrl}/flows/${plan.id}">${appBaseUrl}/flows/${plan.id}</a></p>`,
+        text: `You have been invited to the template ${plan.title}. Open: ${appBaseUrl}/flows/${plan.id}`
+      })
+    : { ok: false };
 
   return NextResponse.json({
     message: "Invite sent",

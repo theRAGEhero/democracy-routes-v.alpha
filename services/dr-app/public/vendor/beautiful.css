@@ -1,0 +1,1063 @@
+:root {
+  --border-color: #cacaca;
+  --background-color: #ffffff;
+
+  --background-box-title: #f7f7f7;
+}
+
+html, body {
+  margin: 0px;
+  padding: 0px;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  font-family: 'Roboto', sans-serif;
+}
+
+header {
+  height: 66px;
+  border-bottom: 1px solid var(--border-color);
+  padding-left: 20px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+header h2 {
+  margin: 0px;
+  line-height: 66px;
+}
+header a {
+  color: black;
+}
+.them-edit-link {
+  position: absolute;
+  top: 10px;
+  right: 100px;
+  color: black;
+  font-size: 40px;
+}
+.them-edit-link a {
+  text-decoration: none;
+}
+
+.github-link{
+  position: absolute;
+  top: 10px;
+  right: 20px;
+  color: black;
+}
+
+.ontology-status {
+  font-size: 13px;
+  color: #444;
+}
+
+.ontology-field {
+  margin-top: 12px;
+}
+
+.ontology-field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.ontology-select {
+  width: 100%;
+  padding: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+}
+
+.ontology-description {
+  font-size: 12px;
+  color: #555;
+  margin-top: 4px;
+  min-height: 14px;
+}
+
+.export-modal {
+  text-align: left;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.export-tip {
+  font-size: 14px;
+  margin-bottom: 8px;
+  color: #333;
+}
+
+.export-pre {
+  background: #f5f5f5;
+  color: #222;
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  overflow: auto;
+  white-space: pre-wrap;
+  max-height: 50vh;
+  min-height: 200px;
+  flex: 1;
+  font-family: "Fira Code", "Courier New", monospace;
+}
+
+.wrapper {
+  width: 100%;
+  height: calc(100vh - 67px);
+  display: flex;
+}
+
+.col {
+  overflow: auto;
+  width: 300px;
+  height: 100%;
+  border-right: 1px solid var(--border-color);
+}
+
+.col.collapsed {
+  width: 60px;
+}
+
+.module-sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+  background: #f7fbff;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.module-sidebar-header span {
+  font-weight: 600;
+  font-size: 14px;
+  color: #0e5ba3;
+}
+
+.module-collapse-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: white;
+  cursor: pointer;
+}
+
+.col.collapsed .module-sidebar-header span {
+  display: none;
+}
+
+.col.collapsed .module-collapse-btn i {
+  transform: rotate(180deg);
+  display: inline-block;
+}
+
+.col.collapsed .drag-drawflow span,
+.col.collapsed .module-editor-trigger span {
+  display: none;
+}
+
+.col.collapsed .drag-drawflow,
+.col.collapsed .module-editor-trigger {
+  padding-left: 0;
+  text-align: center;
+}
+
+.col.collapsed .ontology-panel {
+  display: none;
+}
+
+.col-right {
+  flex: 1;
+  position: relative;
+}
+
+.ontology-panel {
+  padding: 16px 20px 20px;
+  border-top: 1px solid var(--border-color);
+  background: #fafafa;
+}
+
+.ontology-panel h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.ontology-panel input[type="search"] {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.ontology-panel-list {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: white;
+}
+
+.ontology-panel-empty {
+  margin: 12px;
+  font-size: 13px;
+  color: #777;
+}
+
+.ontology-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-color);
+  cursor: move;
+  user-select: none;
+  font-size: 13px;
+  color: #111;
+}
+
+.ontology-item:last-child {
+  border-bottom: none;
+}
+
+.ontology-item:hover {
+  background: #eef6ff;
+}
+
+.ontology-item i {
+  color: #0e5ba3;
+}
+
+.drag-drawflow {
+  line-height: 50px;
+  border-bottom: 1px solid var(--border-color);
+  padding-left: 20px;
+  cursor: move;
+  user-select: none;
+}
+.menu {
+  position: absolute;
+  height: 40px;
+  display: block;
+  background: white;
+  width: 100%;
+}
+.menu ul {
+  padding: 0px;
+  margin: 0px;
+  line-height: 40px;
+}
+
+.menu ul li {
+  display: inline-block;
+margin-left: 10px;
+border-right: 1px solid var(--border-color);
+padding-right: 10px;
+line-height: 40px;
+cursor: pointer;
+}
+
+.menu ul li.selected {
+  font-weight: bold;
+}
+
+.btn-export {
+  float: right;
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  color: white;
+  font-weight: bold;
+  border: 1px solid #0e5ba3;
+  background: #4ea9ff;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  z-index: 5;
+}
+
+.btn-clear {
+  float: right;
+  position: absolute;
+  top: 10px;
+  right: 120px;
+  color: white;
+  font-weight: bold;
+  border: 1px solid #96015b;
+  background: #e3195a;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  z-index: 5;
+}
+
+.btn-export {
+  float: right;
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  color: white;
+  font-weight: bold;
+  border: 1px solid #0e5ba3;
+  background: #4ea9ff;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  z-index: 5;
+}
+.swal-wide{
+    width:80% !important;
+}
+
+.btn-lock {
+  float: right;
+  position: absolute;
+  bottom: 10px;
+  right: 140px;
+  display: flex;
+  font-size: 24px;
+  color: white;
+  padding: 5px 10px;
+  background: #555555;
+  border-radius: 4px;
+  border-right: 1px solid var(--border-color);
+  z-index: 5;
+  cursor: pointer;
+}
+
+.bar-zoom {
+  float: right;
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  display: flex;
+  font-size: 24px;
+  color: white;
+  padding: 5px 10px;
+  background: #555555;
+  border-radius: 4px;
+  border-right: 1px solid var(--border-color);
+  z-index: 5;
+}
+.bar-zoom svg {
+  cursor: pointer;
+  padding-left: 10px;
+}
+.bar-zoom svg:nth-child(1) {
+  padding-left: 0px;
+}
+
+#drawflow {
+  position: relative;
+  width: 100%;
+  height: calc(100% - 50px);
+  top: 40px;
+  background: var(--background-color);
+  background-size: 25px 25px;
+  background-image:
+   linear-gradient(to right, #f1f1f1 1px, transparent 1px),
+   linear-gradient(to bottom, #f1f1f1 1px, transparent 1px);
+}
+
+@media only screen and (max-width: 768px) {
+  .col {
+    width: 50px;
+  }
+  .col .drag-drawflow span {
+    display:none;
+  }
+  #drawflow {
+    width: 100%;
+  }
+}
+
+
+
+/* Editing Drawflow */
+
+.drawflow .drawflow-node {
+  background: var(--background-color);
+  border: 1px solid var(--border-color);
+  -webkit-box-shadow: 0 2px 15px 2px var(--border-color);
+  box-shadow: 0 2px 15px 2px var(--border-color);
+  padding: 0px;
+  width: 200px;
+}
+
+.drawflow .drawflow-node.selected  {
+  background: white;
+  border: 1px solid #4ea9ff;
+  -webkit-box-shadow: 0 2px 20px 2px #4ea9ff;
+  box-shadow: 0 2px 20px 2px #4ea9ff;
+}
+
+.drawflow .drawflow-node.selected .title-box {
+  color: #22598c;
+  /*border-bottom: 1px solid #4ea9ff;*/
+}
+
+.drawflow .connection .main-path {
+  stroke: #4ea9ff;
+  stroke-width: 3px;
+}
+
+.drawflow .drawflow-node .input, .drawflow .drawflow-node .output {
+  height: 15px;
+  width: 15px;
+  border: 2px solid var(--border-color);
+}
+
+.drawflow .drawflow-node .input:hover, .drawflow .drawflow-node .output:hover {
+  background: #4ea9ff;
+}
+
+.drawflow .drawflow-node .output {
+  right: 10px;
+}
+
+.drawflow .drawflow-node .input {
+  left: -10px;
+  background: white;
+}
+
+.drawflow > .drawflow-delete {
+  border: 2px solid #43b993;
+  background: white;
+  color: #43b993;
+  -webkit-box-shadow: 0 2px 20px 2px #43b993;
+  box-shadow: 0 2px 20px 2px #43b993;
+}
+
+.drawflow-delete {
+  border: 2px solid #4ea9ff;
+  background: white;
+  color: #4ea9ff;
+  -webkit-box-shadow: 0 2px 20px 2px #4ea9ff;
+  box-shadow: 0 2px 20px 2px #4ea9ff;
+}
+
+.drawflow-node .title-box {
+  height: 50px;
+  line-height: 50px;
+  background: var(--background-box-title);
+  border-bottom: 1px solid #e9e9e9;
+  border-radius: 4px 4px 0px 0px;
+  padding-left: 10px;
+}
+.drawflow .title-box svg {
+  position: initial;
+}
+.drawflow-node .box {
+  padding: 10px 20px 20px 20px;
+  font-size: 14px;
+  color: #555555;
+
+}
+.drawflow-node .box p {
+  margin-top: 5px;
+  margin-bottom: 5px;
+}
+
+.drawflow-node.welcome {
+  width: 250px;
+}
+
+.drawflow-node.slack .title-box {
+  border-radius: 4px;
+}
+
+.drawflow-node.discussion .title-box {
+  border-radius: 4px;
+}
+
+.drawflow-node input, .drawflow-node select, .drawflow-node textarea {
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  height: 30px;
+  line-height: 30px;
+  font-size: 16px;
+  width: 158px;
+  color: #555555;
+}
+
+.drawflow-node textarea {
+  height: 100px;
+}
+
+.module-action-bar {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.module-action-btn {
+  border-radius: 6px;
+  border: 1px solid #2f7aab;
+  background: #2f7aab;
+  color: #fff;
+  padding: 6px 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.module-action-btn:hover {
+  background: #24648f;
+}
+
+.module-action-status {
+  font-size: 12px;
+  color: #4a4a4a;
+}
+
+.module-action-status[data-tone="error"] {
+  color: #b10e3c;
+}
+
+.module-action-status[data-tone="success"] {
+  color: #1a7b4b;
+}
+
+.module-action-result {
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.module-action-result a {
+  color: #0e5ba3;
+  text-decoration: underline;
+}
+
+.module-action-link {
+  margin-left: 6px;
+  border: 1px solid var(--border-color);
+  background: #f1f6ff;
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+
+.drawflow-node.personalized {
+  background: red;
+  height: 200px;
+  text-align: center;
+  color: white;
+}
+.drawflow-node.personalized .input {
+  background: yellow;
+}
+.drawflow-node.personalized .output {
+  background: green;
+}
+
+.drawflow-node.personalized.selected {
+  background: blue;
+}
+
+.drawflow .connection .point {
+  stroke: var(--border-color);
+  stroke-width: 2;
+  fill: white;
+  
+}
+
+.drawflow .connection .point.selected, .drawflow .connection .point:hover {
+  fill: #4ea9ff;
+}
+
+
+/* Modal */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 7;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: auto;
+  background-color: rgb(0,0,0);
+  background-color: rgba(0,0,0,0.7);
+
+}
+
+.modal-content {
+  position: relative;
+  background-color: #fefefe;
+  margin: 15% auto; /* 15% from the top and centered */
+  padding: 20px;
+  border: 1px solid #888;
+  width: 400px; /* Could be more or less, depending on screen size */
+}
+
+/* The Close Button */
+.modal .close {
+  color: #aaa;
+  float: right;
+  font-size: 28px;
+  font-weight: bold;
+  cursor:pointer;
+}
+
+@media only screen and (max-width: 768px) {
+  .modal-content {
+    width: 80%;
+  }
+}
+
+/* ============================================
+   MODULE EDITOR STYLES
+   ============================================ */
+
+.module-editor-trigger {
+  line-height: 50px;
+  border-bottom: 2px solid var(--border-color);
+  padding-left: 20px;
+  cursor: pointer;
+  user-select: none;
+  background: #f0f8ff;
+  font-weight: 600;
+  color: #0e5ba3;
+}
+
+.module-editor-trigger:hover {
+  background: #e6f2ff;
+}
+
+.module-editor-modal {
+  max-height: 90vh;
+  overflow: hidden;
+}
+
+.module-editor-container {
+  display: flex;
+  gap: 20px;
+  height: 70vh;
+  text-align: left;
+}
+
+.module-editor-sidebar {
+  width: 200px;
+  border-right: 1px solid var(--border-color);
+  overflow-y: auto;
+  padding-right: 15px;
+}
+
+.btn-new-module {
+  width: 100%;
+  padding: 10px;
+  background: #4ea9ff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-bottom: 15px;
+  font-weight: 600;
+}
+
+.module-list {
+  max-height: calc(70vh - 60px);
+  overflow-y: auto;
+}
+
+.module-list-item {
+  padding: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.module-list-item:hover {
+  background: #f0f8ff;
+}
+
+.module-list-item.active {
+  background: #4ea9ff;
+  color: white;
+}
+
+.module-editor-main {
+  flex: 1;
+  display: flex;
+  gap: 20px;
+  overflow: hidden;
+  flex-wrap: nowrap;
+}
+
+.module-editor-form {
+  flex: 2;
+  overflow-y: auto;
+  padding-right: 15px;
+  min-width: 0;
+}
+
+.module-preview {
+  flex: 1;
+  border-left: 1px solid var(--border-color);
+  padding-left: 15px;
+  overflow-y: auto;
+  min-width: 0;
+}
+
+.editor-section {
+  margin-bottom: 25px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.editor-section h3 {
+  margin-top: 0;
+  color: #333;
+}
+
+.editor-section label {
+  display: block;
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+
+.editor-section input[type="text"],
+.editor-section input[type="number"],
+.editor-section select {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  margin-top: 5px;
+}
+
+.input-output-controls {
+  display: flex;
+  gap: 15px;
+}
+
+.input-output-controls label {
+  flex: 1;
+}
+
+.icon-picker-grid {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 10px;
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+  gap: 8px;
+}
+
+.icon-item {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 18px;
+  transition: all 0.2s;
+}
+
+.icon-item:hover {
+  background: #f0f8ff;
+  border-color: #4ea9ff;
+}
+
+.icon-item.selected {
+  background: #4ea9ff;
+  color: white;
+  border-color: #0e5ba3;
+}
+
+.btn-add-field {
+  padding: 8px 15px;
+  background: #43b993;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-bottom: 15px;
+}
+
+.fields-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.field-editor-row {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: #fafafa;
+  align-items: start;
+}
+
+.field-controls {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.field-row select,
+.field-row input {
+  padding: 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+}
+
+.field-type-select {
+  flex: 0 0 120px;
+}
+
+.field-label-input,
+.field-slug-input {
+  flex: 1;
+}
+
+.field-placeholder-input,
+.field-options-input {
+  width: 100%;
+}
+
+.btn-remove-field {
+  padding: 6px 10px;
+  background: #e3195a;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  align-self: start;
+}
+
+.editor-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.btn-save {
+  padding: 12px 24px;
+  background: #43b993;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.btn-delete {
+  padding: 12px 24px;
+  background: #e3195a;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.preview-container {
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 15px;
+  background: white;
+  min-height: 300px;
+}
+
+.preview-container .drawflow-node {
+  position: static;
+  width: auto;
+  margin: 0;
+}
+
+.drag-drawflow.custom-module {
+  background: #f0f8ff;
+  border-left: 3px solid #4ea9ff;
+}
+
+.empty-state {
+  text-align: center;
+  color: #999;
+  padding: 20px;
+  font-style: italic;
+}
+
+.btn-new-workflow {
+  width: 100%;
+  padding: 10px;
+  background: #4ea9ff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 15px;
+}
+
+.workflow-panel {
+  display: none;
+}
+
+.workflow-panel-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  flex: 1;
+}
+
+.workflow-panel-item {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 8px 10px;
+  gap: 10px;
+  background: white;
+}
+
+.workflow-title {
+  font-weight: 600;
+  color: #333;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.workflow-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.workflow-actions button {
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  background: #f7f7f7;
+  flex: 1 1 100px;
+}
+
+.workflow-actions button:hover {
+  background: #eef5ff;
+}
+
+.workflow-sidebar {
+  width: 280px;
+  border-left: 1px solid var(--border-color);
+  background: #f7fbff;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.2s ease;
+}
+
+.workflow-sidebar.collapsed {
+  width: 44px;
+}
+
+.workflow-sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.workflow-sidebar-header h3 {
+  margin: 0;
+  font-size: 16px;
+  flex: 1;
+}
+
+.workflow-sidebar .btn-new-workflow {
+  width: auto;
+  margin-bottom: 0;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.workflow-collapse-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: white;
+  cursor: pointer;
+}
+
+.workflow-sidebar.collapsed .workflow-sidebar-header h3,
+.workflow-sidebar.collapsed .btn-new-workflow,
+.workflow-sidebar.collapsed .workflow-panel-list {
+  display: none;
+}
+
+.workflow-sidebar.collapsed .workflow-collapse-btn {
+  margin: 0 auto;
+}
+
+.workflow-sidebar.collapsed .workflow-collapse-btn i {
+  transform: rotate(180deg);
+  display: inline-block;
+}
+
+.workflow-sidebar-actions {
+  padding: 12px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-workflow-action {
+  flex: 1 1 45%;
+  padding: 8px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  background: white;
+  cursor: pointer;
+  font-weight: 600;
+  color: #0e5ba3;
+}
+
+.btn-workflow-action.btn-workflow-delete {
+  color: #b10e3c;
+  border-color: #e3195a;
+  background: #fff5f7;
+}
+
+.btn-workflow-action:hover {
+  background: #eef5ff;
+}
+
+.workflow-sidebar.collapsed .workflow-sidebar-actions {
+  display: none;
+}

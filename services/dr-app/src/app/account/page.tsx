@@ -14,7 +14,20 @@ export default async function AccountSettingsPage() {
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { telegramHandle: true, calComLink: true, email: true }
+    select: {
+      telegramHandle: true,
+      calComLink: true,
+      email: true,
+      avatarUrl: true,
+      notifyEmailMeetingInvites: true,
+      notifyTelegramMeetingInvites: true,
+      notifyEmailPlanInvites: true,
+      notifyTelegramPlanInvites: true,
+      notifyEmailDataspaceInvites: true,
+      notifyTelegramDataspaceInvites: true,
+      notifyEmailDataspaceActivity: true,
+      notifyTelegramDataspaceActivity: true
+    }
   });
 
   return (
@@ -31,6 +44,15 @@ export default async function AccountSettingsPage() {
           <ProfileSettingsForm
             initialTelegramHandle={user?.telegramHandle ?? ""}
             initialCalComLink={user?.calComLink ?? ""}
+            initialAvatarUrl={user?.avatarUrl ?? ""}
+            initialNotifyEmailMeetingInvites={user?.notifyEmailMeetingInvites ?? true}
+            initialNotifyTelegramMeetingInvites={user?.notifyTelegramMeetingInvites ?? true}
+            initialNotifyEmailPlanInvites={user?.notifyEmailPlanInvites ?? true}
+            initialNotifyTelegramPlanInvites={user?.notifyTelegramPlanInvites ?? true}
+            initialNotifyEmailDataspaceInvites={user?.notifyEmailDataspaceInvites ?? true}
+            initialNotifyTelegramDataspaceInvites={user?.notifyTelegramDataspaceInvites ?? true}
+            initialNotifyEmailDataspaceActivity={user?.notifyEmailDataspaceActivity ?? true}
+            initialNotifyTelegramDataspaceActivity={user?.notifyTelegramDataspaceActivity ?? true}
           />
         </div>
         <div className="dr-card p-6">

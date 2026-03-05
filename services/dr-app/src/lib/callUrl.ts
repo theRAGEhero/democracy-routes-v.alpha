@@ -9,6 +9,8 @@ type BuildCallJoinUrlOptions = {
   transcriptionLanguage?: string | null;
   autoRecordAudio?: boolean;
   autoRecordVideo?: boolean;
+  drAppBaseUrl?: string | null;
+  accessToken?: string | null;
 };
 
 function normalizeBooleanFlag(value: boolean | undefined) {
@@ -18,7 +20,15 @@ function normalizeBooleanFlag(value: boolean | undefined) {
 export function normalizeCallBaseUrl(baseUrl?: string | null) {
   const raw = String(baseUrl || "").trim();
   if (!raw) return "/video";
-  return raw.replace(/\/+$/, "");
+  try {
+    const url = new URL(raw);
+    if (url.pathname === "/" || url.pathname === "") {
+      url.pathname = "/video";
+    }
+    return url.toString().replace(/\/+$/, "");
+  } catch {
+    return raw.replace(/\/+$/, "");
+  }
 }
 
 export function buildCallJoinUrl(options: BuildCallJoinUrlOptions) {
@@ -48,6 +58,11 @@ export function buildCallJoinUrl(options: BuildCallJoinUrlOptions) {
   const autoRecordVideo = normalizeBooleanFlag(options.autoRecordVideo);
   if (autoRecordAudio) params.set("autorecordaudio", autoRecordAudio);
   if (autoRecordVideo) params.set("autorecordvideo", autoRecordVideo);
+
+  const drAppBaseUrl = String(options.drAppBaseUrl || "").trim();
+  if (drAppBaseUrl) params.set("drAppBase", drAppBaseUrl);
+  const accessToken = String(options.accessToken || "").trim();
+  if (accessToken) params.set("access", accessToken);
 
   const query = params.toString();
   return query ? `${path}?${query}` : path;

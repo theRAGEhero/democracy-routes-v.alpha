@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TranscriptionPanel } from "@/app/meetings/[id]/TranscriptionPanel";
 import { MeditationRoundEmbed } from "@/app/flows/[id]/MeditationRoundEmbed";
 import { RecordRoundEmbed } from "@/app/flows/[id]/RecordRoundEmbed";
@@ -36,13 +36,15 @@ type Props = {
   meditationAudioUrl?: string | null;
   blocks: Array<{
     id: string;
-    type: "ROUND" | "MEDITATION" | "POSTER" | "TEXT" | "RECORD" | "FORM";
+    type: "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING";
     durationSeconds: number;
     roundNumber: number | null;
     formQuestion?: string | null;
     formChoices?: Array<{ key: string; label: string }> | null;
     meditationAnimationId?: string | null;
     meditationAudioUrl?: string | null;
+    embedUrl?: string | null;
+    matchingMode?: "polar" | "anti" | null;
     poster: { id: string; title: string; content: string } | null;
   }>;
   roundGroups: Array<{
@@ -51,9 +53,11 @@ type Props = {
   }>;
   assignments: RoundAssignment[];
   baseUrl: string;
+  accessTokens: Record<string, string>;
   userEmail: string;
   callDisplayName?: string;
   guestToken?: string | null;
+  canSkip?: boolean;
 };
 
 function formatDuration(totalSeconds: number) {
@@ -76,6 +80,33 @@ function formatCountdownHuman(totalSeconds: number) {
   return parts.join(" ");
 }
 
+function normalizeEmbedUrl(raw: string) {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  try {
+    const url = new URL(trimmed);
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return "";
+    }
+    if (url.hostname === "youtu.be") {
+      const id = url.pathname.replace("/", "").trim();
+      return id ? `https://www.youtube.com/embed/${id}` : trimmed;
+    }
+    if (url.hostname.includes("youtube.com")) {
+      if (url.pathname.startsWith("/embed/")) {
+        return url.toString();
+      }
+      const id = url.searchParams.get("v");
+      if (id) {
+        return `https://www.youtube.com/embed/${id}`;
+      }
+    }
+    return url.toString();
+  } catch {
+    return trimmed;
+  }
+}
+
 export function ParticipantViewClient({
   planId,
   planTitle,
@@ -96,9 +127,11 @@ export function ParticipantViewClient({
   roundGroups,
   assignments,
   baseUrl,
+  accessTokens,
   userEmail,
   callDisplayName,
-  guestToken
+  guestToken,
+  canSkip = false
 }: Props) {
   const startTime = useMemo(() => new Date(startAt).getTime(), [startAt]);
   const [now, setNow] = useState<number | null>(null);
@@ -166,6 +199,8 @@ export function ParticipantViewClient({
   const [showModal, setShowModal] = useState(false);
   const [autoOpenedModal, setAutoOpenedModal] = useState(false);
   const [meditationMuted, setMeditationMuted] = useState(false);
+  const [skipLoading, setSkipLoading] = useState(false);
+  const autoMatchingRef = useRef<Set<string>>(new Set());
   const withGuestToken = (url: string) => {
     if (!guestToken) return url;
     const separator = url.includes("?") ? "&" : "?";
@@ -255,65 +290,64 @@ export function ParticipantViewClient({
     };
   }, [planId]);
 
+  const syncServerTime = useCallback(async () => {
+    try {
+      const response = await fetch(
+        withGuestToken(`/api/flows/${planId}/current?include_meetings=1`)
+      );
+      if (!response.ok) return;
+      const payload = await response.json().catch(() => null);
+      const serverNow = Date.parse(payload?.serverNow);
+      if (Number.isNaN(serverNow)) return;
+      setOffsetMs(serverNow - Date.now());
+      if (Array.isArray(payload?.currentRoundMeetings)) {
+        setMeetingByRound((prev) => {
+          const next = { ...prev };
+          payload.currentRoundMeetings.forEach((item: { roomId: string; meetingId: string }) => {
+            const assignment = assignments.find((entry) => entry.roomId === item.roomId);
+            if (assignment) {
+              next[assignment.roundNumber] = item.meetingId;
+            }
+          });
+          return next;
+        });
+      }
+      if (payload?.assignment?.roomId) {
+        const base = assignments.find(
+          (entry) => entry.roundNumber === payload.assignment.roundNumber
+        );
+        setLiveAssignment({
+          roundNumber: payload.assignment.roundNumber,
+          roomId: payload.assignment.roomId,
+          meetingId: payload.assignment.meetingId ?? null,
+          isBreak: Boolean(payload.assignment.isBreak),
+          partnerLabel: base?.partnerLabel ?? "Partner"
+        });
+        if (payload.assignment.meetingId) {
+          setMeetingByRound((prev) => ({
+            ...prev,
+            [payload.assignment.roundNumber]: payload.assignment.meetingId
+          }));
+        }
+      }
+    } catch (error) {
+      // keep local timing if server sync fails
+    }
+  }, [assignments, planId, withGuestToken]);
+
   useEffect(() => {
     if (syncMode !== "SERVER") return;
-
     let mounted = true;
-
-    async function syncServerTime() {
-      try {
-        const response = await fetch(
-          withGuestToken(`/api/flows/${planId}/current?include_meetings=1`)
-        );
-        if (!response.ok) return;
-        const payload = await response.json().catch(() => null);
-        const serverNow = Date.parse(payload?.serverNow);
-        if (Number.isNaN(serverNow)) return;
-        if (mounted) {
-          setOffsetMs(serverNow - Date.now());
-          if (Array.isArray(payload?.currentRoundMeetings)) {
-            setMeetingByRound((prev) => {
-              const next = { ...prev };
-              payload.currentRoundMeetings.forEach((item: { roomId: string; meetingId: string }) => {
-                const assignment = assignments.find((entry) => entry.roomId === item.roomId);
-                if (assignment) {
-                  next[assignment.roundNumber] = item.meetingId;
-                }
-              });
-              return next;
-            });
-          }
-          if (payload?.assignment?.roomId) {
-            const base = assignments.find(
-              (entry) => entry.roundNumber === payload.assignment.roundNumber
-            );
-            setLiveAssignment({
-              roundNumber: payload.assignment.roundNumber,
-              roomId: payload.assignment.roomId,
-              meetingId: payload.assignment.meetingId ?? null,
-              isBreak: Boolean(payload.assignment.isBreak),
-              partnerLabel: base?.partnerLabel ?? "Partner"
-            });
-            if (payload.assignment.meetingId) {
-              setMeetingByRound((prev) => ({
-                ...prev,
-                [payload.assignment.roundNumber]: payload.assignment.meetingId
-              }));
-            }
-          }
-        }
-      } catch (error) {
-        // keep local timing if server sync fails
-      }
-    }
-
     syncServerTime();
-    const timer = setInterval(syncServerTime, 10000);
+    const timer = setInterval(() => {
+      if (!mounted) return;
+      syncServerTime();
+    }, 10000);
     return () => {
       mounted = false;
       clearInterval(timer);
     };
-  }, [planId, syncMode]);
+  }, [syncMode, syncServerTime]);
 
   const nowValue = now ?? startTime;
   const effectiveNow =
@@ -348,7 +382,7 @@ export function ParticipantViewClient({
   const elapsed = effectiveNow - startTime;
   const currentSegment = getSegmentAtTime(schedule.segments, effectiveNow);
   const currentRoundIndex =
-    currentSegment?.type === "ROUND"
+    currentSegment?.type === "PAIRING"
       ? currentSegment?.roundNumber ?? 1
       : currentSegment?.roundAfter ?? 1;
 
@@ -425,34 +459,35 @@ export function ParticipantViewClient({
   const liveTranscriptionEnabled = transcriptionProvider === "DEEPGRAMLIVE";
   const transcriptionLanguageCode = liveTranscriptionEnabled ? (language === "IT" ? "it" : "en") : "";
   const displayName = buildDisplayName(callDisplayName, userEmail);
-  const joinUrl =
-    assignment && !assignment.isBreak
-      ? buildCallJoinUrl({
-          baseUrl,
-          roomId: assignment.roomId,
-          meetingId: currentMeetingId,
-          name: displayName,
-          autojoin: true,
-          embed: true,
-          autoRecordVideo: liveTranscriptionEnabled,
-          transcriptionLanguage: transcriptionLanguageCode
-        })
-      : "";
+  const canJoinCall = Boolean(assignment && !assignment.isBreak && currentMeetingId);
+  const joinUrl = canJoinCall
+    ? buildCallJoinUrl({
+        baseUrl,
+        roomId: assignment!.roomId,
+        meetingId: currentMeetingId!,
+        name: displayName,
+        autojoin: true,
+        embed: true,
+        autoRecordVideo: liveTranscriptionEnabled,
+        transcriptionLanguage: transcriptionLanguageCode,
+        accessToken: accessTokens[assignment!.roomId]
+      })
+    : "";
 
-  const meditationActive = status === "active" && currentSegment?.type === "MEDITATION";
+  const meditationActive = status === "active" && currentSegment?.type === "PAUSE";
   const meditationIndex = currentSegment?.meditationIndex ?? 0;
   const roundAfter = currentSegment?.roundAfter ?? null;
   const currentBlock = currentSegment?.blockId ? blockById.get(currentSegment.blockId) : null;
   const currentMeditationAnimationId =
-    currentSegment?.type === "MEDITATION"
+    currentSegment?.type === "PAUSE"
       ? currentBlock?.meditationAnimationId ?? meditationAnimationId
       : meditationAnimationId;
   const currentMeditationAudioUrl =
-    currentSegment?.type === "MEDITATION"
+    currentSegment?.type === "PAUSE"
       ? currentBlock?.meditationAudioUrl ?? meditationAudioUrl
       : meditationAudioUrl;
-  const posterActive = status === "active" && currentSegment?.type === "POSTER";
-  const textActive = status === "active" && currentSegment?.type === "TEXT";
+  const posterActive = status === "active" && currentSegment?.type === "PROMPT";
+  const textActive = status === "active" && currentSegment?.type === "NOTES";
   const recordActive = status === "active" && currentSegment?.type === "RECORD";
   const recordIndex = currentSegment?.recordIndex ?? 0;
   const recordBlockId = currentSegment?.blockId ?? null;
@@ -462,9 +497,51 @@ export function ParticipantViewClient({
   const currentFormChoices = currentFormBlock?.formChoices ?? [];
   const currentFormQuestion = currentFormBlock?.formQuestion ?? "Form";
   const currentFormResponse = formBlockId ? formResponses[formBlockId] : undefined;
+  const embedActive = status === "active" && currentSegment?.type === "EMBED";
+  const embedUrlRaw =
+    currentSegment?.type === "EMBED" ? currentBlock?.embedUrl ?? "" : "";
+  const embedUrl = embedUrlRaw ? normalizeEmbedUrl(embedUrlRaw) : "";
   const experienceContainerClass = showModal
     ? "h-full min-h-0"
     : "min-h-[72vh] h-[72vh]";
+
+  useEffect(() => {
+    if (!canSkip) return;
+    if (status !== "active" || currentSegment?.type !== "MATCHING") return;
+    const blockId = currentSegment.blockId ?? `segment-${currentSegment.startAtMs}`;
+    if (autoMatchingRef.current.has(blockId)) return;
+    autoMatchingRef.current.add(blockId);
+    const mode = currentBlock?.matchingMode === "anti" ? "anti" : "polar";
+    const runMatching = async () => {
+      try {
+        await fetch(withGuestToken(`/api/flows/${planId}/matching/run`), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...guestHeaders
+          },
+          body: JSON.stringify({ mode })
+        });
+      } catch (error) {
+        logClientWarn("matching-auto-run-failed", "auto-run failed", {
+          planId,
+          blockId,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
+    };
+    void runMatching();
+  }, [
+    canSkip,
+    currentSegment?.type,
+    currentSegment?.blockId,
+    currentSegment?.startAtMs,
+    currentBlock?.matchingMode,
+    guestHeaders,
+    planId,
+    status,
+    withGuestToken
+  ]);
 
   useEffect(() => {
     if (meditationActive) {
@@ -625,6 +702,26 @@ export function ParticipantViewClient({
         <p className="mt-4 text-xs text-emerald-200/80">Response saved.</p>
       ) : null}
     </div>
+  ) : embedActive ? (
+    <div
+      className={`overflow-hidden rounded-3xl border border-slate-800 bg-slate-950/80 ${experienceContainerClass} ${
+        showModal ? "flex min-h-0 flex-col" : ""
+      }`}
+    >
+      {embedUrl ? (
+        <CallFrame
+          src={embedUrl}
+          title="Embedded content"
+          className={`w-full ${showModal ? "flex-1 min-h-0" : "h-[72vh]"}`}
+          frameClassName="w-full h-full"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+        />
+      ) : (
+        <div className="flex flex-1 items-center justify-center px-6 py-10 text-center text-sm text-slate-300">
+          Embed URL missing or invalid.
+        </div>
+      )}
+    </div>
   ) : meditationActive ? (
     <MeditationRoundEmbed
       meditationIndex={meditationIndex}
@@ -657,13 +754,19 @@ export function ParticipantViewClient({
         showModal ? "flex min-h-0 flex-col" : ""
       }`}
     >
-      <CallFrame
-        src={joinUrl}
-        title="Call"
-        className={`w-full ${showModal ? "flex-1 min-h-0" : "h-[72vh]"}`}
-        frameClassName="w-full h-full"
-        allow="camera; microphone; fullscreen"
-      />
+      {canJoinCall ? (
+        <CallFrame
+          src={joinUrl}
+          title="Call"
+          className={`w-full ${showModal ? "flex-1 min-h-0" : "h-[72vh]"}`}
+          frameClassName="w-full h-full"
+          allow="camera; microphone; fullscreen"
+        />
+      ) : (
+        <div className="flex flex-1 items-center justify-center px-6 py-10 text-center text-sm text-slate-300">
+          Preparing your meeting link…
+        </div>
+      )}
     </div>
   ) : assignment?.isBreak ? (
     <div
@@ -675,7 +778,7 @@ export function ParticipantViewClient({
     <div
       className={`flex items-center justify-center rounded-3xl border border-white/10 bg-slate-950/70 px-6 py-10 text-center text-slate-200 ${experienceContainerClass}`}
     >
-      <p className="text-lg">Plan finished.</p>
+      <p className="text-lg">Template finished.</p>
     </div>
   ) : (
     <div
@@ -743,7 +846,7 @@ export function ParticipantViewClient({
   useEffect(() => {
     if (status !== "done") return;
     const textBlockIds = schedule.segments
-      .filter((segment) => segment.type === "TEXT" && segment.blockId)
+      .filter((segment) => segment.type === "NOTES" && segment.blockId)
       .map((segment) => segment.blockId as string);
     if (textBlockIds.length === 0) return;
 
@@ -877,12 +980,29 @@ export function ParticipantViewClient({
     setCompletedRecordBlocks((prev) => new Set([...prev, recordBlockId]));
   }
 
+  async function handleSkip() {
+    if (skipLoading) return;
+    setSkipLoading(true);
+    try {
+      const response = await fetch(withGuestToken(`/api/flows/${planId}/skip`), {
+        method: "POST",
+        headers: guestHeaders
+      });
+      await response.json().catch(() => null);
+      await syncServerTime();
+    } catch {
+      // ignore
+    } finally {
+      setSkipLoading(false);
+    }
+  }
+
   return (
     <div className="dr-card dr-card-no-filter p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-2xl font-semibold" style={{ fontFamily: "var(--font-serif)" }}>
-            {planTitle ? planTitle : "Plan"}
+            {planTitle ? planTitle : "Template"}
           </h2>
           <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-slate-500">
             <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[10px] font-semibold uppercase text-slate-600">
@@ -894,20 +1014,21 @@ export function ParticipantViewClient({
             <span className="uppercase tracking-[0.18em]">Phase</span>
             <span className="font-semibold text-slate-900">
               {status === "pending" && "Not started"}
-              {status === "active" && currentSegment?.type === "MEDITATION"
+              {status === "active" && currentSegment?.type === "PAUSE"
                 ? `Pause ${meditationIndex}`
                 : null}
-              {status === "active" && currentSegment?.type === "POSTER"
+              {status === "active" && currentSegment?.type === "PROMPT"
                 ? currentBlock?.poster?.title
                   ? `Prompt · ${currentBlock.poster.title}`
                   : "Prompt"
                 : null}
-              {status === "active" && currentSegment?.type === "TEXT" ? "Notes" : null}
+              {status === "active" && currentSegment?.type === "NOTES" ? "Notes" : null}
               {status === "active" && currentSegment?.type === "FORM" ? "Form" : null}
+              {status === "active" && currentSegment?.type === "EMBED" ? "Embed" : null}
               {status === "active" && currentSegment?.type === "RECORD"
                 ? `Record ${recordIndex || ""}`.trim()
                 : null}
-              {status === "active" && currentSegment?.type === "ROUND"
+              {status === "active" && currentSegment?.type === "PAIRING"
                 ? `Pairing ${currentRound} of ${roundsCount}`
                 : null}
               {status === "done" && "Finished"}
@@ -918,12 +1039,13 @@ export function ParticipantViewClient({
             </span>
             <span className="uppercase tracking-[0.18em]">Partner</span>
             <span className="font-semibold text-slate-900">
-              {currentSegment?.type === "MEDITATION" ? "Solo" : null}
-              {currentSegment?.type === "POSTER" ? "Focus" : null}
-              {currentSegment?.type === "TEXT" ? "Your notes" : null}
+              {currentSegment?.type === "PAUSE" ? "Solo" : null}
+              {currentSegment?.type === "PROMPT" ? "Focus" : null}
+              {currentSegment?.type === "NOTES" ? "Your notes" : null}
               {currentSegment?.type === "FORM" ? "Your response" : null}
+              {currentSegment?.type === "EMBED" ? "Focus" : null}
               {currentSegment?.type === "RECORD" ? "Solo" : null}
-              {currentSegment?.type === "ROUND" ? (assignment ? assignment.partnerLabel : "-") : null}
+              {currentSegment?.type === "PAIRING" ? (assignment ? assignment.partnerLabel : "-") : null}
             </span>
             {status === "pending" ? (
               <span className="text-slate-500">
@@ -933,6 +1055,18 @@ export function ParticipantViewClient({
             ) : null}
           </div>
         </div>
+        {canSkip && syncMode === "SERVER" ? (
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSkip}
+              className="dr-button-outline px-3 py-1 text-xs"
+              disabled={status !== "active" || skipLoading}
+            >
+              {skipLoading ? "Skipping..." : "Skip phase"}
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {showModal ? (
@@ -952,7 +1086,7 @@ export function ParticipantViewClient({
 
       <div
         className={`mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white/80 ${
-          showModal ? "fixed inset-0 z-[10000] m-4 flex h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] flex-col" : ""
+          showModal ? "fixed inset-0 z-[10000] m-4 flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col" : ""
         }`}
         onClick={(event) => event.stopPropagation()}
       >
@@ -967,12 +1101,14 @@ export function ParticipantViewClient({
           <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
             <span className="font-semibold text-slate-700">Experience</span>
             <span className="text-slate-700">
-              {currentSegment?.type === "ROUND"
+              {currentSegment?.type === "PAIRING"
                 ? "1:1 call"
                 : currentSegment?.type === "RECORD"
                   ? "Record"
                   : currentSegment?.type === "FORM"
                     ? "Form"
+                    : currentSegment?.type === "EMBED"
+                      ? "Embed"
                   : currentSegment?.type ?? "Waiting"}
             </span>
           </div>
@@ -982,12 +1118,13 @@ export function ParticipantViewClient({
             </span>
             <span className="text-slate-400">·</span>
             <span className="font-semibold text-slate-700">
-              {currentSegment?.type === "MEDITATION" ? "Solo" : null}
-              {currentSegment?.type === "POSTER" ? "Focus" : null}
-              {currentSegment?.type === "TEXT" ? "Your notes" : null}
+              {currentSegment?.type === "PAUSE" ? "Solo" : null}
+              {currentSegment?.type === "PROMPT" ? "Focus" : null}
+              {currentSegment?.type === "NOTES" ? "Your notes" : null}
               {currentSegment?.type === "FORM" ? "Your response" : null}
+              {currentSegment?.type === "EMBED" ? "Focus" : null}
               {currentSegment?.type === "RECORD" ? "Solo" : null}
-              {currentSegment?.type === "ROUND" ? (assignment ? assignment.partnerLabel : "-") : null}
+              {currentSegment?.type === "PAIRING" ? (assignment ? assignment.partnerLabel : "-") : null}
             </span>
             {meditationActive ? (
               <button
@@ -1048,7 +1185,7 @@ export function ParticipantViewClient({
         <div className="mt-10 rounded-3xl border border-slate-200/70 bg-white/80 p-6 shadow-[0_25px_60px_rgba(15,23,42,0.12)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Plan recap</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Template recap</p>
               <h3 className="mt-2 text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
                 Your journey, captured
               </h3>
@@ -1074,7 +1211,7 @@ export function ParticipantViewClient({
                     recapView === "plan" ? "bg-slate-900 text-white" : "hover:text-slate-900"
                   }`}
                 >
-                  Plan view
+                  Template view
                 </button>
               </div>
               <button
@@ -1099,7 +1236,7 @@ export function ParticipantViewClient({
                 1,
                 Math.floor((segment.endAtMs - segment.startAtMs) / 1000)
               );
-              if (segment.type === "ROUND") {
+              if (segment.type === "PAIRING") {
                 const roundNumber = segment.roundNumber ?? index + 1;
                 const roundAssignment = assignments.find((item) => item.roundNumber === roundNumber);
                 const meetingId =
@@ -1162,7 +1299,7 @@ export function ParticipantViewClient({
                 );
               }
 
-              if (segment.type === "MEDITATION") {
+              if (segment.type === "PAUSE") {
                 const sessions =
                   recapView === "plan"
                     ? planRecapMeditations.filter(
@@ -1351,7 +1488,7 @@ export function ParticipantViewClient({
                 );
               }
 
-                if (segment.type === "POSTER") {
+                if (segment.type === "PROMPT") {
                   const poster = segment.blockId ? blockById.get(segment.blockId)?.poster : null;
                   return (
                     <div
@@ -1376,7 +1513,56 @@ export function ParticipantViewClient({
                   );
                 }
 
-              if (segment.type === "TEXT") {
+              if (segment.type === "EMBED") {
+                const embedBlock = segment.blockId ? blockById.get(segment.blockId) : null;
+                const embedLink = embedBlock?.embedUrl ? normalizeEmbedUrl(embedBlock.embedUrl) : "";
+                return (
+                  <div
+                    key={`recap-embed-${index}`}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-xs font-semibold uppercase text-slate-500">Embed</p>
+                      <p className="text-xs text-slate-500">
+                        Duration {formatDuration(durationSeconds)}
+                      </p>
+                    </div>
+                    {embedLink ? (
+                      <div className="mt-3 overflow-hidden rounded-xl border border-slate-200">
+                        <iframe
+                          title="Embedded content"
+                          src={embedLink}
+                          className="h-56 w-full"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                        />
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-sm text-slate-600">No embed link.</p>
+                    )}
+                  </div>
+                );
+              }
+
+              if (segment.type === "MATCHING") {
+                return (
+                  <div
+                    key={`recap-matching-${index}`}
+                    className="rounded-2xl border border-fuchsia-200/60 bg-fuchsia-50/60 px-4 py-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-xs font-semibold uppercase text-fuchsia-700">Matching</p>
+                      <p className="text-xs text-fuchsia-700/70">
+                        Duration {formatDuration(durationSeconds)}
+                      </p>
+                    </div>
+                    <p className="mt-2 text-sm text-fuchsia-900">
+                      Matching step completed. Check the organizer view for detailed pairings.
+                    </p>
+                  </div>
+                );
+              }
+
+              if (segment.type === "NOTES") {
                 const entry = segment.blockId ? completedTextEntries[segment.blockId] : "";
                 const blockEntries =
                   recapView === "plan" && segment.blockId

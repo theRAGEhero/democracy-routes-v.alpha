@@ -1,4 +1,12 @@
-export type PlanBlockType = "ROUND" | "MEDITATION" | "POSTER" | "TEXT" | "RECORD" | "FORM";
+export type PlanBlockType =
+  | "PAIRING"
+  | "PAUSE"
+  | "PROMPT"
+  | "NOTES"
+  | "RECORD"
+  | "FORM"
+  | "EMBED"
+  | "MATCHING";
 
 export type PlanBlockInput = {
   id?: string | null;
@@ -9,6 +17,8 @@ export type PlanBlockInput = {
   formQuestion?: string | null;
   formChoices?: Array<{ key: string; label: string }> | null;
   posterId?: string | null;
+  embedUrl?: string | null;
+  matchingMode?: "polar" | "anti" | null;
 };
 
 export type PlanSegment = {
@@ -45,7 +55,7 @@ export function buildLegacySegments(config: LegacyPlanConfig) {
   if (config.meditationEnabled && config.meditationAtStart) {
     meditationIndex += 1;
     segments.push({
-      type: "MEDITATION",
+      type: "PAUSE",
       meditationIndex,
       roundAfter: 1,
       startAtMs: cursor,
@@ -56,7 +66,7 @@ export function buildLegacySegments(config: LegacyPlanConfig) {
 
   for (let round = 1; round <= config.roundsCount; round += 1) {
     segments.push({
-      type: "ROUND",
+      type: "PAIRING",
       roundNumber: round,
       startAtMs: cursor,
       endAtMs: cursor + roundDurationMs
@@ -66,7 +76,7 @@ export function buildLegacySegments(config: LegacyPlanConfig) {
     if (config.meditationEnabled && config.meditationBetweenRounds && round < config.roundsCount) {
       meditationIndex += 1;
       segments.push({
-        type: "MEDITATION",
+        type: "PAUSE",
         meditationIndex,
         roundAfter: round + 1,
         startAtMs: cursor,
@@ -79,7 +89,7 @@ export function buildLegacySegments(config: LegacyPlanConfig) {
   if (config.meditationEnabled && config.meditationAtEnd) {
     meditationIndex += 1;
     segments.push({
-      type: "MEDITATION",
+      type: "PAUSE",
       meditationIndex,
       roundAfter: null,
       startAtMs: cursor,
@@ -99,22 +109,22 @@ export function buildPlanSegmentsFromBlocks(startAt: Date, blocks: PlanBlockInpu
   let lastRoundNumber = 0;
 
   const roundNumbers = blocks
-    .filter((block) => block.type === "ROUND" && block.roundNumber)
+    .filter((block) => block.type === "PAIRING" && block.roundNumber)
     .map((block) => block.roundNumber as number);
 
   blocks.forEach((block) => {
     const durationMs = Math.max(1, block.durationSeconds) * 1000;
-    if (block.type === "MEDITATION") {
+    if (block.type === "PAUSE") {
       meditationIndex += 1;
     }
     if (block.type === "RECORD") {
       recordIndex += 1;
     }
-    if (block.type === "ROUND" && block.roundNumber) {
+    if (block.type === "PAIRING" && block.roundNumber) {
       lastRoundNumber = block.roundNumber;
     }
     const nextRoundNumber =
-      block.type !== "ROUND"
+      block.type !== "PAIRING"
         ? roundNumbers.find((round) => round > lastRoundNumber) ?? null
         : null;
 
@@ -122,9 +132,9 @@ export function buildPlanSegmentsFromBlocks(startAt: Date, blocks: PlanBlockInpu
       type: block.type,
       blockId: block.id ?? null,
       roundNumber: block.roundNumber ?? null,
-      meditationIndex: block.type === "MEDITATION" ? meditationIndex : undefined,
+      meditationIndex: block.type === "PAUSE" ? meditationIndex : undefined,
       recordIndex: block.type === "RECORD" ? recordIndex : undefined,
-      roundAfter: block.type !== "ROUND" ? nextRoundNumber : null,
+      roundAfter: block.type !== "PAIRING" ? nextRoundNumber : null,
       posterId: block.posterId ?? null,
       startAtMs: cursor,
       endAtMs: cursor + durationMs

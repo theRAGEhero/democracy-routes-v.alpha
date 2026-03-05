@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { createDataspaceSchema } from "@/lib/validators";
+import { pickDataspaceColor } from "@/lib/dataspaceColor";
 
 export async function POST(request: Request) {
   const session = await getSession();
@@ -19,6 +20,8 @@ export async function POST(request: Request) {
     data: {
       name: parsed.data.name,
       description: parsed.data.description || null,
+      imageUrl: parsed.data.imageUrl?.trim() || null,
+      color: pickDataspaceColor(parsed.data.color),
       createdById: session.user.id,
       members: {
         create: {
@@ -28,5 +31,27 @@ export async function POST(request: Request) {
     }
   });
 
-  return NextResponse.json({ id: dataspace.id });
+  await prisma.dataspaceSubscription.upsert({
+    where: {
+      dataspaceId_userId: {
+        dataspaceId: dataspace.id,
+        userId: session.user.id
+      }
+    },
+    update: {},
+    create: {
+      dataspaceId: dataspace.id,
+      userId: session.user.id,
+      notifyAllActivity: dataspace.notifyAllActivity,
+      notifyMeetings: dataspace.notifyMeetings,
+      notifyPlans: dataspace.notifyPlans,
+      notifyTexts: dataspace.notifyTexts
+    }
+  });
+
+  return NextResponse.json({
+    id: dataspace.id,
+    color: dataspace.color,
+    imageUrl: dataspace.imageUrl
+  });
 }

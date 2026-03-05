@@ -85,7 +85,9 @@ const ROOM_NOUNS = [
 ];
 const PAGE_URL = new URL(window.location.href);
 const EMBED_MODE = ["1", "true", "yes"].includes(String(PAGE_URL.searchParams.get("embed") || "").toLowerCase());
+const EMBED_UI = ["1", "true", "yes"].includes(String(PAGE_URL.searchParams.get("embedui") || "").toLowerCase());
 const HIDE_DOCK = ["1", "true", "yes"].includes(String(PAGE_URL.searchParams.get("hideDock") || "").toLowerCase());
+const ACCESS_TOKEN = String(PAGE_URL.searchParams.get("access") || "").trim();
 const BASE_PATH = PAGE_URL.pathname.startsWith("/video/") || PAGE_URL.pathname === "/video" ? "/video" : "";
 
 function withBasePath(path) {
@@ -136,6 +138,10 @@ let camEnabled = true;
 let recordingEnabled = false;
 let recordingOwnerPeerId = null;
 let recordingMode = "av";
+let drAppBaseUrl = String(window.DR_APP_BASE_URL || "").trim();
+let drAppTranscriptTarget = "";
+let lastTranscriptPushAt = 0;
+const TRANSCRIPT_PUSH_INTERVAL_MS = 1200;
 let viewMode = "auto";
 let activeSpeakerPeerId = null;
 let pinnedSpeakerPeerId = null;
@@ -609,6 +615,7 @@ function initializeJoinFields() {
     url.searchParams.get("transcriptionLanguage") ||
     url.searchParams.get("transcriptionLang") ||
     "";
+  const drAppBaseFromQuery = String(url.searchParams.get("drAppBase") || "").trim();
 
   const initialRoom = roomFromPath || roomFromQuery || sanitizeRoomId(roomEl.value);
   const hasRoomInUrl = Boolean(roomFromPath || roomFromQuery);
@@ -651,6 +658,13 @@ function initializeJoinFields() {
     meetingId = meetingIdFromQuery;
   }
 
+  if (drAppBaseFromQuery) {
+    drAppBaseUrl = drAppBaseFromQuery;
+  }
+  if (drAppBaseUrl && meetingId) {
+    drAppTranscriptTarget = drAppBaseUrl.replace(/\/+$/, "") + `/api/meetings/${meetingId}/live-transcript`;
+  }
+
   if (autoRecordAudioFromQuery && ["1", "true", "yes", "on"].includes(autoRecordAudioFromQuery)) {
     setAutoRecordMode("audio");
     hideRecordingButtonsByUrl = true;
@@ -679,6 +693,26 @@ function initializeJoinFields() {
   }
 
   updateRoomBadge(initialRoom);
+}
+
+async function postLiveTranscriptLine(text, speaker, time) {
+  if (!drAppTranscriptTarget || !meetingId) return;
+  const now = Date.now();
+  if (now - lastTranscriptPushAt < TRANSCRIPT_PUSH_INTERVAL_MS) return;
+  lastTranscriptPushAt = now;
+  try {
+    await fetch(drAppTranscriptTarget, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text,
+        speaker,
+        time
+      })
+    });
+  } catch {
+    // ignore
+  }
 }
 
 function log(line) {
@@ -1040,12 +1074,6 @@ function renderParticipants() {
 }
 
 function setConnectedView(connected) {
-  if (EMBED_MODE) {
-    lobbyPanelEl.classList.add("hidden");
-    callShellEl.classList.remove("hidden");
-    document.body.classList.toggle("embed-connected", connected);
-    return;
-  }
   document.body.classList.toggle("in-call", connected);
   document.body.classList.toggle("transcript-open", connected && transcriptPanelVisible);
   document.body.classList.toggle("chat-open", connected && transcriptPanelVisible && chatPanelVisible);
@@ -2023,7 +2051,8 @@ async function joinRoom() {
         meetingId: meetingId || "",
         name: displayName,
         autoRecordMode: getAutoRecordModePreference(),
-        transcriptionLanguage: transcriptionLanguage || ""
+        transcriptionLanguage: transcriptionLanguage || "",
+        access: ACCESS_TOKEN
       });
       peerId = joined.peerId;
       loadTranscriptHistory(Array.isArray(joined.transcriptHistory) ? joined.transcriptHistory : []);
@@ -2236,6 +2265,10 @@ async function joinRoom() {
         if (transcriptFinalItems.length === beforeCount) {
           return;
         }
+        const speaker = payload.data?.speakerId ?? payload.data?.mappedPeerId ?? payload.data?.peerId ?? "speaker";
+        const time = typeof payload.data?.time === "number" ? payload.data.time : Date.now();
+        const labeled = `[${language}] ${resolveTranscriptSourceName(payload.data || {})}: ${text}`;
+        await postLiveTranscriptLine(labeled, speaker, time);
       } else {
         const sourceName = resolveTranscriptSourceName(payload.data || {});
         const speakerKey = `${language}|${sourceName}`;
@@ -2377,7 +2410,7 @@ async function leaveRoom() {
 }
 
 async function init() {
-  if (EMBED_MODE) {
+  if (EMBED_UI || EMBED_MODE) {
     document.body.classList.add("embed-mode");
     if (HIDE_DOCK) document.body.classList.add("hide-dock");
   }

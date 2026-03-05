@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  vosk-modular:
+    build: .
+    ports:
+      - "3009:3009"
+    environment:
+      - NODE_ENV=production
+      - PORT=3009
+      - VOSK_PYTHON=/usr/bin/python3
+    env_file:
+      - .env.local
+    volumes:
+      - ./data:/app/data
+      - ./public/audio:/app/public/audio
+      - ./models:/app/models
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - dr-shared
+
+networks:
+  dr-shared:
+    external: true

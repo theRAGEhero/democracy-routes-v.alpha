@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { getRequestId } from "@/lib/logger";
+import { postEventHubEvent } from "@/lib/eventHub";
 
 const logSchema = z.object({
   level: z.enum(["error", "warn", "info"]).default("error"),
@@ -21,6 +23,7 @@ function safeStringify(value: unknown) {
 }
 
 export async function POST(request: Request) {
+  const requestId = getRequestId(request);
   const session = await getSession();
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -44,14 +47,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
+  const mergedMeta = {
+    ...(parsed.data.meta && typeof parsed.data.meta === "object" ? parsed.data.meta : {}),
+    requestId
+  };
+
   const entry = await prisma.appLog.create({
     data: {
       level: parsed.data.level,
       scope: parsed.data.scope,
       message: parsed.data.message,
-      meta: safeStringify(parsed.data.meta),
+      meta: safeStringify(mergedMeta),
       userId: user?.id ?? null
     }
+  });
+
+  await postEventHubEvent({
+    source: "dr-app",
+    type: parsed.data.scope || "client_log",
+    severity: parsed.data.level,
+    message: parsed.data.message,
+    actorId: user?.id ?? null,
+    payload: mergedMeta
   });
 
   return NextResponse.json({ id: entry.id });

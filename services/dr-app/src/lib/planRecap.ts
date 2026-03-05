@@ -142,7 +142,7 @@ export async function getPlanRecapData(
   });
 
   if (!plan) {
-    throw new PlanRecapError("Plan not found", 404);
+    throw new PlanRecapError("Template not found", 404);
   }
 
   const isAdmin = viewer.user.role === "ADMIN";
@@ -201,7 +201,7 @@ export async function getPlanRecapDataForWorkflow(planId: string): Promise<PlanR
   });
 
   if (!plan) {
-    throw new PlanRecapError("Plan not found", 404);
+    throw new PlanRecapError("Template not found", 404);
   }
 
   return buildRecapFromPlan(plan);

@@ -201,7 +201,14 @@ export function RegisterForm({ initialCode, registrationOpen, requireCode }: Pro
             required
           />
           <span>
-            I have read and accept the privacy policy.
+            I have read and accept the{" "}
+            <Link href="/privacy" className="font-semibold underline">
+              privacy policy
+            </Link>{" "}
+            and{" "}
+            <Link href="/cookies" className="font-semibold underline">
+              cookie policy
+            </Link>.
           </span>
         </label>
         {fieldErrors.acceptPolicy ? (

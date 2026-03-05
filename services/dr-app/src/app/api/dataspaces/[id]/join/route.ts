@@ -43,5 +43,23 @@ export async function POST(
     }
   });
 
+  await prisma.dataspaceSubscription.upsert({
+    where: {
+      dataspaceId_userId: {
+        dataspaceId: dataspace.id,
+        userId: session.user.id
+      }
+    },
+    update: {},
+    create: {
+      dataspaceId: dataspace.id,
+      userId: session.user.id,
+      notifyAllActivity: dataspace.notifyAllActivity,
+      notifyMeetings: dataspace.notifyMeetings,
+      notifyPlans: dataspace.notifyPlans,
+      notifyTexts: dataspace.notifyTexts
+    }
+  });
+
   return NextResponse.json({ message: "Joined" });
 }

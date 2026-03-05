@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { AnalyticsSnippetSettings } from "@/app/admin/AnalyticsSnippetSettings";
 
 function percent(part: number, total: number): string {
   if (!total) return "0%";
@@ -189,6 +190,8 @@ export default async function AdminAnalyticsPage() {
           </div>
         </div>
       </div>
+
+      <AnalyticsSnippetSettings />
     </div>
   );
 }

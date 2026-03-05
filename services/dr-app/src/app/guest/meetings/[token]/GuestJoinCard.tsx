@@ -7,12 +7,23 @@ type Props = {
   active: boolean;
   baseUrl: string;
   roomId: string;
+  meetingId?: string;
   language: string;
   provider: string;
   inviteEmail: string;
+  accessToken?: string;
 };
 
-export function GuestJoinCard({ active, baseUrl, roomId, language, provider, inviteEmail }: Props) {
+export function GuestJoinCard({
+  active,
+  baseUrl,
+  roomId,
+  meetingId,
+  language,
+  provider,
+  inviteEmail,
+  accessToken
+}: Props) {
   const defaultName = useMemo(() => inviteEmail, [inviteEmail]);
   const [name, setName] = useState(defaultName);
 
@@ -20,9 +31,12 @@ export function GuestJoinCard({ active, baseUrl, roomId, language, provider, inv
   const joinUrl = buildCallJoinUrl({
     baseUrl,
     roomId,
+    meetingId,
     name: name || defaultName,
     autojoin: true,
-    transcriptionLanguage
+    autoRecordVideo: true,
+    transcriptionLanguage,
+    accessToken
   });
 
   return (

@@ -1,4 +1,5 @@
 import { getServerSession } from "next-auth";
+import type { CSSProperties } from "react";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
@@ -6,14 +7,18 @@ import { ParticipantViewClient } from "@/app/flows/[id]/ParticipantViewClient";
 import { PlanParticipation } from "@/app/flows/[id]/PlanParticipation";
 import { PlanAnalysisPanel } from "@/app/flows/[id]/PlanAnalysisPanel";
 import { StartNowButton } from "@/app/flows/[id]/StartNowButton";
+import { MatchingPanel } from "@/app/flows/[id]/MatchingPanel";
 import {
   buildLegacySegments,
   buildPlanSegmentsFromBlocks,
   type PlanBlockInput,
   type PlanBlockType
 } from "@/lib/planSchedule";
+import { normalizeMatchingMode } from "@/lib/matchingMode";
 import { normalizeCallBaseUrl } from "@/lib/callUrl";
+import { buildVideoAccessToken } from "@/lib/videoAccess";
 import Link from "next/link";
+import { DEFAULT_DATASPACE_COLOR, getDataspaceTheme } from "@/lib/dataspaceColor";
 
 export default async function PlanParticipantPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -56,7 +61,7 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
   });
 
   if (!plan) {
-    return <p className="text-sm text-slate-600">Plan not found.</p>;
+    return <p className="text-sm text-slate-600">Template not found.</p>;
   }
 
   let latestAnalysis: {
@@ -106,16 +111,18 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
   const normalizedBlocks: PlanBlockInput[] = (plan.blocks ?? []).reduce(
     (acc: PlanBlockInput[], block: (typeof plan.blocks)[number]) => {
       const type = block.type as PlanBlockType;
-      if (!["ROUND", "MEDITATION", "POSTER", "TEXT", "RECORD", "FORM"].includes(type)) {
+      if (!["PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING"].includes(type)) {
         return acc;
       }
-      acc.push({
-        id: block.id,
-        type,
-        durationSeconds: block.durationSeconds,
-        roundNumber: block.roundNumber ?? null,
-        posterId: block.posterId ?? null
-      });
+        acc.push({
+          id: block.id,
+          type,
+          durationSeconds: block.durationSeconds,
+          roundNumber: block.roundNumber ?? null,
+          posterId: block.posterId ?? null,
+          embedUrl: block.embedUrl ?? null,
+          matchingMode: normalizeMatchingMode(block.matchingMode)
+        });
       return acc;
     },
     []
@@ -167,6 +174,17 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
     : [];
   const meetingIdByRoom = new Map(
     meetingsByRoomId.map((meeting) => [meeting.roomId, meeting.id])
+  );
+  const accessTokensByRoomId = new Map(
+    allRoomIds.map((roomId) => [
+      roomId,
+      buildVideoAccessToken({
+        roomId,
+        meetingId: meetingIdByRoom.get(roomId) ?? null,
+        userId: session.user.id,
+        userEmail: session.user.email
+      })
+    ])
   );
 
   const assignments = plan.rounds.map(
@@ -239,7 +257,7 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
   });
 
   const meditationBlocks = plan.blocks.filter(
-    (block: (typeof plan.blocks)[number]) => block.type === "MEDITATION"
+    (block: (typeof plan.blocks)[number]) => block.type === "PAUSE"
   );
   const meditationTotalMinutes = meditationBlocks.length
     ? Math.max(
@@ -259,13 +277,15 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
   });
   const participantCallDisplayName =
     String(currentUser?.email || "").trim() || session.user.email;
+  const theme = getDataspaceTheme(plan.dataspace?.color ?? DEFAULT_DATASPACE_COLOR);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div className="dataspace-theme" style={theme as CSSProperties}>
+      <div className="space-y-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
-            Plan Participant View
+            Template Participant View
           </h1>
           <p className="text-sm text-slate-600">Personalized call link and pairing status.</p>
         </div>
@@ -308,6 +328,8 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
               return null;
             }
           })(),
+          embedUrl: block.embedUrl ?? null,
+          matchingMode: normalizeMatchingMode(block.matchingMode),
           meditationAnimationId: block.meditationAnimationId ?? null,
           meditationAudioUrl: block.meditationAudioUrl ?? null,
           poster: block.poster
@@ -317,9 +339,12 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
         roundGroups={roundGroups}
         assignments={assignments}
         baseUrl={normalizeCallBaseUrl(process.env.DEMOCRACYROUTES_CALL_BASE_URL || "")}
+        accessTokens={Object.fromEntries(accessTokensByRoomId)}
         userEmail={session.user.email}
         callDisplayName={participantCallDisplayName}
+        canSkip={isOwner}
       />
+      <MatchingPanel planId={plan.id} canRun={isAdmin || isOwner} />
       <PlanAnalysisPanel
         planId={plan.id}
         initialAnalysis={
@@ -335,7 +360,7 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
       />
       {plan.isPublic ? (
         <div className="dr-card p-6">
-          <h2 className="text-sm font-semibold uppercase text-slate-500">Plan rules</h2>
+          <h2 className="text-sm font-semibold uppercase text-slate-500">Template rules</h2>
           {plan.description ? (
             <p className="mt-2 text-sm text-slate-700">{plan.description}</p>
           ) : null}
@@ -384,6 +409,7 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
         pendingRequests={pendingRequests}
         canManageRequests={isAdmin || plan.createdById === session.user.id}
       />
+      </div>
     </div>
   );
 }

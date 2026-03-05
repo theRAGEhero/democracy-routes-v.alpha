@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --background: 41.5 44.8% 94.3%;
+    --foreground: 0 0% 8.2%;
+    --card: 0 0% 100% / 0.78;
+    --card-foreground: 0 0% 8.2%;
+    --popover: 0 0% 100% / 0.9;
+    --popover-foreground: 0 0% 8.2%;
+    --primary: 24.6 95% 53.1%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 41.5 44.8% 90%;
+    --secondary-foreground: 0 0% 20%;
+    --muted: 41.5 44.8% 92%;
+    --muted-foreground: 0 0% 35.3%;
+    --accent: 173.4 80.4% 40%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 0% / 0.08;
+    --input: 0 0% 0% / 0.08;
+    --ring: 224.3 76.3% 48%;
+    --radius: 1.25rem;
+  }
+
+  .dark {
+    color-scheme: light;
+    --background: 41.5 44.8% 94.3%;
+    --foreground: 0 0% 8.2%;
+    --card: 0 0% 100% / 0.78;
+    --card-foreground: 0 0% 8.2%;
+    --popover: 0 0% 100% / 0.9;
+    --popover-foreground: 0 0% 8.2%;
+    --primary: 24.6 95% 53.1%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 41.5 44.8% 90%;
+    --secondary-foreground: 0 0% 20%;
+    --muted: 41.5 44.8% 92%;
+    --muted-foreground: 0 0% 35.3%;
+    --accent: 173.4 80.4% 40%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 0% / 0.08;
+    --input: 0 0% 0% / 0.08;
+    --ring: 224.3 76.3% 48%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans), "Space Grotesk", "IBM Plex Sans", sans-serif;
+    background:
+      radial-gradient(circle at 15% 10%, #ffe9cf, transparent 45%),
+      radial-gradient(circle at 80% 0%, #d8f4ff, transparent 55%),
+      linear-gradient(180deg, #fffdf8 0%, #f2f0e8 100%);
+    min-height: 100vh;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-serif), "Fraunces", "Georgia", serif;
+    letter-spacing: -0.02em;
+  }
+}

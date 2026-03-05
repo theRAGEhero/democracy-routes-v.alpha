@@ -5,9 +5,6 @@ import { authOptions } from "@/lib/auth";
 
 export default async function Home() {
   const session = await getServerSession(authOptions);
-  if (session?.user) {
-    redirect("/dashboard");
-  }
 
   return (
     <div className="space-y-8">
@@ -35,12 +32,20 @@ export default async function Home() {
               guiding communities through problem-focused collaboration.
             </p>
             <div className="flex flex-wrap items-center gap-3">
-              <Link href="/login" className="dr-button px-5 py-2 text-sm">
-                Log in
-              </Link>
-              <Link href="/register" className="dr-button-outline px-5 py-2 text-sm">
-                Create account
-              </Link>
+              {session?.user ? (
+                <Link href="/dashboard" className="dr-button px-5 py-2 text-sm">
+                  Go to app
+                </Link>
+              ) : (
+                <>
+                  <Link href="/login" className="dr-button px-5 py-2 text-sm">
+                    Log in
+                  </Link>
+                  <Link href="/register" className="dr-button-outline px-5 py-2 text-sm">
+                    Create account
+                  </Link>
+                </>
+              )}
               <Link href="/about" className="text-sm font-semibold text-slate-600 hover:text-slate-900">
                 Learn more →
               </Link>

@@ -4,6 +4,7 @@ type Props = {
   src: string;
   title?: string;
   allow?: string;
+  allowFullScreen?: boolean;
   className?: string;
   frameClassName?: string;
   iframeRef?: Ref<HTMLIFrameElement>;
@@ -12,7 +13,8 @@ type Props = {
 export function CallFrame({
   src,
   title = "Call",
-  allow = "camera; microphone; fullscreen",
+  allow = "camera; microphone; autoplay; fullscreen; display-capture; speaker-selection",
+  allowFullScreen = true,
   className,
   frameClassName,
   iframeRef
@@ -24,6 +26,7 @@ export function CallFrame({
         src={src}
         className={frameClassName ?? "w-full h-full"}
         allow={allow}
+        allowFullScreen={allowFullScreen}
         ref={iframeRef}
       />
     </div>

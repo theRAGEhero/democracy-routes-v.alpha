@@ -1,0 +1,8 @@
+node_modules
+.next
+logs
+data
+public/audio
+models
+npm-debug.log
+README.md

@@ -21,6 +21,15 @@ model User {
   telegramVerificationCode String?
   telegramVerificationExpiresAt DateTime?
   calComLink         String?
+  avatarUrl          String?
+  notifyEmailMeetingInvites Boolean @default(true)
+  notifyTelegramMeetingInvites Boolean @default(true)
+  notifyEmailPlanInvites Boolean @default(true)
+  notifyTelegramPlanInvites Boolean @default(true)
+  notifyEmailDataspaceInvites Boolean @default(true)
+  notifyTelegramDataspaceInvites Boolean @default(true)
+  notifyEmailDataspaceActivity Boolean @default(true)
+  notifyTelegramDataspaceActivity Boolean @default(true)
   role               String           @default("USER")
   isGuest            Boolean          @default(false)
   isDeleted          Boolean          @default(false)
@@ -53,6 +62,7 @@ model User {
   feedbacks          Feedback[]
   planGuestInvitesCreated PlanGuestInvite[] @relation("PlanGuestInviteCreator")
   planGuestInvites   PlanGuestInvite[] @relation("PlanGuestInviteUser")
+  matchingRuns       MatchingRun[]    @relation("MatchingRunCreator")
 
   @@index([role])
   @@index([emailVerificationToken])
@@ -94,6 +104,13 @@ model RegistrationSettings {
   requireEmailConfirmation Boolean @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+}
+
+model SiteSetting {
+  key       String   @id
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Feedback {
@@ -254,6 +271,7 @@ model Plan {
   analyses             PlanAnalysis[]
   recordSessions       PlanRecordSession[]
   formResponses        PlanFormResponse[]
+  matchingRuns         MatchingRun[]
 
   @@index([createdById])
   @@index([startAt])
@@ -313,6 +331,8 @@ model PlanBlock {
   formQuestion   String?
   formChoicesJson String?
   posterId       String?
+  embedUrl       String?
+  matchingMode   String?
   meditationAnimationId String?
   meditationAudioUrl   String?
   createdAt      DateTime @default(now())
@@ -415,6 +435,20 @@ model PlanRound {
   @@index([planId])
 }
 
+model MatchingRun {
+  id         String   @id @default(cuid())
+  planId     String
+  mode       String
+  resultJson String
+  createdById String?
+  createdAt  DateTime @default(now())
+  plan       Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  creator    User?    @relation("MatchingRunCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([planId])
+  @@index([createdAt])
+}
+
 model PlanPair {
   id          String   @id @default(cuid())
   planRoundId String
@@ -472,6 +506,16 @@ model Dataspace {
   id          String            @id @default(cuid())
   name        String
   description String?
+  color       String            @default("#f97316")
+  imageUrl    String?
+  telegramGroupChatId String?
+  telegramGroupLinkCode String?
+  telegramGroupLinkedAt DateTime?
+  notifyAllActivity Boolean      @default(true)
+  notifyMeetings Boolean         @default(true)
+  notifyPlans Boolean            @default(true)
+  notifyTexts Boolean            @default(true)
+  rssEnabled Boolean             @default(false)
   createdById String
   createdBy   User              @relation("DataspaceCreator", fields: [createdById], references: [id])
   personalOwnerId String?       @unique
@@ -484,6 +528,7 @@ model Dataspace {
   texts       Text[]
   meetings    Meeting[]
   plans       Plan[]
+  analyses    DataspaceAnalysis[]
 
   @@index([createdById])
   @@index([createdAt])
@@ -494,6 +539,10 @@ model DataspaceSubscription {
   id          String    @id @default(cuid())
   dataspaceId String
   userId      String
+  notifyAllActivity Boolean @default(true)
+  notifyMeetings Boolean    @default(true)
+  notifyPlans Boolean       @default(true)
+  notifyTexts Boolean       @default(true)
   createdAt   DateTime  @default(now())
   dataspace   Dataspace @relation(fields: [dataspaceId], references: [id], onDelete: Cascade)
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -529,6 +578,20 @@ model DataspaceInvite {
   @@index([dataspaceId])
   @@index([userId])
   @@index([status])
+}
+
+model DataspaceAnalysis {
+  id          String    @id @default(cuid())
+  dataspaceId String
+  dataspace   Dataspace @relation(fields: [dataspaceId], references: [id], onDelete: Cascade)
+  prompt      String
+  provider    String
+  analysis    String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([dataspaceId])
+  @@index([createdAt])
 }
 
 model AppLog {

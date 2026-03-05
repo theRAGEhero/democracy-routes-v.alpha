@@ -35,6 +35,49 @@ async function main() {
     });
     console.log("Admin user updated from env.");
   }
+
+  const admin = await prisma.user.findUnique({ where: { email: adminEmail } });
+  if (!admin) {
+    throw new Error("Admin user missing after seed.");
+  }
+
+  const citizenAssembly = await prisma.planTemplate.findFirst({
+    where: { name: "Citizen Assembly", createdById: admin.id }
+  });
+
+  if (!citizenAssembly) {
+    const blocks = [
+      { type: "TEXT", durationSeconds: 300 },
+      { type: "ROUND", durationSeconds: 1200, roundMaxParticipants: null },
+      { type: "TEXT", durationSeconds: 600 },
+      { type: "ROUND", durationSeconds: 1200, roundMaxParticipants: null },
+      {
+        type: "FORM",
+        durationSeconds: 600,
+        formQuestion: "Where are we converging?",
+        formChoices: [
+          { key: "strong-agree", label: "Strong agreement" },
+          { key: "some-agree", label: "Some agreement" },
+          { key: "open", label: "Open questions remain" },
+          { key: "disagree", label: "Disagreement remains" }
+        ]
+      },
+      { type: "TEXT", durationSeconds: 300 },
+      { type: "ROUND", durationSeconds: 900, roundMaxParticipants: null }
+    ];
+
+    await prisma.planTemplate.create({
+      data: {
+        name: "Citizen Assembly",
+        description:
+          "Structured deliberation: framing, small-group rounds, synthesis, and convergence check.",
+        blocksJson: JSON.stringify(blocks),
+        createdById: admin.id,
+        isPublic: true
+      }
+    });
+    console.log("Seeded Citizen Assembly template.");
+  }
 }
 
 main()

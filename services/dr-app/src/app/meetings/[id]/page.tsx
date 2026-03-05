@@ -1,14 +1,16 @@
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime, isMeetingActive } from "@/lib/utils";
-import { EmbedCall } from "@/app/meetings/[id]/EmbedCall";
 import { MeetingActions } from "@/app/meetings/[id]/MeetingActions";
-import { TranscriptionAutoLink } from "@/app/meetings/[id]/TranscriptionAutoLink";
 import { MeetingInviteActions } from "@/app/meetings/[id]/MeetingInviteActions";
 import { MeetingParticipation } from "@/app/meetings/[id]/MeetingParticipation";
 import { buildCallJoinUrl, buildDisplayName, normalizeCallBaseUrl } from "@/lib/callUrl";
+import { buildVideoAccessToken } from "@/lib/videoAccess";
+import { MeetingDetailClient } from "@/app/meetings/[id]/MeetingDetailClient";
+import { DEFAULT_DATASPACE_COLOR, getDataspaceTheme } from "@/lib/dataspaceColor";
 
 export default async function MeetingDetailPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -88,11 +90,18 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
     where: { id: session.user.id },
     select: { email: true }
   });
-  const callDisplayName = buildDisplayName(null, session.user.id);
+  const callDisplayName = buildDisplayName(currentUser?.email ?? null, session.user.id);
   const baseUrl = normalizeCallBaseUrl(process.env.DEMOCRACYROUTES_CALL_BASE_URL || "");
   const langCode = meeting.language === "IT" ? "it" : "en";
   const liveTranscriptionEnabled = meeting.transcriptionProvider === "DEEPGRAMLIVE";
   const transcriptionLanguage = liveTranscriptionEnabled ? langCode : "";
+  const drAppBaseUrl = process.env.APP_BASE_URL || "";
+  const accessToken = buildVideoAccessToken({
+    roomId: meeting.roomId,
+    meetingId: meeting.id,
+    userId: session.user.id,
+    userEmail: currentUser?.email ?? session.user.email
+  });
 
   const embedUrl = buildCallJoinUrl({
     baseUrl,
@@ -102,7 +111,9 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
     autojoin: true,
     embed: true,
     autoRecordVideo: liveTranscriptionEnabled,
-    transcriptionLanguage
+    transcriptionLanguage,
+    drAppBaseUrl,
+    accessToken
   });
   const joinUrl = buildCallJoinUrl({
     baseUrl,
@@ -111,7 +122,9 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
     name: callDisplayName,
     autojoin: true,
     autoRecordVideo: liveTranscriptionEnabled,
-    transcriptionLanguage
+    transcriptionLanguage,
+    drAppBaseUrl,
+    accessToken
   });
 
   const statusLabel = active ? "Active" : "Expired";
@@ -122,9 +135,12 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
       : meeting.transcriptionProvider === "DEEPGRAMLIVE"
         ? "Deepgram Live"
         : "Deepgram";
+  const theme = getDataspaceTheme(meeting.dataspace?.color ?? DEFAULT_DATASPACE_COLOR);
 
   return (
-    <div className="space-y-6">
+    <div className="dataspace-theme dataspace-theme-tight" style={theme as CSSProperties}>
+      <div className="relative left-1/2 right-1/2 w-screen -mx-[50vw] -my-6 h-[calc(100dvh-var(--app-header-h,0px))] overflow-hidden px-0">
+        <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden px-4 pb-4 pt-2">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
@@ -152,53 +168,32 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
         </div>
       </div>
 
-      <div className="flex flex-col gap-4 lg:flex-row">
-        <div className="order-1 flex-1 lg:order-2">
-          <EmbedCall
-            embedUrl={embedUrl}
-            isActive={active}
-            hasBaseUrl={Boolean(baseUrl)}
-            statusLabel={statusLabel}
-            languageLabel={languageLabel}
-            providerLabel={providerLabel}
-            joinUrl={joinUrl}
-            meetingId={meeting.id}
-            canManage={canManage}
-          />
-        </div>
-      </div>
-
-      <div className="dr-card p-6">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <p className="text-xs font-semibold uppercase text-slate-500">Expires</p>
-            <p className="text-sm text-slate-700">
-              {formatDateTime(meeting.expiresAt, meeting.timezone)}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase text-slate-500">Starts</p>
-            <p className="text-sm text-slate-700">
-              {meeting.scheduledStartAt
-                ? formatDateTime(meeting.scheduledStartAt, meeting.timezone)
-                : "Not scheduled"}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase text-slate-500">Host</p>
-            <p className="text-sm text-slate-700">
-              {meeting.members.find(
-                (member: (typeof meeting.members)[number]) =>
-                  member.role === "HOST"
-              )?.user.email ?? "-"}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase text-slate-500">Room</p>
-            <p className="text-sm text-slate-700 break-all">{meeting.roomId}</p>
-          </div>
-        </div>
-      </div>
+      <MeetingDetailClient
+        embedUrl={embedUrl}
+        joinUrl={joinUrl}
+        isActive={active}
+        hasBaseUrl={Boolean(baseUrl)}
+        statusLabel={statusLabel}
+        languageLabel={languageLabel}
+        providerLabel={providerLabel}
+        startsLabel={
+          meeting.scheduledStartAt
+            ? formatDateTime(meeting.scheduledStartAt, meeting.timezone)
+            : "Not scheduled"
+        }
+        expiresLabel={formatDateTime(meeting.expiresAt, meeting.timezone)}
+        hostLabel={
+          meeting.members.find(
+            (member: (typeof meeting.members)[number]) =>
+              member.role === "HOST"
+          )?.user.email ?? "-"
+        }
+        roomLabel={meeting.roomId}
+        meetingId={meeting.id}
+        canManage={canManage}
+        canInvite={canInvite}
+        liveTranscriptionEnabled={liveTranscriptionEnabled}
+      />
 
       <MeetingParticipation
         meetingId={meeting.id}
@@ -219,12 +214,8 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
           }))}
         canManageRequests={canManage}
       />
-      <MeetingActions meetingId={meeting.id} canInvite={canInvite} isActive={meeting.isActive} />
-      <TranscriptionAutoLink
-        meetingId={meeting.id}
-        canManage={canManage}
-        initialRoundId={meeting.transcriptionRoundId}
-      />
+        </div>
+      </div>
     </div>
   );
 }

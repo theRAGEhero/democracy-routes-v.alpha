@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
+import crypto from "node:crypto";
 import express from "express";
 import WebSocket, { WebSocketServer } from "ws";
 import mediasoup from "mediasoup";
@@ -37,9 +38,19 @@ const LOG_LEVEL = (process.env.LOG_LEVEL || "info").toLowerCase();
 const LOG_MAX_BYTES = Number(process.env.LOG_MAX_BYTES || 10 * 1024 * 1024);
 const LOG_MAX_FILES = Number(process.env.LOG_MAX_FILES || 5);
 const REC_TRANS_TRACE = String(process.env.REC_TRANS_TRACE || "true") === "true";
+const EVENT_HUB_BASE_URL = String(process.env.EVENT_HUB_BASE_URL || "").trim();
+const EVENT_HUB_API_KEY = String(process.env.EVENT_HUB_API_KEY || "").trim();
+const EVENT_HUB_MIN_LEVEL = String(process.env.EVENT_HUB_MIN_LEVEL || "info").toLowerCase();
+const TRANSCRIPTION_HUB_URL = String(process.env.TRANSCRIPTION_HUB_URL || "").trim();
+const TRANSCRIPTION_HUB_API_KEY = String(process.env.TRANSCRIPTION_HUB_API_KEY || "").trim();
+const HUB_PENDING_DIR = path.resolve(RECORDINGS_DIR, "_hub_pending");
+const HUB_RETRY_SCAN_MS = Number(process.env.HUB_RETRY_SCAN_MS || 15000);
+const ACCESS_SECRET = String(process.env.DR_VIDEO_ACCESS_SECRET || "").trim();
+const REQUIRE_ACCESS = String(process.env.DR_VIDEO_REQUIRE_ACCESS || "true") === "true";
 
 fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
 fs.mkdirSync(LOG_DIR, { recursive: true });
+fs.mkdirSync(HUB_PENDING_DIR, { recursive: true });
 
 const levelRank = {
   debug: 10,
@@ -49,8 +60,85 @@ const levelRank = {
   fatal: 50
 };
 
+function shouldSendEvent(level) {
+  const minRank = levelRank[EVENT_HUB_MIN_LEVEL] ?? levelRank.info;
+  const rank = levelRank[level] ?? 999;
+  return rank >= minRank;
+}
+
+async function postEventHub(message, level, meta = {}) {
+  if (!EVENT_HUB_BASE_URL || !EVENT_HUB_API_KEY) return;
+  if (!shouldSendEvent(level)) return;
+  try {
+    await fetch(`${EVENT_HUB_BASE_URL.replace(/\/$/, "")}/api/events`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": EVENT_HUB_API_KEY
+      },
+      body: JSON.stringify({
+        source: "dr-video",
+        type: message,
+        severity: level,
+        message,
+        payload: meta
+      })
+    });
+  } catch {
+    // best-effort only
+  }
+}
+
 function createId(prefix = "id") {
   return `${prefix}_${Math.random().toString(36).slice(2, 11)}`;
+}
+
+function timingSafeEqual(a, b) {
+  const bufA = Buffer.from(String(a || ""));
+  const bufB = Buffer.from(String(b || ""));
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+function verifyAccessToken(token, expectedRoomId, expectedMeetingId) {
+  if (!REQUIRE_ACCESS) return true;
+  if (!ACCESS_SECRET) return false;
+  const raw = String(token || "").trim();
+  if (!raw || !raw.includes(".")) return false;
+  const [encoded, signature] = raw.split(".", 2);
+  if (!encoded || !signature) return false;
+  const expectedSig = crypto.createHmac("sha256", ACCESS_SECRET).update(encoded).digest("base64url");
+  if (!timingSafeEqual(signature, expectedSig)) return false;
+  let payload;
+  try {
+    payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+  } catch {
+    return false;
+  }
+  const exp = Number(payload?.exp || 0);
+  if (!exp || Date.now() / 1000 > exp) return false;
+  const normalizeRoomId = (value) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 64);
+  const roomId = normalizeRoomId(payload?.roomId);
+  const expectedRoom = normalizeRoomId(expectedRoomId);
+  if (!roomId || !expectedRoom || roomId !== expectedRoom) return false;
+  if (expectedMeetingId) {
+    const meetingId = String(payload?.meetingId || "").trim();
+    if (meetingId && meetingId !== String(expectedMeetingId || "").trim()) return false;
+  }
+  return true;
+}
+
+function requireAccessToken(req, roomId) {
+  const meetingId = String(req.query?.meetingId || "").trim() || null;
+  const token = String(req.query?.access || req.headers["x-access-token"] || "").trim();
+  return verifyAccessToken(token, roomId, meetingId);
 }
 
 function rotateLogsIfNeeded() {
@@ -102,6 +190,8 @@ function writeLog(level, message, meta = {}) {
   } catch (error) {
     console.error("failed to write log", error);
   }
+
+  void postEventHub(message, level, meta);
 }
 
 const logger = {
@@ -116,6 +206,179 @@ function traceRecTrans(event, meta = {}) {
   if (!REC_TRANS_TRACE) return;
   logger.info("rec_trans_trace", { event, ...meta });
 }
+
+const hubMetrics = {
+  totalAttempts: 0,
+  successCount: 0,
+  failedCount: 0,
+  queuedCount: 0,
+  drainedCount: 0,
+  droppedCount: 0,
+  lastError: "",
+  lastAttemptAt: null,
+  lastSuccessAt: null
+};
+
+function sanitizePendingFileName(value) {
+  return String(value || "pending")
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+    .slice(0, 120);
+}
+
+function getPendingFiles() {
+  if (!fs.existsSync(HUB_PENDING_DIR)) return [];
+  return fs
+    .readdirSync(HUB_PENDING_DIR, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+    .map((entry) => entry.name)
+    .sort();
+}
+
+function queueHubPayload(payload, reason = "") {
+  try {
+    const eventId = sanitizePendingFileName(payload?.eventId || createId("hub"));
+    const filename = Date.now() + "_" + eventId + ".json";
+    const fullPath = path.join(HUB_PENDING_DIR, filename);
+    const wrapped = {
+      queuedAt: new Date().toISOString(),
+      reason,
+      attempts: 0,
+      payload
+    };
+    fs.writeFileSync(fullPath, JSON.stringify(wrapped, null, 2));
+    hubMetrics.queuedCount += 1;
+    logger.warn("transcription_hub_payload_queued", {
+      fullPath,
+      roomId: payload?.roomId || null,
+      sessionId: payload?.sessionId || null,
+      reason
+    });
+  } catch (error) {
+    hubMetrics.droppedCount += 1;
+    logger.error("transcription_hub_payload_queue_failed", {
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+}
+
+async function postTranscriptionFinalizeToHub(payload) {
+  if (!TRANSCRIPTION_HUB_URL) {
+    return { ok: false, status: 0, error: "hub_url_not_configured" };
+  }
+
+  const endpoint = TRANSCRIPTION_HUB_URL.replace(/\/$/, "") + "/api/ingest/finalize";
+  const headers = { "content-type": "application/json" };
+  if (TRANSCRIPTION_HUB_API_KEY) headers["x-api-key"] = TRANSCRIPTION_HUB_API_KEY;
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    hubMetrics.totalAttempts += 1;
+    hubMetrics.lastAttemptAt = new Date().toISOString();
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        hubMetrics.successCount += 1;
+        hubMetrics.lastSuccessAt = new Date().toISOString();
+        logger.info("transcription_hub_ingest_ok", {
+          endpoint,
+          attempt,
+          roomId: payload?.roomId || null,
+          sessionId: payload?.sessionId || null
+        });
+        return { ok: true, status: response.status, error: "" };
+      }
+
+      const text = await response.text().catch(() => "");
+      hubMetrics.failedCount += 1;
+      hubMetrics.lastError = "HTTP " + response.status + " " + String(text || "").slice(0, 240);
+      logger.warn("transcription_hub_ingest_failed", {
+        endpoint,
+        attempt,
+        status: response.status,
+        body: String(text || "").slice(0, 500)
+      });
+    } catch (error) {
+      hubMetrics.failedCount += 1;
+      hubMetrics.lastError = error instanceof Error ? error.message : String(error);
+      logger.warn("transcription_hub_ingest_error", {
+        endpoint,
+        attempt,
+        error: hubMetrics.lastError
+      });
+    }
+
+    if (attempt < 3) {
+      await new Promise((resolve) => setTimeout(resolve, attempt * 400));
+    }
+  }
+
+  return { ok: false, status: 0, error: hubMetrics.lastError || "ingest_failed" };
+}
+
+async function sendTranscriptionFinalizeToHub(payload, queueOnFail = true) {
+  const result = await postTranscriptionFinalizeToHub(payload);
+  if (!result.ok && queueOnFail) {
+    queueHubPayload(payload, result.error || "hub_ingest_failed");
+  }
+  return result.ok;
+}
+
+let hubQueueBusy = false;
+async function processPendingHubQueue() {
+  if (hubQueueBusy) return;
+  hubQueueBusy = true;
+  try {
+    const files = getPendingFiles();
+    for (const filename of files) {
+      const fullPath = path.join(HUB_PENDING_DIR, filename);
+      let wrapped = null;
+      try {
+        wrapped = JSON.parse(fs.readFileSync(fullPath, "utf8"));
+      } catch (error) {
+        hubMetrics.droppedCount += 1;
+        try { fs.unlinkSync(fullPath); } catch {}
+        logger.warn("transcription_hub_queue_bad_file", {
+          fullPath,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        continue;
+      }
+
+      const payload = wrapped?.payload || null;
+      if (!payload) {
+        hubMetrics.droppedCount += 1;
+        try { fs.unlinkSync(fullPath); } catch {}
+        continue;
+      }
+
+      const ok = await sendTranscriptionFinalizeToHub(payload, false);
+      if (ok) {
+        hubMetrics.drainedCount += 1;
+        try { fs.unlinkSync(fullPath); } catch {}
+      } else {
+        wrapped.attempts = Number(wrapped?.attempts || 0) + 1;
+        wrapped.lastRetryAt = new Date().toISOString();
+        wrapped.lastError = hubMetrics.lastError || "retry_failed";
+        try {
+          fs.writeFileSync(fullPath, JSON.stringify(wrapped, null, 2));
+        } catch {}
+      }
+    }
+  } finally {
+    hubQueueBusy = false;
+  }
+}
+
+setInterval(() => {
+  void processPendingHubQueue();
+}, HUB_RETRY_SCAN_MS);
+setTimeout(() => {
+  void processPendingHubQueue();
+}, 4000);
 
 const app = express();
 
@@ -154,13 +417,19 @@ app.use((req, res, next) => {
 });
 
 app.use(express.static(path.join(__dirname, "public")));
-app.get("/meet/:roomId", (_req, res) => {
+app.get("/meet/:roomId", (req, res) => {
+  if (REQUIRE_ACCESS && !requireAccessToken(req, req.params.roomId)) {
+    return res.status(403).send("Access denied");
+  }
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 app.get("/admin", (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "admin.html"));
 });
 app.get("/api/join-url", (req, res) => {
+  if (REQUIRE_ACCESS && !requireAccessToken(req, String(req.query.roomId || req.query.room || ""))) {
+    return json(res, 403, { error: "Access denied" });
+  }
   const roomId = String(req.query.roomId || req.query.room || "")
     .trim()
     .toLowerCase()
@@ -282,12 +551,14 @@ async function getOrCreateRoom(roomId) {
 
   room = {
     id: roomId,
+    meetingId: null,
     router,
     peers: new Set(),
     recordingState: {
       enabled: false,
       ownerPeerId: null,
       mode: "av",
+      transcriptionLanguage: "",
       sessions: new Set(),
       activeRunId: null,
       runStartedAt: null
@@ -1276,6 +1547,52 @@ function persistTranscriptionSession(session, reason = "manual_stop") {
     fs.writeFileSync(deliberationPath, JSON.stringify(deliberationPayload, null, 2));
     // Backward compatibility for old admin endpoint/state.
     fs.writeFileSync(legacyPath, JSON.stringify(rawPayload, null, 2));
+
+    const finalizedAt = new Date().toISOString();
+    const segments = rawPayload.entries.map((entry, idx) => ({
+      seq: idx + 1,
+      text: String(entry?.text || "").trim(),
+      isFinal: Boolean(entry?.isFinal ?? true),
+      startMs: Number.isFinite(Number(entry?.start_time)) ? Math.round(Number(entry.start_time) * 1000) : null,
+      endMs: Number.isFinite(Number(entry?.end_time)) ? Math.round(Number(entry.end_time) * 1000) : null,
+      speakerTag: entry?.speakerId ? String(entry.speakerId) : null,
+      mappedUserId: entry?.mappedPeerId ? String(entry.mappedPeerId) : null,
+      mappedUserName: entry?.mappedPeerName ? String(entry.mappedPeerName) : null,
+      confidence: Number.isFinite(Number(entry?.confidence)) ? Number(entry.confidence) : null,
+      payload: entry
+    })).filter((s) => Boolean(s.text));
+
+    const artifacts = [
+      { type: "deliberation", uri: deliberationPath, payload: deliberationPayload },
+      { type: "raw", uri: rawPath, payload: rawPayload },
+      { type: "legacy", uri: legacyPath, payload: rawPayload }
+    ];
+
+    const roomState = rooms.get(roomId);
+    const meetingId = roomState?.meetingId || null;
+
+    void sendTranscriptionFinalizeToHub({
+      source: "dr-video",
+      eventId: "dr-video:" + roomId + ":" + recordingSessionId + ":" + reason,
+      roomId,
+      sessionId: recordingSessionId,
+      meetingId,
+      runId: recordingSessionId,
+      provider: "DEEPGRAMLIVE",
+      language: rawPayload.language || null,
+      status: "finalized",
+      startedAt: rawPayload.createdAt || null,
+      endedAt: finalizedAt,
+      metadata: {
+        ownerPeerId: rawPayload.ownerPeerId || null,
+        model: rawPayload.model || null,
+        closedReason: reason,
+        deliberationStyle: true
+      },
+      segments,
+      artifacts
+    });
+
     traceRecTrans("transcription_persisted", {
       roomId,
       recordingSessionId,
@@ -1627,7 +1944,8 @@ function closePeer(peerId) {
         broadcastToRoom(roomId, "recording-state", {
           enabled: true,
           ownerPeerId: nextOwnerPeerId,
-          mode: room.recordingState.mode
+          mode: room.recordingState.mode,
+          transcriptionLanguage: room.recordingState.transcriptionLanguage || ""
         });
         logger.info("recording_owner_handover", {
           roomId,
@@ -1639,9 +1957,15 @@ function closePeer(peerId) {
         room.recordingState.enabled = false;
         room.recordingState.ownerPeerId = null;
         room.recordingState.mode = "av";
+        room.recordingState.transcriptionLanguage = "";
         stopTranscriptionSession(roomId, "recording_owner_left_no_successor");
         endRecordingRun(roomId, "recording_owner_left_no_successor");
-        broadcastToRoom(roomId, "recording-state", { enabled: false, ownerPeerId: null, mode: "av" });
+        broadcastToRoom(roomId, "recording-state", {
+          enabled: false,
+          ownerPeerId: null,
+          mode: "av",
+          transcriptionLanguage: ""
+        });
         logger.info("recording_owner_left_no_successor", { roomId, peerId });
       }
     }
@@ -1653,6 +1977,7 @@ function closePeer(peerId) {
         room.recordingState.enabled = false;
         room.recordingState.ownerPeerId = null;
         room.recordingState.mode = "av";
+        room.recordingState.transcriptionLanguage = "";
         endRecordingRun(roomId, "room_closed");
       }
       stopTranscriptionSession(roomId, "room_closed");
@@ -1927,6 +2252,7 @@ app.post("/api/transcription/chunk", (req, res) => {
 
   try {
     const session = getOrCreateTranscriptionSession(roomId, peerId, language, recordingSessionId);
+    room.recordingState.transcriptionLanguage = session.language;
     pushTranscriptionChunk(session, req.body);
     traceRecTrans("transcription_chunk_accepted", {
       requestId: req.requestId,
@@ -2333,6 +2659,9 @@ app.post("/api/recording/start", express.json(), (req, res) => {
   const roomId = String(req.body?.roomId || "").trim();
   const targetPeerId = String(req.body?.peerId || req.body?.targetPeerId || "").trim();
   const mode = normalizeRecordingMode(req.body?.mode);
+  const requestedTranscriptionLanguage = normalizeTranscriptionLanguage(
+    String(req.body?.transcriptionLanguage || "")
+  );
 
   if (!roomId || !targetPeerId) {
     return json(res, 400, { error: "roomId and peerId are required" });
@@ -2362,20 +2691,45 @@ app.post("/api/recording/start", express.json(), (req, res) => {
   room.recordingState.enabled = true;
   room.recordingState.ownerPeerId = targetPeerId;
   room.recordingState.mode = mode;
+  if (requestedTranscriptionLanguage) {
+    room.recordingState.transcriptionLanguage = requestedTranscriptionLanguage;
+  }
   if (!room.recordingState.activeRunId) {
     startRecordingRun(room, mode);
   }
-  const state = { enabled: true, ownerPeerId: targetPeerId, mode };
+  const state = {
+    enabled: true,
+    ownerPeerId: targetPeerId,
+    mode,
+    transcriptionLanguage: room.recordingState.transcriptionLanguage || ""
+  };
   broadcastToRoom(roomId, "recording-state", state);
 
   logger.info("recording_start_requested_via_api", {
     requestId: req.requestId,
     roomId,
     targetPeerId,
-    mode
+    mode,
+    transcriptionLanguage: room.recordingState.transcriptionLanguage || ""
   });
 
-  return json(res, 200, { ok: true, roomId, ownerPeerId: targetPeerId, recordingEnabled: true, mode });
+  return json(res, 200, {
+    ok: true,
+    roomId,
+    ownerPeerId: targetPeerId,
+    recordingEnabled: true,
+    mode,
+    transcriptionLanguage: room.recordingState.transcriptionLanguage || ""
+  });
+});
+
+app.get("/api/metrics/hub", (_req, res) => {
+  json(res, 200, {
+    ok: true,
+    hubConfigured: Boolean(TRANSCRIPTION_HUB_URL),
+    pendingQueueSize: getPendingFiles().length,
+    metrics: hubMetrics
+  });
 });
 
 app.get("/api/health", (_req, res) => {
@@ -2430,10 +2784,22 @@ wss.on("connection", (ws) => {
     try {
       if (action === "join") {
         const roomId = String(data?.roomId || "").trim();
+        const meetingId = String(data?.meetingId || "").trim();
         const name = String(data?.name || "Guest").trim() || "Guest";
         if (!roomId) throw new Error("roomId is required");
+        if (!verifyAccessToken(String(data?.access || ""), roomId, meetingId || null)) {
+          fail(ws, requestId, "access denied");
+          try {
+            ws.close();
+          } catch {}
+          return;
+        }
 
         const room = await getOrCreateRoom(roomId);
+        if (meetingId && !room.meetingId) room.meetingId = meetingId;
+        if (meetingId && room.meetingId && room.meetingId !== meetingId) {
+          logger.warn("room_meeting_id_mismatch", { roomId, existingMeetingId: room.meetingId, incomingMeetingId: meetingId });
+        }
         const peerId = createId("peer");
 
         const peer = {
@@ -2470,6 +2836,9 @@ wss.on("connection", (ws) => {
         }
 
         const autoRecordModeRequested = data?.autoRecordMode ? normalizeRecordingMode(data?.autoRecordMode) : null;
+        const autoRecordTranscriptionLanguageRequested = normalizeTranscriptionLanguage(
+          String(data?.transcriptionLanguage || "")
+        );
         const chatSession = getOrCreateChatSession(roomId);
         const chatMessages = Array.isArray(chatSession?.messages)
           ? chatSession.messages.slice(-120).map((m) => ({
@@ -2490,6 +2859,7 @@ wss.on("connection", (ws) => {
           room.recordingState.enabled = true;
           room.recordingState.ownerPeerId = peerId;
           room.recordingState.mode = autoRecordModeRequested;
+          room.recordingState.transcriptionLanguage = autoRecordTranscriptionLanguageRequested || "";
           startRecordingRun(room, autoRecordModeRequested);
         }
 
@@ -2504,6 +2874,8 @@ wss.on("connection", (ws) => {
           recordingEnabled: room.recordingState.enabled,
           recordingOwnerPeerId: room.recordingState.ownerPeerId,
           recordingMode: room.recordingState.mode,
+          recordingTranscriptionLanguage: room.recordingState.transcriptionLanguage || "",
+          meetingId: room.meetingId || null,
           chatMessages,
           chatSessionId: chatSession?.chatSessionId || null,
           transcriptHistory
@@ -2764,12 +3136,21 @@ wss.on("connection", (ws) => {
 
         if (enabled) {
           const wasEnabled = room.recordingState.enabled;
+          const requestedTranscriptionLanguage = normalizeTranscriptionLanguage(
+            String(data?.transcriptionLanguage || "")
+          );
           if (room.recordingState.enabled && room.recordingState.ownerPeerId !== peer.id) {
             throw new Error("Recording already active in this room");
           }
           room.recordingState.enabled = true;
           room.recordingState.ownerPeerId = peer.id;
           room.recordingState.mode = requestedMode;
+          if (requestedTranscriptionLanguage) {
+            room.recordingState.transcriptionLanguage = requestedTranscriptionLanguage;
+          } else if (!room.recordingState.transcriptionLanguage) {
+            const activeTranscriptionSession = transcriptionSessions.get(peer.roomId);
+            room.recordingState.transcriptionLanguage = activeTranscriptionSession?.language || "";
+          }
           if (!wasEnabled) {
             startRecordingRun(room, requestedMode);
           }
@@ -2780,6 +3161,7 @@ wss.on("connection", (ws) => {
           room.recordingState.enabled = false;
           room.recordingState.ownerPeerId = null;
           room.recordingState.mode = "av";
+          room.recordingState.transcriptionLanguage = "";
           stopTranscriptionSession(peer.roomId, "recording_stopped");
           endRecordingRun(peer.roomId, "recording_stopped");
         }
@@ -2787,7 +3169,8 @@ wss.on("connection", (ws) => {
         const state = {
           enabled: room.recordingState.enabled,
           ownerPeerId: room.recordingState.ownerPeerId,
-          mode: room.recordingState.mode
+          mode: room.recordingState.mode,
+          transcriptionLanguage: room.recordingState.transcriptionLanguage || ""
         };
         ok(ws, requestId, state);
         broadcastToRoom(peer.roomId, "recording-state", state);

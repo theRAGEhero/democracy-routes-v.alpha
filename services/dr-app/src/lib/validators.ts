@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const createMeetingSchema = z.object({
-  title: z.string().min(1, "Title is required"),
+  title: z.string().optional().or(z.literal("")),
   description: z.string().max(240).optional().or(z.literal("")),
   startAt: z.string().optional(),
   date: z.string().optional(),
@@ -9,7 +9,7 @@ export const createMeetingSchema = z.object({
   durationMinutes: z.number().int().positive().optional(),
   inviteEmails: z.array(z.string().email("Invalid email")).optional(),
   language: z.enum(["EN", "IT"]).default("EN"),
-  transcriptionProvider: z.enum(["DEEPGRAM", "DEEPGRAMLIVE", "VOSK"]).default("DEEPGRAM"),
+  transcriptionProvider: z.enum(["DEEPGRAM", "DEEPGRAMLIVE", "VOSK"]).default("DEEPGRAMLIVE"),
   timezone: z.string().max(100).optional().nullable(),
   dataspaceId: z.string().optional().nullable(),
   isPublic: z.boolean().optional().default(false),
@@ -57,7 +57,7 @@ export const createPlanSchema = z.object({
   blocks: z
     .array(
       z.object({
-        type: z.enum(["ROUND", "MEDITATION", "POSTER", "TEXT", "RECORD", "FORM"]),
+        type: z.enum(["PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING"]),
         durationSeconds: z.number().int().min(1).max(7200),
         roundMaxParticipants: z.number().int().min(2).max(12).optional().nullable(),
         formQuestion: z.string().trim().max(240).optional().nullable(),
@@ -71,6 +71,8 @@ export const createPlanSchema = z.object({
           .optional()
           .nullable(),
         posterId: z.string().optional().nullable(),
+        embedUrl: z.string().trim().max(500).optional().nullable(),
+        matchingMode: z.enum(["polar", "anti"]).optional().nullable(),
         meditationAnimationId: z.string().optional().nullable(),
         meditationAudioUrl: z.string().optional().nullable()
       })
@@ -126,7 +128,41 @@ export const registerSchema = z
 
 export const createDataspaceSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  description: z.string().max(500).optional().or(z.literal(""))
+  description: z.string().max(500).optional().or(z.literal("")),
+  imageUrl: z
+    .string()
+    .trim()
+    .url("Image URL must be valid")
+    .or(z.string().regex(/^\/api\/uploads\/[a-z-]+\/[A-Za-z0-9._-]+$/))
+    .optional()
+    .or(z.literal("")),
+  color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "Color must be a hex value like #F97316")
+    .optional()
+    .or(z.literal(""))
+});
+
+export const updateDataspaceSchema = z.object({
+  name: z.string().min(1, "Name is required").optional(),
+  description: z.string().max(500).optional().or(z.literal("")),
+  imageUrl: z
+    .string()
+    .trim()
+    .url("Image URL must be valid")
+    .or(z.string().regex(/^\/api\/uploads\/[a-z-]+\/[A-Za-z0-9._-]+$/))
+    .optional()
+    .or(z.literal("")),
+  color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "Color must be a hex value like #F97316")
+    .optional()
+    .or(z.literal("")),
+  notifyAllActivity: z.boolean().optional(),
+  notifyMeetings: z.boolean().optional(),
+  notifyPlans: z.boolean().optional(),
+  notifyTexts: z.boolean().optional(),
+  rssEnabled: z.boolean().optional()
 });
 
 export const changePasswordSchema = z
@@ -159,7 +195,29 @@ export const profileSettingsSchema = z.object({
     .trim()
     .max(200, "Cal.com link is too long")
     .optional()
-    .or(z.literal(""))
+    .or(z.literal("")),
+  avatarUrl: z
+    .string()
+    .trim()
+    .url("Avatar URL must be valid")
+    .or(z.string().regex(/^\/api\/uploads\/[a-z-]+\/[A-Za-z0-9._-]+$/))
+    .optional()
+    .or(z.literal("")),
+  notifyEmailMeetingInvites: z.boolean().optional(),
+  notifyTelegramMeetingInvites: z.boolean().optional(),
+  notifyEmailPlanInvites: z.boolean().optional(),
+  notifyTelegramPlanInvites: z.boolean().optional(),
+  notifyEmailDataspaceInvites: z.boolean().optional(),
+  notifyTelegramDataspaceInvites: z.boolean().optional(),
+  notifyEmailDataspaceActivity: z.boolean().optional(),
+  notifyTelegramDataspaceActivity: z.boolean().optional()
+});
+
+export const dataspacePreferenceSchema = z.object({
+  notifyAllActivity: z.boolean().optional(),
+  notifyMeetings: z.boolean().optional(),
+  notifyPlans: z.boolean().optional(),
+  notifyTexts: z.boolean().optional()
 });
 
 export const changeEmailSchema = z.object({

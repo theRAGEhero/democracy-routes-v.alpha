@@ -59,6 +59,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  const dataspace = await prisma.dataspace.findFirst({
+    where: { telegramGroupLinkCode: code }
+  });
+
+  if (dataspace && chatId) {
+    await prisma.dataspace.update({
+      where: { id: dataspace.id },
+      data: {
+        telegramGroupChatId: chatId,
+        telegramGroupLinkCode: null,
+        telegramGroupLinkedAt: new Date()
+      }
+    });
+
+    await sendTelegramMessage(
+      botToken,
+      chatId,
+      "✅ Telegram group linked to this dataspace. You will now receive updates here."
+    );
+
+    return NextResponse.json({ ok: true });
+  }
+
   const user = await prisma.user.findFirst({
     where: { telegramVerificationCode: code }
   });

@@ -1,0 +1,22 @@
+version: "3.8"
+
+services:
+  deepgram-modular:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - .env.local
+    volumes:
+      - ./data:/app/data
+      - ./public/audio:/app/public/audio
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - dr-shared
+
+networks:
+  dr-shared:
+    external: true
