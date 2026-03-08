@@ -25,11 +25,49 @@ function injectSnippet(snippet: string) {
   if (typeof document === "undefined") return;
   if (!snippet.trim()) return;
   if (document.getElementById("dr-analytics-snippet")) return;
-  const script = document.createElement("script");
-  script.id = "dr-analytics-snippet";
-  script.type = "text/javascript";
-  script.text = snippet;
-  document.head.appendChild(script);
+
+  const marker = document.createElement("meta");
+  marker.id = "dr-analytics-snippet";
+  marker.setAttribute("data-injected", "true");
+  document.head.appendChild(marker);
+
+  const hasScriptTags = /<script[\s>]/i.test(snippet);
+  if (!hasScriptTags) {
+    const script = document.createElement("script");
+    script.type = "text/javascript";
+    script.text = snippet;
+    document.head.appendChild(script);
+    return;
+  }
+
+  const template = document.createElement("template");
+  template.innerHTML = snippet;
+  const scripts = Array.from(template.content.querySelectorAll("script"));
+  if (scripts.length === 0) {
+    const script = document.createElement("script");
+    script.type = "text/javascript";
+    script.text = snippet;
+    document.head.appendChild(script);
+    return;
+  }
+
+  scripts.forEach((sourceScript, index) => {
+    const script = document.createElement("script");
+    script.type = sourceScript.type || "text/javascript";
+    if (sourceScript.src) {
+      script.src = sourceScript.src;
+      script.async = sourceScript.async;
+      script.defer = sourceScript.defer;
+      script.crossOrigin = sourceScript.crossOrigin || "";
+      if (sourceScript.referrerPolicy) {
+        script.referrerPolicy = sourceScript.referrerPolicy;
+      }
+    } else {
+      script.text = sourceScript.textContent || "";
+    }
+    script.id = `dr-analytics-snippet-script-${index}`;
+    document.head.appendChild(script);
+  });
 }
 
 export function AnalyticsConsent({ enabled, snippet }: Props) {
@@ -51,7 +89,10 @@ export function AnalyticsConsent({ enabled, snippet }: Props) {
     <div className="fixed bottom-3 left-3 right-3 z-50 mx-auto max-w-xl rounded-2xl border border-slate-200 bg-white/95 p-3 text-xs text-slate-700 shadow-[0_14px_40px_rgba(15,23,42,0.18)]">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <span>
-          We use analytics cookies to understand usage. You can accept or reject.
+          We use analytics cookies to understand usage. Read our{" "}
+          <a href="/privacy" className="font-semibold underline">privacy policy</a>{" "}
+          and{" "}
+          <a href="/cookies" className="font-semibold underline">cookie policy</a>.
         </span>
         <div className="flex items-center gap-2">
           <button

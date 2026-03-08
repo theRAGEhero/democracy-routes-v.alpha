@@ -25,6 +25,9 @@ export default async function AdminMatchingEmbedPage() {
           <Link href="/admin" className="dr-button-outline px-4 py-2 text-sm">
             Back to Admin
           </Link>
+          <a href={embedUrl} target="_blank" rel="noreferrer" className="dr-button-outline px-4 py-2 text-sm">
+            Open standalone
+          </a>
         </div>
       </div>
 

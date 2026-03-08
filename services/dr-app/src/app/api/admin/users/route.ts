@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import bcrypt from "bcrypt";
+import bcrypt from "@/lib/bcrypt";
 import { prisma } from "@/lib/prisma";
 import { createUserSchema } from "@/lib/validators";
 import { getSession } from "@/lib/session";

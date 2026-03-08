@@ -721,6 +721,13 @@ function log(line) {
   logsEl.textContent = `[${ts}] ${line}\n` + logsEl.textContent;
 }
 
+function logRtcDebug(event, details = {}) {
+  const parts = Object.entries(details)
+    .filter(([, value]) => value !== undefined && value !== null && value !== "")
+    .map(([key, value]) => `${key}=${String(value)}`);
+  log(`[rtc] ${event}${parts.length ? " | " + parts.join(" ") : ""}`);
+}
+
 function renderTranscriptBox() {
   if (!transcriptBoxEl || !transcriptLinesEl || !transcriptLiveEl) return;
 
@@ -940,6 +947,7 @@ function setChatPanelVisible(visible) {
 }
 
 function updateVideosLayout() {
+  syncEmbeddedViewMode();
   const count = peerTiles.size;
   videosEl.dataset.count = String(count);
   videosEl.classList.remove("mode-auto", "mode-grid", "mode-speaker");
@@ -977,6 +985,19 @@ function cycleViewMode() {
   if (viewMode !== "speaker") pinnedSpeakerPeerId = null;
   refreshViewButton();
   updateVideosLayout();
+}
+
+function syncEmbeddedViewMode() {
+  if (!(EMBED_MODE || EMBED_UI)) return;
+  const participantCount = peerTiles.size;
+  if (participantCount > 1 && viewMode !== "grid") {
+    viewMode = "grid";
+    pinnedSpeakerPeerId = null;
+    refreshViewButton();
+  } else if (participantCount <= 1 && viewMode === "grid") {
+    viewMode = "auto";
+    refreshViewButton();
+  }
 }
 
 function pollActiveSpeaker() {
@@ -1081,6 +1102,18 @@ function setConnectedView(connected) {
   callShellEl.classList.toggle("hidden", !connected);
 }
 
+function isEmbeddedFullscreen() {
+  try {
+    if (!(EMBED_MODE || EMBED_UI) || !window.parent || window.parent === window) return false;
+    const frame = window.frameElement || null;
+    const parentDoc = window.parent.document;
+    if (!frame || !parentDoc) return false;
+    return parentDoc.fullscreenElement === frame || parentDoc.webkitFullscreenElement === frame;
+  } catch {
+    return false;
+  }
+}
+
 function createTile(peerKey, label, { isLocal = false } = {}) {
   const wrap = document.createElement("article");
   wrap.className = "tile";
@@ -1102,8 +1135,10 @@ function createTile(peerKey, label, { isLocal = false } = {}) {
   audio.style.display = "none";
 
   const stream = new MediaStream();
-  video.srcObject = stream;
-  audio.srcObject = stream;
+  const videoStream = new MediaStream();
+  const audioStream = new MediaStream();
+  video.srcObject = videoStream;
+  audio.srcObject = audioStream;
 
   wrap.appendChild(meta);
   wrap.appendChild(video);
@@ -1120,10 +1155,33 @@ function createTile(peerKey, label, { isLocal = false } = {}) {
     video.addEventListener("stalled", () => log("Remote video stalled: " + labelForLog()));
     video.addEventListener("waiting", () => log("Remote video waiting: " + labelForLog()));
     video.addEventListener("error", () => log("Remote video error: " + labelForLog()));
+    video.addEventListener("loadedmetadata", () =>
+      logRtcDebug("remote_video_loadedmetadata", {
+        peer: peerKey,
+        label: labelForLog(),
+        width: video.videoWidth,
+        height: video.videoHeight,
+        streamTracks: tile?.stream?.getTracks?.().length || stream.getTracks().length
+      })
+    );
+    video.addEventListener("resize", () =>
+      logRtcDebug("remote_video_resize", {
+        peer: peerKey,
+        label: labelForLog(),
+        width: video.videoWidth,
+        height: video.videoHeight
+      })
+    );
   }
 
-  const tile = { wrap, meta, video, audio, stream, isLocal };
+  const tile = { wrap, meta, video, audio, stream, videoStream, audioStream, isLocal };
   peerTiles.set(peerKey, tile);
+  logRtcDebug("tile_created", {
+    peer: peerKey,
+    local: isLocal,
+    label,
+    totalTiles: peerTiles.size
+  });
   if (!isLocal) {
     wrap.addEventListener("click", () => {
       if (viewMode !== "speaker") return;
@@ -1164,6 +1222,14 @@ function observeIncomingTrack(peerKey, kind, track) {
   track.onmute = () => log("Track muted: " + who() + " (" + kind + ")");
   track.onunmute = () => log("Track unmuted: " + who() + " (" + kind + ")");
   track.onended = () => log("Track ended: " + who() + " (" + kind + ")");
+  logRtcDebug("track_observed", {
+    peer: peerKey,
+    kind,
+    trackId: track.id,
+    readyState: track.readyState,
+    enabled: track.enabled,
+    muted: track.muted
+  });
 }
 
 function setTileTrack(peerKey, kind, track) {
@@ -1172,6 +1238,23 @@ function setTileTrack(peerKey, kind, track) {
 
   removeTrackByKind(tile.stream, kind);
   tile.stream.addTrack(track);
+  if (kind === "video") {
+    removeTrackByKind(tile.videoStream, "video");
+    tile.videoStream.addTrack(track);
+  } else if (kind === "audio") {
+    removeTrackByKind(tile.audioStream, "audio");
+    tile.audioStream.addTrack(track);
+  }
+  logRtcDebug("tile_track_attached", {
+    peer: peerKey,
+    kind,
+    trackId: track?.id,
+    readyState: track?.readyState,
+    enabled: track?.enabled,
+    muted: track?.muted,
+    streamAudio: tile.stream.getAudioTracks().length,
+    streamVideo: tile.stream.getVideoTracks().length
+  });
 
   if (!tile.isLocal) {
     observeIncomingTrack(peerKey, kind, track);
@@ -1182,9 +1265,33 @@ function setTileTrack(peerKey, kind, track) {
   }
 
   if (kind === "video") {
-    tile.video.play().catch(() => null);
+    tile.video.play().then(() => {
+      logRtcDebug("remote_video_play_called", {
+        peer: peerKey,
+        paused: tile.video.paused,
+        readyState: tile.video.readyState,
+        width: tile.video.videoWidth,
+        height: tile.video.videoHeight
+      });
+    }).catch((error) => {
+      logRtcDebug("remote_video_play_failed", {
+        peer: peerKey,
+        error: String(error)
+      });
+    });
   } else if (kind === "audio" && !tile.isLocal) {
-    tile.audio.play().catch(() => null);
+    tile.audio.play().then(() => {
+      logRtcDebug("remote_audio_play_called", {
+        peer: peerKey,
+        paused: tile.audio.paused,
+        readyState: tile.audio.readyState
+      });
+    }).catch((error) => {
+      logRtcDebug("remote_audio_play_failed", {
+        peer: peerKey,
+        error: String(error)
+      });
+    });
   }
 
   if (kind === "audio" && recordingAudioMix?.sync) {
@@ -1200,6 +1307,16 @@ function removePeerTile(peerKey) {
     tile.stream.removeTrack(track);
     try {
       track.stop();
+    } catch {}
+  });
+  tile.videoStream?.getTracks?.().forEach((track) => {
+    try {
+      tile.videoStream.removeTrack(track);
+    } catch {}
+  });
+  tile.audioStream?.getTracks?.().forEach((track) => {
+    try {
+      tile.audioStream.removeTrack(track);
     } catch {}
   });
 
@@ -1769,6 +1886,8 @@ async function beginLocalRecorder(mode = "av") {
   const pendingChunkUploads = [];
   const mediaStream =
     normalizedMode === "audio" ? buildAudioRecordingStream() : buildCompositeRecordingStream();
+  const trackKinds = mediaStream.getTracks().map((track) => track.kind);
+  log(`[recording] initializing local recorder (${normalizedMode}) with tracks: ${trackKinds.join(", ") || "none"}`);
   const preferredMimeType =
     normalizedMode === "audio" ? "audio/webm;codecs=opus" : "video/webm;codecs=vp8,opus";
   const mimeType = MediaRecorder.isTypeSupported(preferredMimeType) ? preferredMimeType : undefined;
@@ -1790,6 +1909,9 @@ async function beginLocalRecorder(mode = "av") {
         if (idx >= 0) pendingChunkUploads.splice(idx, 1);
       });
     pendingChunkUploads.push(uploadPromise);
+    if (recSeq === 1) {
+      log(`[recording] first chunk queued (${normalizedMode}, ${event.data.size} bytes)`);
+    }
   };
 
   if (transcriptionLanguage) {
@@ -1875,6 +1997,7 @@ async function startRecording(mode = "av") {
     await beginLocalRecorder(recordingMode);
   } catch (error) {
     log(`Cannot start recording: ${String(error)}`);
+    log(`[recording] failed before MediaRecorder start (${normalizedMode})`);
     refreshRecordingButtons();
   }
 }
@@ -2406,6 +2529,14 @@ async function leaveRoom() {
   clearTranscriptBox();
   refreshAllControls();
   postHostEvent("left", { connected: false });
+  try {
+    if ((EMBED_MODE || EMBED_UI) && meetingId && drAppBaseUrl && window.parent) {
+      window.parent.postMessage(
+        { type: "dr-video:leave", meetingId },
+        "*"
+      );
+    }
+  } catch {}
   await refreshPreview();
 }
 
@@ -2587,7 +2718,25 @@ dockRecVideoBtn.addEventListener("click", () => {
     startRecording("av");
   }
 });
-dockLeaveBtn.addEventListener("click", () => leaveRoom());
+dockLeaveBtn.addEventListener("click", async () => {
+  if (isEmbeddedFullscreen()) {
+    try {
+      if ((EMBED_MODE || EMBED_UI) && meetingId && window.parent) {
+        window.parent.postMessage({ type: "dr-video:exit-fullscreen", meetingId }, "*");
+      }
+    } catch {}
+    return;
+  }
+  try {
+    await leaveRoom();
+  } finally {
+    try {
+      if ((EMBED_MODE || EMBED_UI) && meetingId && window.parent) {
+        window.parent.postMessage({ type: "dr-video:leave", meetingId }, "*");
+      }
+    } catch {}
+  }
+});
 inviteBtn?.addEventListener("click", async () => {
   const url = buildInviteUrl();
   if (!url) {

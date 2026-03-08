@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { SignOutButton } from "@/components/SignOutButton";
 import { DEFAULT_DATASPACE_COLOR } from "@/lib/dataspaceColor";
@@ -10,6 +10,7 @@ import { DEFAULT_DATASPACE_COLOR } from "@/lib/dataspaceColor";
 export function AppHeader() {
   const { data: session, status } = useSession();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const [showNewMenu, setShowNewMenu] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -152,7 +153,7 @@ export function AppHeader() {
   if (!session?.user) {
     return (
       <header className="sticky top-3 z-20">
-        <div className="mx-auto w-full max-w-6xl rounded-[28px] border border-[color:var(--stroke)] bg-[color:var(--card)] px-3 py-3 shadow-[0_18px_45px_rgba(15,23,42,0.12)] backdrop-blur sm:px-5">
+        <div className="relative mx-auto w-full max-w-6xl rounded-[28px] border border-[color:var(--stroke)] bg-[color:var(--card)] px-3 py-3 shadow-[0_18px_45px_rgba(15,23,42,0.12)] backdrop-blur sm:px-5">
           <div className="flex items-center justify-between gap-3">
           <a
             href="https://democracyroutes.com"
@@ -200,7 +201,7 @@ export function AppHeader() {
             </button>
           </div>
           {showMobileMenu ? (
-            <div className="mt-3 flex flex-col gap-2 rounded-2xl border border-slate-200/70 bg-white/90 p-3 text-sm text-slate-700 sm:hidden">
+            <div className="absolute left-0 right-0 top-full z-40 mt-3 flex flex-col gap-2 rounded-2xl border border-slate-200/70 bg-white/95 p-3 text-sm text-slate-700 shadow-[0_18px_45px_rgba(15,23,42,0.12)] sm:hidden">
               <Link href="/about" onClick={() => setShowMobileMenu(false)}>
                 About
               </Link>
@@ -217,9 +218,129 @@ export function AppHeader() {
     );
   }
 
+  const isTemplateWorkspace =
+    pathname?.startsWith("/modular") ||
+    pathname === "/templates/workspace" ||
+    (pathname === "/flows/new" && searchParams?.get("mode") === "template") ||
+    (pathname?.startsWith("/flows/") && pathname?.endsWith("/edit")) ||
+    (pathname === "/templates/ai" && searchParams?.get("embedded") === "workspace");
+
+  if (isTemplateWorkspace) {
+    return (
+      <header className="sticky top-2 z-20">
+        <div className="relative mx-auto flex w-full max-w-[1400px] items-center justify-between gap-3 px-1 py-1 sm:px-2">
+          <a
+            href="https://democracyroutes.com"
+            className="flex items-center"
+            aria-label="Democracy Routes home"
+          >
+            <span className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl border border-emerald-200/80 bg-white/88 shadow-[0_10px_24px_rgba(16,185,129,0.16)]">
+              <img
+                src="/logo-120.png"
+                alt="Democracy Routes logo"
+                className="h-full w-full object-contain"
+              />
+            </span>
+          </a>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowMobileMenu((prev) => !prev)}
+              className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-200/80 bg-white/88 px-3 py-2 text-[11px] font-semibold text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
+              aria-label="Toggle modular workspace navigation"
+              aria-expanded={showMobileMenu}
+            >
+              <span className="text-base leading-none">{showMobileMenu ? "×" : "☰"}</span>
+              <span className="sr-only">{showMobileMenu ? "Close menu" : "Open menu"}</span>
+            </button>
+          </div>
+        </div>
+
+        {showMobileMenu ? (
+          <div className="absolute left-0 right-0 top-full z-40 mx-auto mt-2 w-full max-w-[1400px] px-1 sm:px-2">
+            <div className="grid max-h-[calc(100dvh-6rem)] gap-3 overflow-y-auto rounded-[24px] border border-slate-200/70 bg-white/95 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.12)] backdrop-blur md:grid-cols-[1.2fr,1fr,1fr]">
+              <div className="space-y-2">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                  Workspace
+                </div>
+                <Link
+                  href="/flows"
+                  onClick={() => setShowMobileMenu(false)}
+                  className="block rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-white"
+                >
+                  All templates
+                </Link>
+                <Link
+                  href="/templates/workspace?mode=modular"
+                  onClick={() => setShowMobileMenu(false)}
+                  className="block rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-white"
+                >
+                  Template Builder
+                </Link>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                  Navigation
+                </div>
+                <Link
+                  href="/dashboard"
+                  onClick={() => setShowMobileMenu(false)}
+                  className="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  Dashboard
+                </Link>
+                <Link
+                  href="/dataspace"
+                  onClick={() => setShowMobileMenu(false)}
+                  className="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  Dataspaces
+                </Link>
+                <Link
+                  href="/remote-worker"
+                  onClick={() => setShowMobileMenu(false)}
+                  className="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  Remote worker
+                </Link>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                  Account
+                </div>
+                <Link
+                  href="/account"
+                  onClick={() => setShowMobileMenu(false)}
+                  className="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  Profile settings
+                </Link>
+                {session.user.role === "ADMIN" ? (
+                  <Link
+                    href="/admin"
+                    onClick={() => setShowMobileMenu(false)}
+                    className="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    Admin
+                  </Link>
+                ) : null}
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-2">
+                  <SignOutButton />
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </header>
+    );
+  }
+
   return (
     <header className="sticky top-3 z-20">
-      <div className="mx-auto w-full max-w-6xl rounded-[28px] border border-[color:var(--stroke)] bg-[color:var(--card)] px-3 py-3 shadow-[0_18px_45px_rgba(15,23,42,0.12)] backdrop-blur sm:px-5">
+      <div className="relative mx-auto w-full max-w-6xl rounded-[28px] border border-[color:var(--stroke)] bg-[color:var(--card)] px-3 py-3 shadow-[0_18px_45px_rgba(15,23,42,0.12)] backdrop-blur sm:px-5">
         <div className="flex items-center justify-between gap-3">
           <a
             href="https://democracyroutes.com"
@@ -336,25 +457,11 @@ export function AppHeader() {
                     All templates
                   </Link>
                   <Link
-                    href="/modular"
+                    href="/templates/workspace?mode=modular"
                     onClick={() => setShowNewMenu(false)}
                     className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
                   >
-                    Modular builder
-                  </Link>
-                  <Link
-                    href="/templates/ai"
-                    onClick={() => setShowNewMenu(false)}
-                    className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
-                  >
-                    Template AI
-                  </Link>
-                  <Link
-                    href="/flows/new?mode=template"
-                    onClick={() => setShowNewMenu(false)}
-                    className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
-                  >
-                    New template
+                    Template Builder
                   </Link>
                 </div>
               ) : null}
@@ -440,6 +547,13 @@ export function AppHeader() {
                   onMouseLeave={scheduleCloseUserMenu}
                 >
                   <Link
+                    href="/remote-worker"
+                    onClick={() => setShowUserMenu(false)}
+                    className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
+                  >
+                    Remote worker
+                  </Link>
+                  <Link
                     href="/account"
                     onClick={() => setShowUserMenu(false)}
                     className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
@@ -491,41 +605,61 @@ export function AppHeader() {
         </div>
 
         {showMobileMenu ? (
-          <div className="mt-3 flex flex-col gap-3 rounded-2xl border border-slate-200/70 bg-white/90 p-4 text-sm text-slate-700 lg:hidden">
-            <div className="flex flex-col gap-2">
-              <Link href="/dashboard" onClick={() => setShowMobileMenu(false)}>
-                Dashboard
-              </Link>
-              <Link href="/dataspace" onClick={() => setShowMobileMenu(false)}>
-                Dataspace
-              </Link>
-              <Link href="/flows" onClick={() => setShowMobileMenu(false)}>
-                Templates
-              </Link>
-              <Link href="/modular" onClick={() => setShowMobileMenu(false)}>
-                Modular builder
-              </Link>
-              <Link href="/templates/ai" onClick={() => setShowMobileMenu(false)}>
-                Template AI
-              </Link>
+          <div className="absolute left-0 right-0 top-full z-40 mt-3 flex max-h-[calc(100dvh-6rem)] flex-col gap-4 overflow-y-auto rounded-2xl border border-slate-200/70 bg-white/95 p-4 text-sm text-slate-700 shadow-[0_18px_45px_rgba(15,23,42,0.12)] lg:hidden">
+            <div className="space-y-2">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                Primary
+              </div>
               <button
                 type="button"
                 onClick={handleInstantMeeting}
                 disabled={creatingMeeting}
-                className="text-left"
+                className="dr-button w-full px-4 py-2 text-left text-sm"
               >
                 {creatingMeeting ? "Starting instant meeting..." : "Start instant meeting"}
               </button>
-              <Link href={dataspaceMeetingLink} onClick={() => setShowMobileMenu(false)}>
+              <Link
+                href={dataspaceMeetingLink}
+                onClick={() => setShowMobileMenu(false)}
+                className="block w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700"
+              >
                 Plan a meeting
               </Link>
-              <Link href="/flows/new?mode=template" onClick={() => setShowMobileMenu(false)}>
-                New template
-              </Link>
             </div>
+
+            <div className="space-y-2">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                Explore
+              </div>
+              <div className="flex flex-col gap-2">
+                <Link href="/dashboard" onClick={() => setShowMobileMenu(false)} className="font-medium">
+                  Dashboard
+                </Link>
+                <Link href="/dataspace" onClick={() => setShowMobileMenu(false)} className="font-medium">
+                  Dataspaces
+                </Link>
+                <Link href="/remote-worker" onClick={() => setShowMobileMenu(false)} className="font-medium">
+                  Remote worker
+                </Link>
+                <div className="rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                    Templates
+                  </div>
+                  <div className="mt-2 flex flex-col gap-2 text-sm text-slate-700">
+                    <Link href="/flows" onClick={() => setShowMobileMenu(false)}>
+                      All templates
+                    </Link>
+                    <Link href="/templates/workspace?mode=modular" onClick={() => setShowMobileMenu(false)}>
+                      Template Builder
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="border-t border-slate-200/80 pt-3 text-xs text-slate-600">
               <div className="mb-2 uppercase tracking-[0.2em]">Account</div>
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2 text-sm text-slate-700">
                 <Link href="/account" onClick={() => setShowMobileMenu(false)}>
                   Profile settings
                 </Link>

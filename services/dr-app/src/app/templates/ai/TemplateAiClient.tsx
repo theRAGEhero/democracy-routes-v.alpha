@@ -36,6 +36,8 @@ const PRESETS = [
 ];
 
 const MODULES = [
+  "START",
+  "PARTICIPANTS",
   "PAIRING",
   "PAUSE",
   "PROMPT",
@@ -43,7 +45,15 @@ const MODULES = [
   "RECORD",
   "FORM",
   "EMBED",
-  "MATCHING"
+  "MATCHING",
+  "BREAK",
+  "HARMONICA",
+  "DEMBRANE",
+  "DELIBERAIDE",
+  "POLIS",
+  "AGORACITIZENS",
+  "NEXUSPOLITICS",
+  "SUFFRAGO"
 ] as const;
 
 type Block = {
@@ -54,6 +64,7 @@ type Block = {
   formChoices?: Array<{ key: string; label: string }> | null;
   posterId?: string | null;
   embedUrl?: string | null;
+  harmonicaUrl?: string | null;
   matchingMode?: "polar" | "anti" | null;
   meditationAnimationId?: string | null;
   meditationAudioUrl?: string | null;
@@ -63,6 +74,17 @@ type TemplateDraft = {
   name: string;
   description?: string | null;
   isPublic?: boolean;
+  settings?: {
+    syncMode?: "SERVER" | "CLIENT";
+    maxParticipantsPerRoom?: number;
+    allowOddGroup?: boolean;
+    language?: string;
+    transcriptionProvider?: string;
+    timezone?: string | null;
+    dataspaceId?: string | null;
+    requiresApproval?: boolean;
+    capacity?: number | null;
+  };
   blocks: Block[];
 };
 
@@ -71,32 +93,68 @@ export function TemplateAiClient() {
   const [activePreset, setActivePreset] = useState(PRESETS[0].id);
   const [result, setResult] = useState<TemplateDraft | null>(null);
   const [raw, setRaw] = useState<string>("");
+  const [lastStatus, setLastStatus] = useState<string | null>(null);
+  const [requestId, setRequestId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [createdTemplateId, setCreatedTemplateId] = useState<string | null>(null);
 
   const totalDuration = useMemo(() => {
     if (!result?.blocks?.length) return 0;
     return result.blocks.reduce((sum, block) => sum + (block.durationSeconds || 0), 0);
   }, [result]);
 
+  const debugOutput = useMemo(() => {
+    if (raw) return raw;
+    if (!error && !requestId && !lastStatus) return "No raw output yet.";
+    return JSON.stringify(
+      {
+        error: error || "No valid template JSON was created.",
+        requestId: requestId || null,
+        lastStatus: lastStatus || null
+      },
+      null,
+      2
+    );
+  }, [error, lastStatus, raw, requestId]);
+
   const handleGenerate = async () => {
     setIsLoading(true);
     setError(null);
     setSaveMessage(null);
+    setCreatedTemplateId(null);
+    setRaw("");
+    setLastStatus(null);
+    setRequestId(null);
     try {
       const response = await fetch("/api/templates/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ prompt })
       });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(payload?.error ?? "Unable to generate template.");
+      const payloadText = await response.text();
+      setRaw(payloadText || "");
+      setLastStatus(`${response.status} ${response.statusText || ""}`.trim());
+      let payload: any = null;
+      try {
+        payload = payloadText ? JSON.parse(payloadText) : null;
+      } catch {
+        payload = null;
       }
-      setResult(payload.template ?? null);
-      setRaw(payload.raw ?? "");
+      if (typeof payload?.requestId === "string") {
+        setRequestId(payload.requestId);
+      }
+      if (!response.ok) {
+        throw new Error(payload?.error ?? `Unable to generate template (HTTP ${response.status}).`);
+      }
+      if (!payload?.template) {
+        throw new Error("No template returned by the API.");
+      }
+      setResult(payload.template);
+      setRaw(payload.raw ?? payloadText ?? "");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to generate template.";
       setError(message);
@@ -109,14 +167,17 @@ export function TemplateAiClient() {
     if (!result) return;
     setSaving(true);
     setSaveMessage(null);
+    setCreatedTemplateId(null);
     try {
       const response = await fetch("/api/plan-templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           name: result.name?.trim() || "Untitled template",
           description: result.description || null,
           isPublic: Boolean(result.isPublic),
+          settings: result.settings ?? undefined,
           blocks: result.blocks
         })
       });
@@ -125,6 +186,9 @@ export function TemplateAiClient() {
         throw new Error(payload?.error?.formErrors?.[0] ?? payload?.error ?? "Unable to save template.");
       }
       setSaveMessage("Template created.");
+      if (payload?.id) {
+        setCreatedTemplateId(payload.id);
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to save template.";
       setSaveMessage(message);
@@ -135,14 +199,14 @@ export function TemplateAiClient() {
 
   return (
     <div className="space-y-6">
-      <div className="dr-card flex flex-col gap-4 p-6">
+      <div className="dr-card flex flex-col gap-4 p-4 sm:p-6">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
               Template AI
             </p>
             <h1 className="text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
-              Generate a template with Gemini
+              Generate a template with AI
             </h1>
             <p className="text-sm text-slate-600">
               Describe your session goals. The AI returns a full template using the available modules.
@@ -196,19 +260,31 @@ export function TemplateAiClient() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
-        <div className="dr-card space-y-4 p-6">
-          <div className="flex items-center justify-between">
+        <div className="dr-card space-y-4 p-4 sm:p-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-lg font-semibold text-slate-900">Generated template</h2>
-            <button
-              type="button"
-              className="dr-button px-3 py-1 text-xs"
-              onClick={handleSave}
-              disabled={!result || saving}
-            >
-              {saving ? "Saving..." : "Create template"}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {createdTemplateId ? (
+                <a
+                  href={`/templates/workspace?mode=modular&templateId=${createdTemplateId}`}
+                  className="dr-button-outline px-3 py-1 text-xs"
+                >
+                  Open in workspace
+                </a>
+              ) : null}
+              <button
+                type="button"
+                className="dr-button px-3 py-1 text-xs"
+                onClick={handleSave}
+                disabled={!result || saving}
+              >
+                {saving ? "Saving..." : "Create template"}
+              </button>
+            </div>
           </div>
           {saveMessage ? <p className="text-xs text-slate-500">{saveMessage}</p> : null}
+          {lastStatus ? <p className="text-[11px] text-slate-400">Last response: {lastStatus}</p> : null}
+          {requestId ? <p className="text-[11px] text-slate-400">Request ID: {requestId}</p> : null}
           {result ? (
             <div className="space-y-3">
               <div>
@@ -238,6 +314,9 @@ export function TemplateAiClient() {
                     {block.embedUrl ? (
                       <p className="mt-1 text-xs text-slate-500">Embed: {block.embedUrl}</p>
                     ) : null}
+                    {block.harmonicaUrl ? (
+                      <p className="mt-1 text-xs text-slate-500">Harmonica: {block.harmonicaUrl}</p>
+                    ) : null}
                     {block.matchingMode ? (
                       <p className="mt-1 text-xs text-slate-500">Matching: {block.matchingMode}</p>
                     ) : null}
@@ -250,15 +329,15 @@ export function TemplateAiClient() {
           )}
         </div>
 
-        <div className="dr-card space-y-3 p-6">
+        <div className="dr-card space-y-3 p-4 sm:p-6">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Raw output</p>
             <p className="text-sm text-slate-600">
-              The JSON returned by the model, for transparency and debugging.
+              The JSON returned by the model, for transparency and debugging. If valid template JSON is not created, this panel shows the error log context instead.
             </p>
           </div>
-          <pre className="min-h-[320px] whitespace-pre-wrap rounded-xl border border-slate-200 bg-white/70 p-3 text-xs text-slate-700">
-            {raw || "No raw output yet."}
+          <pre className="min-h-[220px] sm:min-h-[320px] whitespace-pre-wrap rounded-xl border border-slate-200 bg-white/70 p-3 text-xs text-slate-700">
+            {debugOutput}
           </pre>
         </div>
       </div>

@@ -58,7 +58,11 @@ export default async function GlobalDashboardPage() {
     providerLabel:
       meeting.transcriptionProvider === "VOSK"
         ? "Vosk"
-        : meeting.transcriptionProvider === "DEEPGRAMLIVE"
+        : meeting.transcriptionProvider === "AUTOREMOTE"
+          ? "Auto Remote"
+        : meeting.transcriptionProvider === "WHISPERREMOTE"
+          ? "Whisper Remote"
+          : meeting.transcriptionProvider === "DEEPGRAMLIVE"
           ? "Deepgram Live"
           : "Deepgram",
     dataspaceLabel:

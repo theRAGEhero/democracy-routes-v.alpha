@@ -38,6 +38,10 @@ export default async function GuestMeetingPage({
   const providerCode =
     meeting.transcriptionProvider === "VOSK"
       ? "vosk"
+      : meeting.transcriptionProvider === "AUTOREMOTE"
+        ? "autoremote"
+      : meeting.transcriptionProvider === "WHISPERREMOTE"
+        ? "whisperremote"
       : meeting.transcriptionProvider === "DEEPGRAMLIVE"
         ? "deepgramlive"
         : "deepgram";
@@ -59,6 +63,15 @@ export default async function GuestMeetingPage({
         <p className="mt-2 text-sm text-slate-600">
           You are invited as <span className="font-semibold">{invite.email}</span>.
         </p>
+        {meeting.transcriptionProvider === "WHISPERREMOTE" || meeting.transcriptionProvider === "AUTOREMOTE" ? (
+          <div className="mt-3 inline-flex max-w-2xl items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-sm text-amber-900">
+            <span className="mt-0.5 text-base leading-none">AI</span>
+            <span>
+              This meeting will be transcribed after the call by remote workers. The
+              recording is processed once the meeting has ended.
+            </span>
+          </div>
+        ) : null}
       </div>
 
       <GuestJoinCard

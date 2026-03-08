@@ -114,6 +114,7 @@ export async function GET(
               roundMaxParticipants: true,
               posterId: true,
               embedUrl: true,
+              harmonicaUrl: true,
               matchingMode: true
             }
           }
@@ -175,6 +176,7 @@ export async function GET(
               roundMaxParticipants: true,
               posterId: true,
               embedUrl: true,
+              harmonicaUrl: true,
               matchingMode: true
             }
           }
@@ -188,7 +190,7 @@ export async function GET(
   const normalizedBlocks: PlanBlockInput[] = (plan.blocks ?? []).reduce(
     (acc: PlanBlockInput[], block: (typeof plan.blocks)[number]) => {
       const type = block.type as PlanBlockType;
-      if (!["PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING"].includes(type)) {
+      if (!["START", "PARTICIPANTS", "PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING", "BREAK", "HARMONICA", "DEMBRANE", "DELIBERAIDE", "POLIS", "AGORACITIZENS", "NEXUSPOLITICS", "SUFFRAGO"].includes(type)) {
         return acc;
       }
       acc.push({
@@ -199,6 +201,7 @@ export async function GET(
         roundMaxParticipants: block.roundMaxParticipants ?? null,
         posterId: block.posterId ?? null,
         embedUrl: block.embedUrl ?? null,
+        harmonicaUrl: block.harmonicaUrl ?? null,
         matchingMode: normalizeMatchingMode(block.matchingMode)
       });
       return acc;

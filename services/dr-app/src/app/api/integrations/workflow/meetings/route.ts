@@ -14,7 +14,7 @@ const createWorkflowMeetingSchema = z.object({
   duration_minutes: z.number().int().positive().optional(),
   invite_emails: z.array(z.string().email()).optional(),
   language: z.enum(["EN", "IT"]).default("EN"),
-  transcription_provider: z.enum(["DEEPGRAM", "DEEPGRAMLIVE", "VOSK"]).default("DEEPGRAM"),
+  transcription_provider: z.enum(["DEEPGRAM", "DEEPGRAMLIVE", "VOSK", "WHISPERREMOTE", "AUTOREMOTE"]).default("DEEPGRAM"),
   timezone: z.string().max(100).optional().nullable(),
   dataspace_id: z.string().optional().nullable(),
   created_by_email: z.string().email().optional()
@@ -129,6 +129,10 @@ export async function POST(request: Request) {
   const providerLabel =
     transcriptionProvider === "VOSK"
       ? "Vosk"
+      : transcriptionProvider === "AUTOREMOTE"
+        ? "AUTOREMOTE"
+      : transcriptionProvider === "WHISPERREMOTE"
+        ? "WHISPERREMOTE"
       : transcriptionProvider === "DEEPGRAMLIVE"
         ? "DEEPGRAMLIVE"
         : "Deepgram";

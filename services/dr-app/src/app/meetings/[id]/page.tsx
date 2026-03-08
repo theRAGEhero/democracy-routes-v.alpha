@@ -86,6 +86,10 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
   const active = isMeetingActive(meeting);
   const isConcluded = !meeting.isActive || (meeting.expiresAt ? meeting.expiresAt.getTime() < Date.now() : false);
   const canEdit = (isAdmin || membership?.role === "HOST" || meeting.createdById === session.user.id) && !isConcluded;
+  const hostMember =
+    meeting.members.find(
+      (member: (typeof meeting.members)[number]) => member.role === "HOST"
+    ) ?? null;
   const currentUser = await prisma.user.findUnique({
     where: { id: session.user.id },
     select: { email: true }
@@ -94,6 +98,10 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
   const baseUrl = normalizeCallBaseUrl(process.env.DEMOCRACYROUTES_CALL_BASE_URL || "");
   const langCode = meeting.language === "IT" ? "it" : "en";
   const liveTranscriptionEnabled = meeting.transcriptionProvider === "DEEPGRAMLIVE";
+  const recordingEnabled = ["DEEPGRAM", "DEEPGRAMLIVE", "VOSK", "WHISPERREMOTE", "AUTOREMOTE"].includes(
+    meeting.transcriptionProvider
+  );
+  const postCallTranscriptEnabled = meeting.transcriptionProvider !== "DEEPGRAMLIVE";
   const transcriptionLanguage = liveTranscriptionEnabled ? langCode : "";
   const drAppBaseUrl = process.env.APP_BASE_URL || "";
   const accessToken = buildVideoAccessToken({
@@ -110,7 +118,7 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
     name: callDisplayName,
     autojoin: true,
     embed: true,
-    autoRecordVideo: liveTranscriptionEnabled,
+    autoRecordVideo: recordingEnabled,
     transcriptionLanguage,
     drAppBaseUrl,
     accessToken
@@ -121,7 +129,7 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
     meetingId: meeting.id,
     name: callDisplayName,
     autojoin: true,
-    autoRecordVideo: liveTranscriptionEnabled,
+    autoRecordVideo: recordingEnabled,
     transcriptionLanguage,
     drAppBaseUrl,
     accessToken
@@ -132,6 +140,10 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
   const providerLabel =
     meeting.transcriptionProvider === "VOSK"
       ? "Vosk (privacy friendly)"
+      : meeting.transcriptionProvider === "AUTOREMOTE"
+        ? "Auto Remote"
+      : meeting.transcriptionProvider === "WHISPERREMOTE"
+        ? "Whisper Remote"
       : meeting.transcriptionProvider === "DEEPGRAMLIVE"
         ? "Deepgram Live"
         : "Deepgram";
@@ -140,7 +152,7 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
   return (
     <div className="dataspace-theme dataspace-theme-tight" style={theme as CSSProperties}>
       <div className="relative left-1/2 right-1/2 w-screen -mx-[50vw] -my-6 h-[calc(100dvh-var(--app-header-h,0px))] overflow-hidden px-0">
-        <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden px-4 pb-4 pt-2">
+        <div className={`grid h-full min-h-0 ${active ? "grid-rows-[auto,minmax(0,1fr),auto]" : "grid-rows-[auto,minmax(0,1fr),auto,auto]"} gap-4 overflow-hidden px-4 pb-4 pt-2`}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
@@ -148,6 +160,15 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
           </h1>
           {meeting.description ? (
             <p className="mt-2 text-sm text-slate-600">{meeting.description}</p>
+          ) : null}
+          {meeting.transcriptionProvider === "WHISPERREMOTE" || meeting.transcriptionProvider === "AUTOREMOTE" ? (
+            <div className="mt-3 inline-flex max-w-2xl items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-sm text-amber-900">
+              <span className="mt-0.5 text-base leading-none">AI</span>
+              <span>
+                This meeting will be transcribed after the call by remote workers. The
+                recording is processed once the meeting has ended.
+              </span>
+            </div>
           ) : null}
         </div>
         <div className="flex items-center gap-3">
@@ -182,38 +203,38 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
             : "Not scheduled"
         }
         expiresLabel={formatDateTime(meeting.expiresAt, meeting.timezone)}
-        hostLabel={
-          meeting.members.find(
-            (member: (typeof meeting.members)[number]) =>
-              member.role === "HOST"
-          )?.user.email ?? "-"
-        }
+        hostLabel={hostMember?.user.email ?? "-"}
+        hostHref={hostMember?.userId ? `/users/${hostMember.userId}` : null}
         roomLabel={meeting.roomId}
         meetingId={meeting.id}
         canManage={canManage}
         canInvite={canInvite}
         liveTranscriptionEnabled={liveTranscriptionEnabled}
+        postCallTranscriptEnabled={postCallTranscriptEnabled}
+        initialRoundId={meeting.transcriptionRoundId ?? null}
       />
 
-      <MeetingParticipation
-        meetingId={meeting.id}
-        isPublic={meeting.isPublic}
-        requiresApproval={meeting.requiresApproval}
-        capacity={meeting.capacity}
-        isDataspaceMember={isDataspaceMember}
-        isMember={Boolean(membership)}
-        pendingStatus={pendingInvite?.status ?? null}
-        pendingRequests={meeting.invites
-          .filter(
-            (invite: (typeof meeting.invites)[number]) =>
-              invite.status === "PENDING"
-          )
-          .map((invite: (typeof meeting.invites)[number]) => ({
-            id: invite.id,
-            email: invite.user.email
-          }))}
-        canManageRequests={canManage}
-      />
+      <div className="max-h-[26dvh] overflow-auto">
+        <MeetingParticipation
+          meetingId={meeting.id}
+          isPublic={meeting.isPublic}
+          requiresApproval={meeting.requiresApproval}
+          capacity={meeting.capacity}
+          isDataspaceMember={isDataspaceMember}
+          isMember={Boolean(membership)}
+          pendingStatus={pendingInvite?.status ?? null}
+          pendingRequests={meeting.invites
+            .filter(
+              (invite: (typeof meeting.invites)[number]) =>
+                invite.status === "PENDING"
+            )
+            .map((invite: (typeof meeting.invites)[number]) => ({
+              id: invite.id,
+              email: invite.user.email
+            }))}
+          canManageRequests={canManage}
+        />
+      </div>
         </div>
       </div>
     </div>

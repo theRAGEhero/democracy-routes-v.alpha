@@ -439,7 +439,32 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
               />
               Vosk (slow, privacy friendly)
             </label>
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="radio"
+                name="provider"
+                value="WHISPERREMOTE"
+                checked={provider === "WHISPERREMOTE"}
+                onChange={(event) => setProvider(event.target.value)}
+                className="h-4 w-4"
+              />
+              Whisper Remote
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="radio"
+                name="provider"
+                value="AUTOREMOTE"
+                checked={provider === "AUTOREMOTE"}
+                onChange={(event) => setProvider(event.target.value)}
+                className="h-4 w-4"
+              />
+              Auto Remote
+            </label>
           </div>
+          <p className="text-xs text-slate-500">
+            Whisper Remote and Auto Remote record the meeting and send it to the browser-based remote worker after the call.
+          </p>
         </div>
       </div>
 

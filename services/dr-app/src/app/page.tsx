@@ -102,17 +102,19 @@ export default async function Home() {
               </p>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <a
-                  href="https://cloud.9minuti.it/s/J3kmw2cckboSgjx"
+                  href="/resources/democracy-routes-whitepaper-2.0.pdf"
                   target="_blank"
                   rel="noreferrer noopener"
+                  download
                   className="dr-button-outline px-4 py-2 text-center text-sm"
                 >
                   Whitepaper
                 </a>
                 <a
-                  href="https://cloud.9minuti.it/s/e5MksJD9wCD6Kfb"
+                  href="/resources/proof-of-political-power-2.pdf"
                   target="_blank"
                   rel="noreferrer noopener"
+                  download
                   className="dr-button-outline px-4 py-2 text-center text-sm"
                 >
                   PoPP
@@ -176,14 +178,12 @@ export default async function Home() {
             </ul>
           </div>
           <div className="flex items-center gap-3">
-            <a
-              href="https://democracyroutes.com/use-cases/"
-              target="_blank"
-              rel="noreferrer noopener"
+            <Link
+              href="/use-cases"
               className="dr-button px-5 py-2 text-sm"
             >
               Case study
-            </a>
+            </Link>
           </div>
         </div>
       </section>

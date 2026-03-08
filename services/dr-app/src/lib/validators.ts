@@ -1,5 +1,14 @@
 import { z } from "zod";
 
+const agreementDeadlineSchema = z
+  .union([z.string(), z.number().int().min(0)])
+  .optional()
+  .nullable()
+  .transform((value) => {
+    if (value === undefined || value === null || value === "") return null;
+    return String(value);
+  });
+
 export const createMeetingSchema = z.object({
   title: z.string().optional().or(z.literal("")),
   description: z.string().max(240).optional().or(z.literal("")),
@@ -9,7 +18,7 @@ export const createMeetingSchema = z.object({
   durationMinutes: z.number().int().positive().optional(),
   inviteEmails: z.array(z.string().email("Invalid email")).optional(),
   language: z.enum(["EN", "IT"]).default("EN"),
-  transcriptionProvider: z.enum(["DEEPGRAM", "DEEPGRAMLIVE", "VOSK"]).default("DEEPGRAMLIVE"),
+  transcriptionProvider: z.enum(["DEEPGRAM", "DEEPGRAMLIVE", "VOSK", "WHISPERREMOTE", "AUTOREMOTE"]).default("DEEPGRAMLIVE"),
   timezone: z.string().max(100).optional().nullable(),
   dataspaceId: z.string().optional().nullable(),
   isPublic: z.boolean().optional().default(false),
@@ -57,8 +66,39 @@ export const createPlanSchema = z.object({
   blocks: z
     .array(
       z.object({
-        type: z.enum(["PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING"]),
+        type: z.enum(["START", "PARTICIPANTS", "PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING", "BREAK", "HARMONICA", "DEMBRANE", "DELIBERAIDE", "POLIS", "AGORACITIZENS", "NEXUSPOLITICS", "SUFFRAGO"]),
         durationSeconds: z.number().int().min(1).max(7200),
+        startMode: z
+          .enum([
+            "specific_datetime",
+            "when_x_join",
+            "organizer_manual",
+            "when_x_join_and_datetime",
+            "random_selection_among_x"
+          ])
+          .optional()
+          .nullable(),
+        startDate: z.string().optional().nullable(),
+        startTime: z.string().optional().nullable(),
+        timezone: z.string().max(100).optional().nullable(),
+        requiredParticipants: z.number().int().min(1).max(100000).optional().nullable(),
+        agreementRequired: z.boolean().optional().nullable(),
+        agreementDeadline: agreementDeadlineSchema,
+        minimumParticipants: z.number().int().min(1).max(100000).optional().nullable(),
+        allowStartBeforeFull: z.boolean().optional().nullable(),
+        poolSize: z.number().int().min(1).max(100000).optional().nullable(),
+        selectedParticipants: z.number().int().min(1).max(100000).optional().nullable(),
+        selectionRule: z.enum(["random"]).optional().nullable(),
+        note: z.string().trim().max(500).optional().nullable(),
+        participantMode: z
+          .enum(["manual_selected", "dataspace_invite_all", "dataspace_random", "ai_search_users"])
+          .optional()
+          .nullable(),
+        participantUserIds: z.array(z.string().min(1).max(64)).optional().nullable(),
+        participantDataspaceIds: z.array(z.string().min(1).max(64)).optional().nullable(),
+        participantCount: z.number().int().min(1).max(100000).optional().nullable(),
+        participantQuery: z.string().trim().max(500).optional().nullable(),
+        participantNote: z.string().trim().max(500).optional().nullable(),
         roundMaxParticipants: z.number().int().min(2).max(12).optional().nullable(),
         formQuestion: z.string().trim().max(240).optional().nullable(),
         formChoices: z
@@ -72,6 +112,7 @@ export const createPlanSchema = z.object({
           .nullable(),
         posterId: z.string().optional().nullable(),
         embedUrl: z.string().trim().max(500).optional().nullable(),
+        harmonicaUrl: z.string().trim().max(500).optional().nullable(),
         matchingMode: z.enum(["polar", "anti"]).optional().nullable(),
         meditationAnimationId: z.string().optional().nullable(),
         meditationAudioUrl: z.string().optional().nullable()
@@ -188,6 +229,12 @@ export const profileSettingsSchema = z.object({
     .string()
     .trim()
     .max(64, "Telegram handle is too long")
+    .optional()
+    .or(z.literal("")),
+  personalDescription: z
+    .string()
+    .trim()
+    .max(1200, "Personal description is too long")
     .optional()
     .or(z.literal("")),
   calComLink: z

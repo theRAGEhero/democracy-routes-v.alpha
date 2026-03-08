@@ -24,6 +24,7 @@ export async function POST(request: Request) {
   }
 
   const telegramHandle = normalizeTelegramHandle(parsed.data.telegramHandle ?? null);
+  const personalDescription = parsed.data.personalDescription?.trim() || null;
   const calComLink = parsed.data.calComLink?.trim() || null;
   const avatarUrl = parsed.data.avatarUrl?.trim() || null;
 
@@ -47,6 +48,7 @@ export async function POST(request: Request) {
     where: { id: session.user.id },
     data: {
       telegramHandle,
+      personalDescription,
       calComLink,
       avatarUrl,
       notifyEmailMeetingInvites: parsed.data.notifyEmailMeetingInvites ?? undefined,

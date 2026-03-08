@@ -21,7 +21,7 @@ export default function PrivacyPolicyPage() {
         <div>
           <h2 className="text-sm font-semibold uppercase text-slate-500">1. Controller</h2>
           <p className="mt-2">
-            [Controller legal name], [registered address]. Contact: [privacy@yourdomain.com].
+            Democracy Routes, [registered address]. Contact: privacy@democracyroutes.com.
           </p>
           <p className="mt-1">
             If you have appointed a Data Protection Officer, include DPO contact details here.
@@ -35,6 +35,7 @@ export default function PrivacyPolicyPage() {
             <li>Participation data: meeting and template participation, invites, room assignments.</li>
             <li>Content data: transcripts, notes, prompts, uploaded files, and text imports.</li>
             <li>Technical data: IP address, device and browser metadata, logs, usage analytics.</li>
+            <li>Analytics data (if enabled and consented): page views, referrer, device/browser, anonymized usage patterns.</li>
           </ul>
         </div>
 
@@ -81,7 +82,7 @@ export default function PrivacyPolicyPage() {
             is based on consent.
           </p>
           <p className="mt-1">
-            To exercise your rights, contact [privacy@yourdomain.com]. We may need to verify your identity.
+            To exercise your rights, contact privacy@democracyroutes.com. We may need to verify your identity.
           </p>
         </div>
 
@@ -96,7 +97,9 @@ export default function PrivacyPolicyPage() {
         <div>
           <h2 className="text-sm font-semibold uppercase text-slate-500">9. Cookies</h2>
           <p className="mt-2">
-            We use cookies and similar technologies. See the Cookie Policy for details.
+            We use cookies and similar technologies. See the{" "}
+            <a href="/cookies" className="font-semibold underline">Cookie Policy</a>{" "}
+            for details.
           </p>
         </div>
 

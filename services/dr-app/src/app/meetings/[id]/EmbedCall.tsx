@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CallFrame } from "@/components/CallFrame";
 import { MeetingActions } from "@/app/meetings/[id]/MeetingActions";
+import { MeetingFilesModal } from "@/app/meetings/[id]/MeetingFilesModal";
 
 type Props = {
   embedUrl: string;
@@ -15,6 +17,7 @@ type Props = {
   startsLabel: string;
   expiresLabel: string;
   hostLabel: string;
+  hostHref?: string | null;
   roomLabel: string;
   joinUrl: string;
   meetingId: string;
@@ -34,6 +37,7 @@ export function EmbedCall({
   startsLabel,
   expiresLabel,
   hostLabel,
+  hostHref,
   roomLabel,
   joinUrl,
   meetingId,
@@ -116,7 +120,7 @@ export function EmbedCall({
     <div className="flex h-full min-h-0 flex-col">
       <div
         ref={containerRef}
-        className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white/80"
+        className="flex min-h-[55dvh] flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white/80"
         onClick={(event) => event.stopPropagation()}
       >
         {isActive ? (
@@ -147,7 +151,13 @@ export function EmbedCall({
             </span>
             <span className="inline-flex items-center gap-1">
               <span className="font-semibold uppercase text-slate-500">Host</span>
-              <span className="text-slate-700">{hostLabel}</span>
+              {hostHref ? (
+                <Link href={hostHref} className="text-slate-700 hover:underline">
+                  {hostLabel}
+                </Link>
+              ) : (
+                <span className="text-slate-700">{hostLabel}</span>
+              )}
             </span>
             <span className="inline-flex items-center gap-1">
               <span className="font-semibold uppercase text-slate-500">Room</span>
@@ -166,6 +176,7 @@ export function EmbedCall({
                 {deactivating ? "Deactivating..." : "Deactivate"}
               </button>
             ) : null}
+            <MeetingFilesModal meetingId={meetingId} />
             <button
               type="button"
               onClick={onToggleTranscript}

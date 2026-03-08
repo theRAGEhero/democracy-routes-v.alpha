@@ -29,6 +29,10 @@ const init = () => {
     CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_events_source ON events(source);
     CREATE INDEX IF NOT EXISTS idx_events_type ON events(type);
+    CREATE INDEX IF NOT EXISTS idx_events_severity ON events(severity);
+    CREATE INDEX IF NOT EXISTS idx_events_meeting ON events(meeting_id);
+    CREATE INDEX IF NOT EXISTS idx_events_dataspace ON events(dataspace_id);
+    CREATE INDEX IF NOT EXISTS idx_events_template ON events(template_id);
   `);
 };
 
@@ -94,11 +98,32 @@ app.post("/api/events", requireKey, (req, res) => {
 
 app.get("/api/events", requireKey, (req, res) => {
   const limit = Math.max(1, Math.min(500, Number(req.query.limit || 100)));
-  const rows = db
-    .prepare(
-      "SELECT id, created_at, source, type, severity, message, actor_id, dataspace_id, meeting_id, template_id, payload FROM events ORDER BY created_at DESC LIMIT ?"
-    )
-    .all(limit);
+  const source = req.query.source ? String(req.query.source).slice(0, 80) : "";
+  const severity = req.query.severity ? String(req.query.severity).slice(0, 24) : "";
+  const meetingId = req.query.meetingId ? String(req.query.meetingId).slice(0, 120) : "";
+  const dataspaceId = req.query.dataspaceId ? String(req.query.dataspaceId).slice(0, 120) : "";
+  const templateId = req.query.templateId ? String(req.query.templateId).slice(0, 120) : "";
+  const q = req.query.q ? String(req.query.q).slice(0, 120) : "";
+  const sql = [
+    "SELECT id, created_at, source, type, severity, message, actor_id, dataspace_id, meeting_id, template_id, payload FROM events",
+    "WHERE 1=1",
+    source ? "AND source = @source" : "",
+    severity ? "AND severity = @severity" : "",
+    meetingId ? "AND meeting_id = @meetingId" : "",
+    dataspaceId ? "AND dataspace_id = @dataspaceId" : "",
+    templateId ? "AND template_id = @templateId" : "",
+    q ? "AND (message LIKE @query OR type LIKE @query OR source LIKE @query)" : "",
+    "ORDER BY created_at DESC LIMIT @limit"
+  ].filter(Boolean).join(" ");
+  const rows = db.prepare(sql).all({
+    source,
+    severity,
+    meetingId,
+    dataspaceId,
+    templateId,
+    query: `%${q}%`,
+    limit
+  });
 
   const events = rows.map((row) => ({
     id: row.id,
@@ -115,6 +140,70 @@ app.get("/api/events", requireKey, (req, res) => {
   }));
 
   res.json({ events });
+});
+
+app.get("/api/events/summary", requireKey, (req, res) => {
+  const hours = Math.max(1, Math.min(24 * 30, Number(req.query.hours || 24)));
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+
+  const totals = db
+    .prepare(
+      `SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN severity = 'error' THEN 1 ELSE 0 END) AS errors,
+        SUM(CASE WHEN severity = 'warn' THEN 1 ELSE 0 END) AS warnings,
+        COUNT(DISTINCT source) AS sources
+       FROM events
+       WHERE created_at >= ?`
+    )
+    .get(since);
+
+  const bySource = db
+    .prepare(
+      `SELECT source, COUNT(*) AS count
+       FROM events
+       WHERE created_at >= ?
+       GROUP BY source
+       ORDER BY count DESC, source ASC
+       LIMIT 12`
+    )
+    .all(since);
+
+  const bySeverity = db
+    .prepare(
+      `SELECT COALESCE(severity, 'unknown') AS severity, COUNT(*) AS count
+       FROM events
+       WHERE created_at >= ?
+       GROUP BY COALESCE(severity, 'unknown')
+       ORDER BY count DESC`
+    )
+    .all(since);
+
+  const byType = db
+    .prepare(
+      `SELECT type, COUNT(*) AS count
+       FROM events
+       WHERE created_at >= ?
+       GROUP BY type
+       ORDER BY count DESC, type ASC
+       LIMIT 12`
+    )
+    .all(since);
+
+  res.json({
+    ok: true,
+    hours,
+    since,
+    totals: {
+      total: Number(totals?.total || 0),
+      errors: Number(totals?.errors || 0),
+      warnings: Number(totals?.warnings || 0),
+      sources: Number(totals?.sources || 0)
+    },
+    bySource,
+    bySeverity,
+    byType
+  });
 });
 
 app.listen(PORT, HOST, () => {

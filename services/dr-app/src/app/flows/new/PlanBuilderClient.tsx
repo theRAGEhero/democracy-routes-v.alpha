@@ -49,7 +49,7 @@ type Props = {
     participantIds: string[];
     blocks?: Array<{
       id: string;
-      type: "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING";
+      type: "START" | "PARTICIPANTS" | "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING" | "BREAK" | "HARMONICA" | "DEMBRANE" | "DELIBERAIDE" | "POLIS" | "AGORACITIZENS" | "NEXUSPOLITICS" | "SUFFRAGO";
       durationSeconds: number;
       roundNumber: number | null;
       roundMaxParticipants?: number | null;
@@ -57,6 +57,7 @@ type Props = {
       formChoices?: Array<{ key: string; label: string }> | null;
       posterId: string | null;
       embedUrl?: string | null;
+      harmonicaUrl?: string | null;
       matchingMode?: "polar" | "anti" | null;
       meditationAnimationId?: string | null;
       meditationAudioUrl?: string | null;
@@ -76,13 +77,14 @@ function toLocalTimeInput(date: Date) {
 
 type PlanBlockDraft = {
   id: string;
-  type: "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING";
+  type: "START" | "PARTICIPANTS" | "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING" | "BREAK" | "HARMONICA" | "DEMBRANE" | "DELIBERAIDE" | "POLIS" | "AGORACITIZENS" | "NEXUSPOLITICS" | "SUFFRAGO";
   durationSeconds: number;
   roundMaxParticipants?: number | null;
   formQuestion?: string | null;
   formChoices?: Array<{ key: string; label: string }> | null;
   posterId?: string | null;
   embedUrl?: string | null;
+  harmonicaUrl?: string | null;
   matchingMode?: "polar" | "anti" | null;
   meditationAnimationId?: string | null;
   meditationAudioUrl?: string | null;
@@ -102,14 +104,26 @@ type PlanTemplate = {
   updatedAt: string;
   isPublic: boolean;
   createdById: string;
+  settings?: {
+    syncMode?: "SERVER" | "CLIENT";
+    maxParticipantsPerRoom?: number;
+    allowOddGroup?: boolean;
+    language?: string;
+    transcriptionProvider?: string;
+    timezone?: string | null;
+    dataspaceId?: string | null;
+    requiresApproval?: boolean;
+    capacity?: number | null;
+  } | null;
   blocks: Array<{
-    type: "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING";
+    type: "START" | "PARTICIPANTS" | "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING" | "BREAK" | "HARMONICA" | "DEMBRANE" | "DELIBERAIDE" | "POLIS" | "AGORACITIZENS" | "NEXUSPOLITICS" | "SUFFRAGO";
     durationSeconds: number;
     roundMaxParticipants?: number | null;
     formQuestion?: string | null;
     formChoices?: Array<{ key: string; label: string }> | null;
     posterId?: string | null;
     embedUrl?: string | null;
+    harmonicaUrl?: string | null;
     matchingMode?: "polar" | "anti" | null;
     meditationAnimationId?: string | null;
     meditationAudioUrl?: string | null;
@@ -188,6 +202,31 @@ function normalizeEmbedUrl(raw: string) {
   } catch {
     return trimmed;
   }
+}
+
+function buildTemplateSettingsPayload(input: {
+  syncMode: "SERVER" | "CLIENT";
+  maxParticipantsPerRoom: number;
+  allowOddGroup: boolean;
+  language: string;
+  transcriptionProvider: string;
+  timezone: string;
+  resolvedTimezone: string;
+  dataspaceId: string;
+  requiresApproval: boolean;
+  capacity: number | "";
+}) {
+  return {
+    syncMode: input.syncMode,
+    maxParticipantsPerRoom: input.maxParticipantsPerRoom,
+    allowOddGroup: input.allowOddGroup,
+    language: input.language,
+    transcriptionProvider: input.transcriptionProvider,
+    timezone: input.timezone || input.resolvedTimezone,
+    dataspaceId: input.dataspaceId || null,
+    requiresApproval: input.requiresApproval,
+    capacity: input.capacity === "" ? null : Number(input.capacity)
+  };
 }
 
 function defaultRoundBlocks(config: {
@@ -355,6 +394,14 @@ export function PlanBuilderClient({
       ? "plan"
       : builderModeOverride ?? (searchParams?.get("mode") === "template" ? "template" : "plan");
   const isTemplateMode = builderMode === "template";
+  const aiWorkspaceHref = useMemo(() => {
+    const params = new URLSearchParams({ mode: "ai" });
+    const currentTemplateId = templateIdFromQuery || (mode === "edit" ? initialPlan?.id ?? null : null);
+    if (currentTemplateId) {
+      params.set("templateId", currentTemplateId);
+    }
+    return `/templates/workspace?${params.toString()}`;
+  }, [initialPlan?.id, mode, templateIdFromQuery]);
 
   useEffect(() => {
     setOrigin(window.location.origin);
@@ -473,6 +520,7 @@ export function PlanBuilderClient({
           formChoices: block.formChoices ?? null,
           posterId: block.posterId ?? null,
           embedUrl: block.embedUrl ?? null,
+          harmonicaUrl: block.harmonicaUrl ?? null,
           matchingMode: block.matchingMode ?? null,
           meditationAnimationId: block.meditationAnimationId ?? null,
           meditationAudioUrl: block.meditationAudioUrl ?? null
@@ -756,6 +804,18 @@ export function PlanBuilderClient({
       body: JSON.stringify({
         name: templateName.trim(),
         description: templateDescription.trim() || null,
+        settings: buildTemplateSettingsPayload({
+          syncMode,
+          maxParticipantsPerRoom,
+          allowOddGroup,
+          language,
+          transcriptionProvider: provider,
+          timezone,
+          resolvedTimezone,
+          dataspaceId,
+          requiresApproval,
+          capacity
+        }),
         blocks: planBlocks.map((block) => ({
           type: block.type,
           durationSeconds: block.durationSeconds,
@@ -764,6 +824,7 @@ export function PlanBuilderClient({
           formChoices: block.formChoices ?? null,
           posterId: block.posterId ?? null,
           embedUrl: block.embedUrl ?? null,
+          harmonicaUrl: block.harmonicaUrl ?? null,
           matchingMode: block.matchingMode ?? null,
           meditationAnimationId: block.meditationAnimationId ?? null,
           meditationAudioUrl: block.meditationAudioUrl ?? null
@@ -787,6 +848,18 @@ export function PlanBuilderClient({
         updatedAt: new Date().toISOString(),
         isPublic: templateIsPublic,
         createdById: currentUserId ?? "self",
+        settings: buildTemplateSettingsPayload({
+          syncMode,
+          maxParticipantsPerRoom,
+          allowOddGroup,
+          language,
+          transcriptionProvider: provider,
+          timezone,
+          resolvedTimezone,
+          dataspaceId,
+          requiresApproval,
+          capacity
+        }),
         blocks: planBlocks.map((block) => ({
           type: block.type,
           durationSeconds: block.durationSeconds,
@@ -795,6 +868,7 @@ export function PlanBuilderClient({
           formChoices: block.formChoices ?? null,
           posterId: block.posterId ?? null,
           embedUrl: block.embedUrl ?? null,
+          harmonicaUrl: block.harmonicaUrl ?? null,
           matchingMode: block.matchingMode ?? null,
           meditationAnimationId: block.meditationAnimationId ?? null,
           meditationAudioUrl: block.meditationAudioUrl ?? null
@@ -822,6 +896,18 @@ export function PlanBuilderClient({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        settings: buildTemplateSettingsPayload({
+          syncMode,
+          maxParticipantsPerRoom,
+          allowOddGroup,
+          language,
+          transcriptionProvider: provider,
+          timezone,
+          resolvedTimezone,
+          dataspaceId,
+          requiresApproval,
+          capacity
+        }),
         blocks: planBlocks.map((block) => ({
           type: block.type,
           durationSeconds: block.durationSeconds,
@@ -830,6 +916,7 @@ export function PlanBuilderClient({
           formChoices: block.formChoices ?? null,
           posterId: block.posterId ?? null,
           embedUrl: block.embedUrl ?? null,
+          harmonicaUrl: block.harmonicaUrl ?? null,
           matchingMode: block.matchingMode ?? null,
           meditationAnimationId: block.meditationAnimationId ?? null,
           meditationAudioUrl: block.meditationAudioUrl ?? null
@@ -850,6 +937,18 @@ export function PlanBuilderClient({
           ? {
               ...flow,
               updatedAt: new Date().toISOString(),
+              settings: buildTemplateSettingsPayload({
+                syncMode,
+                maxParticipantsPerRoom,
+                allowOddGroup,
+                language,
+                transcriptionProvider: provider,
+                timezone,
+                resolvedTimezone,
+                dataspaceId,
+                requiresApproval,
+                capacity
+              }),
               blocks: planBlocks.map((block) => ({
                 type: block.type,
                 durationSeconds: block.durationSeconds,
@@ -858,6 +957,7 @@ export function PlanBuilderClient({
                 formChoices: block.formChoices ?? null,
                 posterId: block.posterId ?? null,
                 embedUrl: block.embedUrl ?? null,
+                harmonicaUrl: block.harmonicaUrl ?? null,
                 matchingMode: block.matchingMode ?? null,
                 meditationAnimationId: block.meditationAnimationId ?? null,
                 meditationAudioUrl: block.meditationAudioUrl ?? null
@@ -927,11 +1027,27 @@ export function PlanBuilderClient({
           ? block.posterId
           : null,
       embedUrl: block.embedUrl ?? null,
+      harmonicaUrl: block.harmonicaUrl ?? null,
       matchingMode: block.matchingMode ?? null,
       meditationAnimationId: block.meditationAnimationId ?? defaultMeditationAnimationId,
       meditationAudioUrl: block.meditationAudioUrl ?? defaultMeditationAudioUrl
     }));
     setPlanBlocks(nextBlocks);
+    setSyncMode(template.settings?.syncMode === "CLIENT" ? "CLIENT" : "SERVER");
+    setMaxParticipantsPerRoom(
+      Math.max(2, Math.min(12, Number(template.settings?.maxParticipantsPerRoom ?? 2) || 2))
+    );
+    setAllowOddGroup(Boolean(template.settings?.allowOddGroup));
+    setLanguage(template.settings?.language === "IT" ? "IT" : "EN");
+    setProvider(template.settings?.transcriptionProvider ?? "DEEPGRAM");
+    setTimezone(template.settings?.timezone ?? "");
+    setDataspaceId(template.settings?.dataspaceId ?? "");
+    setRequiresApproval(Boolean(template.settings?.requiresApproval));
+    setCapacity(
+      typeof template.settings?.capacity === "number" && Number.isFinite(template.settings.capacity)
+        ? template.settings.capacity
+        : ""
+    );
     setShowTemplatesModal(false);
   }
 
@@ -943,6 +1059,8 @@ export function PlanBuilderClient({
 
   function addBlock(type: PlanBlockDraft["type"]) {
     const defaults: Record<PlanBlockDraft["type"], number> = {
+      START: 60,
+      PARTICIPANTS: 90,
       PAIRING: roundDurationMinutes * 60,
       PAUSE: 5 * 60,
       PROMPT: 30,
@@ -950,7 +1068,15 @@ export function PlanBuilderClient({
       RECORD: 180,
       FORM: 120,
       EMBED: 180,
-      MATCHING: 60
+      MATCHING: 60,
+      BREAK: 300,
+      HARMONICA: 90,
+      DEMBRANE: 90,
+      DELIBERAIDE: 90,
+      POLIS: 90,
+      AGORACITIZENS: 90,
+      NEXUSPOLITICS: 90,
+      SUFFRAGO: 90
     };
     setPlanBlocks((prev) => [
       ...prev,
@@ -963,6 +1089,7 @@ export function PlanBuilderClient({
         formChoices: type === "FORM" ? defaultFormChoices() : null,
         posterId: null,
         embedUrl: type === "EMBED" ? "" : null,
+        harmonicaUrl: type === "HARMONICA" ? "" : null,
         matchingMode: type === "MATCHING" ? "polar" : null,
         meditationAnimationId:
           type === "PAUSE" ? defaultMeditationAnimationId || null : null,
@@ -1075,6 +1202,11 @@ export function PlanBuilderClient({
             ...block,
             embedUrl: normalizeEmbedUrl(block.embedUrl ?? "") || null
           }
+        : block.type === "HARMONICA"
+          ? {
+              ...block,
+              harmonicaUrl: normalizeEmbedUrl(block.harmonicaUrl ?? "") || null
+            }
         : block
     );
     const roundBlocks = normalizedBlocks.filter((block) => block.type === "PAIRING");
@@ -1083,9 +1215,17 @@ export function PlanBuilderClient({
     const missingEmbed = normalizedBlocks.some(
       (block) => block.type === "EMBED" && !block.embedUrl
     );
+    const missingHarmonica = normalizedBlocks.some(
+      (block) => block.type === "HARMONICA" && !block.harmonicaUrl
+    );
     if (missingEmbed) {
       setLoading(false);
       setError("Enter a URL for every embed block.");
+      return;
+    }
+    if (missingHarmonica) {
+      setLoading(false);
+      setError("Enter a URL for every Harmonica block.");
       return;
     }
     const roundDuration = roundBlocks.length
@@ -1119,6 +1259,7 @@ export function PlanBuilderClient({
                   formChoices: block.formChoices ?? null,
                   posterId: block.posterId ?? null,
                   embedUrl: block.embedUrl ?? null,
+                  harmonicaUrl: block.harmonicaUrl ?? null,
                   matchingMode: block.matchingMode ?? null,
                   meditationAnimationId: block.meditationAnimationId ?? null,
                   meditationAudioUrl: block.meditationAudioUrl ?? null
@@ -1166,6 +1307,7 @@ export function PlanBuilderClient({
                   formChoices: block.formChoices ?? null,
                   posterId: block.posterId ?? null,
                   embedUrl: block.embedUrl ?? null,
+                  harmonicaUrl: block.harmonicaUrl ?? null,
                   meditationAnimationId: block.meditationAnimationId ?? null,
                   meditationAudioUrl: block.meditationAudioUrl ?? null
                 }))
@@ -1249,16 +1391,25 @@ export function PlanBuilderClient({
 
   return (
     <div className="dr-card p-6">
-      <h2 className="text-xl font-semibold" style={{ fontFamily: "var(--font-serif)" }}>
-        {mode === "edit" ? "Edit template" : "Template Builder"}
-      </h2>
-      <p className="mt-2 text-sm text-slate-600">
-        {mode === "edit"
-          ? "Update the template definition."
-          : isTemplateMode
-            ? "Design the template structure and save it."
-            : "Create a rotation plan and share the participant link."}
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-semibold" style={{ fontFamily: "var(--font-serif)" }}>
+            {mode === "edit" ? "Edit template" : "Template Builder"}
+          </h2>
+          <p className="mt-2 text-sm text-slate-600">
+            {mode === "edit"
+              ? "Update the template definition."
+              : isTemplateMode
+                ? "Design the template structure and save it."
+                : "Create a rotation plan and share the participant link."}
+          </p>
+        </div>
+        {isTemplateMode ? (
+          <a href={aiWorkspaceHref} className="dr-button-outline px-3 py-2 text-xs">
+            AI Builder
+          </a>
+        ) : null}
+      </div>
 
       <form onSubmit={handleSubmit} className="mt-4 space-y-4">
         <div>
@@ -1491,6 +1642,10 @@ export function PlanBuilderClient({
                         <span className="text-xs font-semibold uppercase text-slate-500">
                           {block.type === "PAIRING"
                             ? `Pairing ${planBlocks.slice(0, index + 1).filter((item) => item.type === "PAIRING").length}`
+                            : block.type === "START"
+                              ? "Start"
+                            : block.type === "PARTICIPANTS"
+                              ? "Participants"
                             : block.type === "PAUSE"
                               ? "Pause"
                               : block.type === "PROMPT"
@@ -1503,7 +1658,11 @@ export function PlanBuilderClient({
                                       ? "Embed"
                                       : block.type === "MATCHING"
                                         ? "Matching"
-                                        : "Record"}
+                                        : block.type === "HARMONICA"
+                                          ? "Harmonica"
+                                          : ["DEMBRANE", "DELIBERAIDE", "POLIS", "AGORACITIZENS", "NEXUSPOLITICS", "SUFFRAGO"].includes(block.type)
+                                            ? block.type
+                                          : "Record"}
                         </span>
                         <select
                           value={block.type}
@@ -1524,6 +1683,8 @@ export function PlanBuilderClient({
                                 event.target.value === "PROMPT" ? block.posterId ?? null : null,
                               embedUrl:
                                 event.target.value === "EMBED" ? block.embedUrl ?? "" : null,
+                              harmonicaUrl:
+                                event.target.value === "HARMONICA" ? block.harmonicaUrl ?? "" : null,
                               matchingMode:
                                 event.target.value === "MATCHING"
                                   ? block.matchingMode ?? "polar"
@@ -1541,11 +1702,21 @@ export function PlanBuilderClient({
                           className="dr-input h-8 rounded px-2 text-xs"
                         >
                           <option value="PAIRING">Pairing</option>
+                          <option value="START">Start</option>
+                          <option value="PARTICIPANTS">Participants</option>
                           <option value="PAUSE">Pause</option>
                           <option value="PROMPT">Prompt</option>
                           <option value="NOTES">Notes</option>
                           <option value="EMBED">Embed</option>
                           <option value="MATCHING">Matching</option>
+                          <option value="BREAK">Break</option>
+                          <option value="HARMONICA">Harmonica</option>
+                          <option value="DEMBRANE">Dembrane</option>
+                          <option value="DELIBERAIDE">DeliberAIde</option>
+                          <option value="POLIS">Pol.is</option>
+                          <option value="AGORACITIZENS">Agora Citizens</option>
+                          <option value="NEXUSPOLITICS">Nexus Politics</option>
+                          <option value="SUFFRAGO">Suffrago</option>
                           <option value="RECORD">Record</option>
                           <option value="FORM">Form</option>
                         </select>
@@ -1754,6 +1925,35 @@ export function PlanBuilderClient({
                         ) : null}
                       </div>
                     ) : null}
+                    {block.type === "HARMONICA" ? (
+                      <div className="mt-3 space-y-2">
+                        <label className="text-xs font-semibold uppercase text-slate-500">
+                          Harmonica URL
+                        </label>
+                        <input
+                          value={block.harmonicaUrl ?? ""}
+                          onChange={(event) =>
+                            updateBlock(block.id, { harmonicaUrl: event.target.value })
+                          }
+                          onBlur={(event) => {
+                            const normalized = normalizeEmbedUrl(event.target.value);
+                            updateBlock(block.id, { harmonicaUrl: normalized });
+                          }}
+                          className="dr-input w-full rounded px-2 py-2 text-xs"
+                          placeholder="Paste a Harmonica URL"
+                        />
+                        {block.harmonicaUrl ? (
+                          <a
+                            className="text-[11px] font-semibold text-slate-600 hover:text-slate-900"
+                            href={block.harmonicaUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Preview link
+                          </a>
+                        ) : null}
+                      </div>
+                    ) : null}
                     {block.type === "MATCHING" ? (
                       <div className="mt-3 space-y-2">
                         <label className="text-xs font-semibold uppercase text-slate-500">
@@ -1864,6 +2064,15 @@ export function PlanBuilderClient({
             </button>
             <button type="button" onClick={() => addBlock("MATCHING")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
               + Matching
+            </button>
+            <button type="button" onClick={() => addBlock("START")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
+              + Start
+            </button>
+            <button type="button" onClick={() => addBlock("PARTICIPANTS")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
+              + Participants
+            </button>
+            <button type="button" onClick={() => addBlock("HARMONICA")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
+              + Harmonica
             </button>
             <button type="button" onClick={() => addBlock("FORM")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
               + Form

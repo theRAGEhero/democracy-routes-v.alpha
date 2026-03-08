@@ -12,8 +12,39 @@ const participantSchema = z.object({
 });
 
 const blockSchema = z.object({
-  type: z.enum(["PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING"]),
+  type: z.enum(["START", "PARTICIPANTS", "PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING", "BREAK", "HARMONICA", "DEMBRANE", "DELIBERAIDE", "POLIS", "AGORACITIZENS", "NEXUSPOLITICS", "SUFFRAGO"]),
   duration_seconds: z.number().int().positive().max(21600),
+  start_mode: z
+    .enum([
+      "specific_datetime",
+      "when_x_join",
+      "organizer_manual",
+      "when_x_join_and_datetime",
+      "random_selection_among_x"
+    ])
+    .optional()
+    .nullable(),
+  start_date: z.string().optional().nullable(),
+  start_time: z.string().optional().nullable(),
+  timezone: z.string().trim().max(100).optional().nullable(),
+  required_participants: z.number().int().min(1).max(100000).optional().nullable(),
+  agreement_required: z.boolean().optional().nullable(),
+  agreement_deadline: z.string().optional().nullable(),
+  minimum_participants: z.number().int().min(1).max(100000).optional().nullable(),
+  allow_start_before_full: z.boolean().optional().nullable(),
+  pool_size: z.number().int().min(1).max(100000).optional().nullable(),
+  selected_participants: z.number().int().min(1).max(100000).optional().nullable(),
+  selection_rule: z.enum(["random"]).optional().nullable(),
+  note: z.string().trim().max(500).optional().nullable(),
+  participant_mode: z
+    .enum(["manual_selected", "dataspace_invite_all", "dataspace_random", "ai_search_users"])
+    .optional()
+    .nullable(),
+  participant_user_ids: z.array(z.string().min(1).max(64)).optional().nullable(),
+  participant_dataspace_ids: z.array(z.string().min(1).max(64)).optional().nullable(),
+  participant_count: z.number().int().min(1).max(100000).optional().nullable(),
+  participant_query: z.string().trim().max(500).optional().nullable(),
+  participant_note: z.string().trim().max(500).optional().nullable(),
   round_max_participants: z.number().int().min(2).max(12).optional().nullable(),
   form_question: z.string().trim().max(240).optional().nullable(),
   form_choices: z
@@ -29,6 +60,7 @@ const blockSchema = z.object({
   poster_title: z.string().optional(),
   poster_content: z.string().optional(),
   embed_url: z.string().trim().max(500).optional().nullable(),
+  harmonica_url: z.string().trim().max(500).optional().nullable(),
   matching_mode: z.enum(["polar", "anti"]).optional().nullable(),
   meditation_animation_id: z.string().optional().nullable(),
   meditation_audio_url: z.string().optional().nullable()
@@ -72,7 +104,7 @@ function generateRoomId(language: string, transcriptionProvider: string) {
 }
 
 type WorkflowBlockInput = {
-  type: "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING";
+  type: "START" | "PARTICIPANTS" | "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING" | "BREAK" | "HARMONICA" | "DEMBRANE" | "DELIBERAIDE" | "POLIS" | "AGORACITIZENS" | "NEXUSPOLITICS" | "SUFFRAGO";
   durationSeconds: number;
   roundMaxParticipants?: number | null;
   formQuestion?: string | null;
@@ -81,6 +113,7 @@ type WorkflowBlockInput = {
   posterTitle?: string | null;
   posterContent?: string | null;
   embedUrl?: string | null;
+  harmonicaUrl?: string | null;
   matchingMode?: "polar" | "anti" | null;
   meditationAnimationId?: string | null;
   meditationAudioUrl?: string | null;
@@ -262,6 +295,25 @@ export async function POST(request: Request) {
       ? parsed.data.blocks.map((block) => ({
           type: block.type,
           durationSeconds: block.duration_seconds,
+          startMode: block.start_mode ?? null,
+          startDate: block.start_date ?? null,
+          startTime: block.start_time ?? null,
+          timezone: block.timezone ?? null,
+          requiredParticipants: block.required_participants ?? null,
+          agreementRequired: block.agreement_required ?? null,
+          agreementDeadline: block.agreement_deadline ?? null,
+          minimumParticipants: block.minimum_participants ?? null,
+          allowStartBeforeFull: block.allow_start_before_full ?? null,
+          poolSize: block.pool_size ?? null,
+          selectedParticipants: block.selected_participants ?? null,
+          selectionRule: block.selection_rule ?? null,
+          note: block.note ?? null,
+          participantMode: block.participant_mode ?? null,
+          participantUserIds: block.participant_user_ids ?? null,
+          participantDataspaceIds: block.participant_dataspace_ids ?? null,
+          participantCount: block.participant_count ?? null,
+          participantQuery: block.participant_query ?? null,
+          participantNote: block.participant_note ?? null,
           roundMaxParticipants: block.round_max_participants ?? null,
           formQuestion: block.form_question ?? null,
           formChoices: block.form_choices ?? null,
@@ -269,6 +321,7 @@ export async function POST(request: Request) {
           posterTitle: block.poster_title ?? null,
           posterContent: block.poster_content ?? null,
           embedUrl: block.embed_url ?? null,
+          harmonicaUrl: block.harmonica_url ?? null,
           matchingMode: block.matching_mode ?? null,
           meditationAnimationId: block.meditation_animation_id ?? null,
           meditationAudioUrl: block.meditation_audio_url ?? null
@@ -284,6 +337,12 @@ export async function POST(request: Request) {
   );
   if (missingEmbed) {
     return NextResponse.json({ error: "Embed blocks require a URL." }, { status: 400 });
+  }
+  const missingHarmonica = blocksInput.some(
+    (block) => block.type === "HARMONICA" && !block.harmonicaUrl
+  );
+  if (missingHarmonica) {
+    return NextResponse.json({ error: "Harmonica blocks require a URL." }, { status: 400 });
   }
 
   const providedPosterIds = blocksInput
@@ -375,6 +434,7 @@ export async function POST(request: Request) {
       formChoicesJson: block.formChoices ? JSON.stringify(block.formChoices) : null,
       posterId: block.posterId ?? null,
       embedUrl: block.embedUrl ?? null,
+      harmonicaUrl: block.harmonicaUrl ?? null,
       matchingMode: block.matchingMode ?? null,
       meditationAnimationId: block.meditationAnimationId ?? null,
       meditationAudioUrl: block.meditationAudioUrl ?? null,

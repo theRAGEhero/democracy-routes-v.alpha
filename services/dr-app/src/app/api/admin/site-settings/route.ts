@@ -5,7 +5,11 @@ import { getSiteSetting, setSiteSetting } from "@/lib/siteSettings";
 
 const schema = z.object({
   analyticsSnippet: z.string().max(20000).optional().nullable(),
-  analyticsEnabled: z.boolean().optional()
+  analyticsEnabled: z.boolean().optional(),
+  feedbackTranscriptionProvider: z.enum(["NONE", "DEEPGRAM", "VOSK"]).optional(),
+  transcriptionLimitDeepgram: z.number().int().min(0).max(100).optional(),
+  transcriptionLimitVosk: z.number().int().min(0).max(100).optional(),
+  transcriptionLimitWhisperRemote: z.number().int().min(0).max(100).optional()
 });
 
 export async function GET() {
@@ -17,14 +21,23 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const [snippet, enabled] = await Promise.all([
+  const [snippet, enabled, feedbackProvider, deepgramLimit, voskLimit, whisperRemoteLimit] = await Promise.all([
     getSiteSetting("analyticsSnippet"),
-    getSiteSetting("analyticsEnabled")
+    getSiteSetting("analyticsEnabled"),
+    getSiteSetting("feedbackTranscriptionProvider"),
+    getSiteSetting("transcriptionLimitDeepgram"),
+    getSiteSetting("transcriptionLimitVosk"),
+    getSiteSetting("transcriptionLimitWhisperRemote")
   ]);
 
   return NextResponse.json({
     analyticsSnippet: snippet ?? "",
-    analyticsEnabled: enabled === "true"
+    analyticsEnabled: enabled === "true",
+    feedbackTranscriptionProvider:
+      feedbackProvider === "DEEPGRAM" || feedbackProvider === "VOSK" ? feedbackProvider : "NONE",
+    transcriptionLimitDeepgram: Math.max(0, Number(deepgramLimit || 0) || 0),
+    transcriptionLimitVosk: Math.max(0, Number(voskLimit || 0) || 0),
+    transcriptionLimitWhisperRemote: Math.max(0, Number(whisperRemoteLimit || 0) || 0)
   });
 }
 
@@ -45,10 +58,18 @@ export async function POST(request: Request) {
 
   const snippet = parsed.data.analyticsSnippet ?? "";
   const enabled = parsed.data.analyticsEnabled ?? false;
+  const feedbackProvider = parsed.data.feedbackTranscriptionProvider ?? "NONE";
+  const deepgramLimit = parsed.data.transcriptionLimitDeepgram ?? 0;
+  const voskLimit = parsed.data.transcriptionLimitVosk ?? 0;
+  const whisperRemoteLimit = parsed.data.transcriptionLimitWhisperRemote ?? 0;
 
   await Promise.all([
     setSiteSetting("analyticsSnippet", snippet),
-    setSiteSetting("analyticsEnabled", enabled ? "true" : "false")
+    setSiteSetting("analyticsEnabled", enabled ? "true" : "false"),
+    setSiteSetting("feedbackTranscriptionProvider", feedbackProvider),
+    setSiteSetting("transcriptionLimitDeepgram", String(deepgramLimit)),
+    setSiteSetting("transcriptionLimitVosk", String(voskLimit)),
+    setSiteSetting("transcriptionLimitWhisperRemote", String(whisperRemoteLimit))
   ]);
 
   return NextResponse.json({ ok: true });

@@ -14,15 +14,17 @@ export default async function NewMeetingPage() {
     : [];
 
   return (
-    <div className="w-full max-w-2xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
-          New meeting
-        </h1>
-        <p className="text-sm text-slate-500">Create a new call room link.</p>
-      </div>
-      <div className="dr-card p-4 sm:p-6">
-        <NewMeetingForm dataspaces={dataspaces} />
+    <div className="w-full">
+      <div className="mx-auto w-full max-w-3xl space-y-5 px-3 sm:px-4 lg:px-6">
+        <div className="text-center sm:text-left">
+          <h1 className="text-2xl font-semibold text-slate-900 sm:text-3xl" style={{ fontFamily: "var(--font-serif)" }}>
+            New meeting
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">Create a new call room link.</p>
+        </div>
+        <div className="dr-card p-4 sm:p-6">
+          <NewMeetingForm dataspaces={dataspaces} />
+        </div>
       </div>
     </div>
   );

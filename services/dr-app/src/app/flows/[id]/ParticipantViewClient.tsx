@@ -36,7 +36,7 @@ type Props = {
   meditationAudioUrl?: string | null;
   blocks: Array<{
     id: string;
-    type: "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING";
+    type: "START" | "PARTICIPANTS" | "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING" | "BREAK" | "HARMONICA" | "DEMBRANE" | "DELIBERAIDE" | "POLIS" | "AGORACITIZENS" | "NEXUSPOLITICS" | "SUFFRAGO";
     durationSeconds: number;
     roundNumber: number | null;
     formQuestion?: string | null;
@@ -44,6 +44,7 @@ type Props = {
     meditationAnimationId?: string | null;
     meditationAudioUrl?: string | null;
     embedUrl?: string | null;
+    harmonicaUrl?: string | null;
     matchingMode?: "polar" | "anti" | null;
     poster: { id: string; title: string; content: string } | null;
   }>;
@@ -457,6 +458,9 @@ export function ParticipantViewClient({
   const currentMeetingId =
     assignment?.meetingId ?? (assignment ? meetingByRound[assignment.roundNumber] : undefined);
   const liveTranscriptionEnabled = transcriptionProvider === "DEEPGRAMLIVE";
+  const recordingEnabled = ["DEEPGRAM", "DEEPGRAMLIVE", "VOSK", "WHISPERREMOTE", "AUTOREMOTE"].includes(
+    transcriptionProvider
+  );
   const transcriptionLanguageCode = liveTranscriptionEnabled ? (language === "IT" ? "it" : "en") : "";
   const displayName = buildDisplayName(callDisplayName, userEmail);
   const canJoinCall = Boolean(assignment && !assignment.isBreak && currentMeetingId);
@@ -468,7 +472,7 @@ export function ParticipantViewClient({
         name: displayName,
         autojoin: true,
         embed: true,
-        autoRecordVideo: liveTranscriptionEnabled,
+        autoRecordVideo: recordingEnabled,
         transcriptionLanguage: transcriptionLanguageCode,
         accessToken: accessTokens[assignment!.roomId]
       })
@@ -498,9 +502,13 @@ export function ParticipantViewClient({
   const currentFormQuestion = currentFormBlock?.formQuestion ?? "Form";
   const currentFormResponse = formBlockId ? formResponses[formBlockId] : undefined;
   const embedActive = status === "active" && currentSegment?.type === "EMBED";
+  const harmonicaActive = status === "active" && currentSegment?.type === "HARMONICA";
   const embedUrlRaw =
     currentSegment?.type === "EMBED" ? currentBlock?.embedUrl ?? "" : "";
   const embedUrl = embedUrlRaw ? normalizeEmbedUrl(embedUrlRaw) : "";
+  const harmonicaUrlRaw =
+    currentSegment?.type === "HARMONICA" ? currentBlock?.harmonicaUrl ?? "" : "";
+  const harmonicaUrl = harmonicaUrlRaw ? normalizeEmbedUrl(harmonicaUrlRaw) : "";
   const experienceContainerClass = showModal
     ? "h-full min-h-0"
     : "min-h-[72vh] h-[72vh]";
@@ -721,6 +729,78 @@ export function ParticipantViewClient({
           Embed URL missing or invalid.
         </div>
       )}
+    </div>
+  ) : harmonicaActive ? (
+    <div
+      className={`overflow-hidden rounded-3xl border border-slate-800 bg-slate-950/80 ${experienceContainerClass} ${
+        showModal ? "flex min-h-0 flex-col" : ""
+      }`}
+    >
+      {harmonicaUrl ? (
+        <CallFrame
+          src={harmonicaUrl}
+          title="Harmonica"
+          className={`w-full ${showModal ? "flex-1 min-h-0" : "h-[72vh]"}`}
+          frameClassName="w-full h-full"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+        />
+      ) : (
+        <div className="flex flex-1 items-center justify-center px-6 py-10 text-center text-sm text-slate-300">
+          Harmonica URL missing or invalid.
+        </div>
+      )}
+    </div>
+  ) : status === "active" && currentSegment?.type === "START" ? (
+    <div
+      className={`flex items-center justify-center rounded-3xl border border-white/10 bg-slate-950/70 px-6 py-10 text-center text-slate-200 ${experienceContainerClass}`}
+    >
+      <div className="max-w-xl">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+          Start
+        </p>
+        <p className="mt-3 text-lg">
+          Placeholder start module. Scheduling and activation logic will be added later.
+        </p>
+      </div>
+    </div>
+  ) : status === "active" && currentSegment?.type === "PARTICIPANTS" ? (
+    <div
+      className={`flex items-center justify-center rounded-3xl border border-white/10 bg-slate-950/70 px-6 py-10 text-center text-slate-200 ${experienceContainerClass}`}
+    >
+      <div className="max-w-xl">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+          Participants
+        </p>
+        <p className="mt-3 text-lg">
+          Placeholder participants module. Selection and invitation logic will be added later.
+        </p>
+      </div>
+    </div>
+  ) : status === "active" && currentSegment?.type === "BREAK" ? (
+    <div
+      className={`flex items-center justify-center rounded-3xl border border-white/10 bg-slate-950/70 px-6 py-10 text-center text-slate-200 ${experienceContainerClass}`}
+    >
+      <div className="max-w-xl">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+          Break
+        </p>
+        <p className="mt-3 text-lg">
+          Take a pause. This block intentionally leaves space with no additional interaction.
+        </p>
+      </div>
+    </div>
+  ) : status === "active" && ["DEMBRANE", "DELIBERAIDE", "POLIS", "AGORACITIZENS", "NEXUSPOLITICS", "SUFFRAGO"].includes(currentSegment?.type || "") ? (
+    <div
+      className={`flex items-center justify-center rounded-3xl border border-white/10 bg-slate-950/70 px-6 py-10 text-center text-slate-200 ${experienceContainerClass}`}
+    >
+      <div className="max-w-xl">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+          {currentSegment?.type}
+        </p>
+        <p className="mt-3 text-lg">
+          Placeholder partner module. No dedicated interaction is configured yet.
+        </p>
+      </div>
     </div>
   ) : meditationActive ? (
     <MeditationRoundEmbed
@@ -1017,6 +1097,8 @@ export function ParticipantViewClient({
               {status === "active" && currentSegment?.type === "PAUSE"
                 ? `Pause ${meditationIndex}`
                 : null}
+              {status === "active" && currentSegment?.type === "START" ? "Start" : null}
+              {status === "active" && currentSegment?.type === "PARTICIPANTS" ? "Participants" : null}
               {status === "active" && currentSegment?.type === "PROMPT"
                 ? currentBlock?.poster?.title
                   ? `Prompt · ${currentBlock.poster.title}`
@@ -1025,6 +1107,7 @@ export function ParticipantViewClient({
               {status === "active" && currentSegment?.type === "NOTES" ? "Notes" : null}
               {status === "active" && currentSegment?.type === "FORM" ? "Form" : null}
               {status === "active" && currentSegment?.type === "EMBED" ? "Embed" : null}
+              {status === "active" && currentSegment?.type === "HARMONICA" ? "Harmonica" : null}
               {status === "active" && currentSegment?.type === "RECORD"
                 ? `Record ${recordIndex || ""}`.trim()
                 : null}
@@ -1040,10 +1123,13 @@ export function ParticipantViewClient({
             <span className="uppercase tracking-[0.18em]">Partner</span>
             <span className="font-semibold text-slate-900">
               {currentSegment?.type === "PAUSE" ? "Solo" : null}
+              {currentSegment?.type === "START" ? "Organizer" : null}
+              {currentSegment?.type === "PARTICIPANTS" ? "Organizer" : null}
               {currentSegment?.type === "PROMPT" ? "Focus" : null}
               {currentSegment?.type === "NOTES" ? "Your notes" : null}
               {currentSegment?.type === "FORM" ? "Your response" : null}
               {currentSegment?.type === "EMBED" ? "Focus" : null}
+              {currentSegment?.type === "HARMONICA" ? "Focus" : null}
               {currentSegment?.type === "RECORD" ? "Solo" : null}
               {currentSegment?.type === "PAIRING" ? (assignment ? assignment.partnerLabel : "-") : null}
             </span>
@@ -1103,13 +1189,19 @@ export function ParticipantViewClient({
             <span className="text-slate-700">
               {currentSegment?.type === "PAIRING"
                 ? "1:1 call"
+                : currentSegment?.type === "START"
+                  ? "Start"
+                  : currentSegment?.type === "PARTICIPANTS"
+                    ? "Participants"
                 : currentSegment?.type === "RECORD"
                   ? "Record"
                   : currentSegment?.type === "FORM"
                     ? "Form"
                     : currentSegment?.type === "EMBED"
                       ? "Embed"
-                  : currentSegment?.type ?? "Waiting"}
+                      : currentSegment?.type === "HARMONICA"
+                        ? "Harmonica"
+                        : currentSegment?.type ?? "Waiting"}
             </span>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
@@ -1119,10 +1211,13 @@ export function ParticipantViewClient({
             <span className="text-slate-400">·</span>
             <span className="font-semibold text-slate-700">
               {currentSegment?.type === "PAUSE" ? "Solo" : null}
+              {currentSegment?.type === "START" ? "Organizer" : null}
+              {currentSegment?.type === "PARTICIPANTS" ? "Organizer" : null}
               {currentSegment?.type === "PROMPT" ? "Focus" : null}
               {currentSegment?.type === "NOTES" ? "Your notes" : null}
               {currentSegment?.type === "FORM" ? "Your response" : null}
               {currentSegment?.type === "EMBED" ? "Focus" : null}
+              {currentSegment?.type === "HARMONICA" ? "Focus" : null}
               {currentSegment?.type === "RECORD" ? "Solo" : null}
               {currentSegment?.type === "PAIRING" ? (assignment ? assignment.partnerLabel : "-") : null}
             </span>
@@ -1557,6 +1652,74 @@ export function ParticipantViewClient({
                     </div>
                     <p className="mt-2 text-sm text-fuchsia-900">
                       Matching step completed. Check the organizer view for detailed pairings.
+                    </p>
+                  </div>
+                );
+              }
+
+              if (segment.type === "HARMONICA") {
+                const harmonicaBlock = segment.blockId ? blockById.get(segment.blockId) : null;
+                const harmonicaLink = harmonicaBlock?.harmonicaUrl ? normalizeEmbedUrl(harmonicaBlock.harmonicaUrl) : "";
+                return (
+                  <div
+                    key={`recap-harmonica-${index}`}
+                    className="rounded-2xl border border-teal-200/60 bg-teal-50/60 px-4 py-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-xs font-semibold uppercase text-teal-700">Harmonica</p>
+                      <p className="text-xs text-teal-700/70">
+                        Duration {formatDuration(durationSeconds)}
+                      </p>
+                    </div>
+                    {harmonicaLink ? (
+                      <div className="mt-3 overflow-hidden rounded-xl border border-teal-200">
+                        <iframe
+                          title="Harmonica"
+                          src={harmonicaLink}
+                          className="h-56 w-full"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                        />
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-sm text-teal-900">No Harmonica link.</p>
+                    )}
+                  </div>
+                );
+              }
+
+              if (segment.type === "START") {
+                return (
+                  <div
+                    key={`recap-start-${index}`}
+                    className="rounded-2xl border border-zinc-200/60 bg-zinc-50/60 px-4 py-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-xs font-semibold uppercase text-zinc-700">Start</p>
+                      <p className="text-xs text-zinc-700/70">
+                        Duration {formatDuration(durationSeconds)}
+                      </p>
+                    </div>
+                    <p className="mt-2 text-sm text-zinc-900">
+                      Placeholder start module. Activation rules are not enforced yet.
+                    </p>
+                  </div>
+                );
+              }
+
+              if (segment.type === "PARTICIPANTS") {
+                return (
+                  <div
+                    key={`recap-participants-${index}`}
+                    className="rounded-2xl border border-stone-200/60 bg-stone-50/60 px-4 py-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-xs font-semibold uppercase text-stone-700">Participants</p>
+                      <p className="text-xs text-stone-700/70">
+                        Duration {formatDuration(durationSeconds)}
+                      </p>
+                    </div>
+                    <p className="mt-2 text-sm text-stone-900">
+                      Placeholder participants module. Selection and invitation logic are not enforced yet.
                     </p>
                   </div>
                 );

@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Script from "next/script";
+import { MEDITATION_ANIMATIONS } from "@/lib/meditation";
+import { buildDefaultTemplateDraft, type TemplateBlock, type TemplateBlockType, type TemplateDraft } from "@/lib/templateDraft";
 
 type TemplateSummary = {
   id: string;
@@ -10,7 +12,18 @@ type TemplateSummary = {
   updatedAt: string;
   isPublic: boolean;
   createdById: string;
-  blocks: Array<Record<string, unknown>>;
+  settings?: {
+    syncMode?: "SERVER" | "CLIENT";
+    maxParticipantsPerRoom?: number;
+    allowOddGroup?: boolean;
+    language?: string;
+    transcriptionProvider?: string;
+    timezone?: string | null;
+    dataspaceId?: string | null;
+    requiresApproval?: boolean;
+    capacity?: number | null;
+  } | null;
+  blocks: TemplateBlock[];
 };
 
 type Poster = {
@@ -20,25 +33,50 @@ type Poster = {
 };
 
 type Props = {
-  templates: TemplateSummary[];
+  templates?: TemplateSummary[];
+  dataspaces: Array<{ id: string; name: string }>;
   initialTemplateId?: string | null;
+  draft?: TemplateDraft | null;
+  onDraftChange?: (draft: TemplateDraft) => void;
+  workspaceMode?: boolean;
 };
 
-type BlockType =
-  | "PAIRING"
-  | "PAUSE"
-  | "PROMPT"
-  | "NOTES"
-  | "RECORD"
-  | "FORM"
-  | "EMBED"
-  | "MATCHING";
+type BlockType = TemplateBlockType;
 
 type NodeData = {
   durationSeconds?: number;
+  startMode?:
+    | "specific_datetime"
+    | "when_x_join"
+    | "organizer_manual"
+    | "when_x_join_and_datetime"
+    | "random_selection_among_x";
+  startDate?: string | null;
+  startTime?: string | null;
+  timezone?: string | null;
+  requiredParticipants?: number | null;
+  agreementRequired?: boolean | null;
+  agreementDeadline?: string | null;
+  minimumParticipants?: number | null;
+  allowStartBeforeFull?: boolean | null;
+  poolSize?: number | null;
+  selectedParticipants?: number | null;
+  selectionRule?: "random" | null;
+  note?: string | null;
+  participantMode?:
+    | "manual_selected"
+    | "dataspace_invite_all"
+    | "dataspace_random"
+    | "ai_search_users";
+  participantUserIds?: string[] | null;
+  participantDataspaceIds?: string[] | null;
+  participantCount?: number | null;
+  participantQuery?: string | null;
+  participantNote?: string | null;
   roundMaxParticipants?: number | null;
   posterId?: string | null;
   embedUrl?: string | null;
+  harmonicaUrl?: string | null;
   matchingMode?: "polar" | "anti";
   formQuestion?: string | null;
   formChoices?: Array<{ key: string; label: string }>;
@@ -46,18 +84,138 @@ type NodeData = {
   meditationAudioUrl?: string | null;
 };
 
-const MODULES: Array<{ type: BlockType; label: string; color: string }> = [
-  { type: "PAIRING", label: "Pairing", color: "bg-amber-100 text-amber-900" },
-  { type: "PAUSE", label: "Pause", color: "bg-sky-100 text-sky-900" },
-  { type: "PROMPT", label: "Prompt", color: "bg-emerald-100 text-emerald-900" },
-  { type: "NOTES", label: "Notes", color: "bg-slate-100 text-slate-900" },
-  { type: "FORM", label: "Form", color: "bg-violet-100 text-violet-900" },
-  { type: "EMBED", label: "Embed", color: "bg-orange-100 text-orange-900" },
-  { type: "MATCHING", label: "Matching", color: "bg-rose-100 text-rose-900" },
-  { type: "RECORD", label: "Record", color: "bg-indigo-100 text-indigo-900" }
+const MODULES: Array<{ type: BlockType; label: string; description: string; color: string; icon: string }> = [
+  {
+    type: "START",
+    label: "Start",
+    description: "Define how and when a template session is allowed to begin.",
+    color: "bg-zinc-100 text-zinc-900",
+    icon: "M5 4h14v4H5zM7 2h2v4H7zm8 0h2v4h-2zM5 10h14v10H5zm3 3h3v3H8z"
+  },
+  {
+    type: "PARTICIPANTS",
+    label: "Participants",
+    description: "Describe who should be invited, selected, or searched for this template.",
+    color: "bg-stone-100 text-stone-900",
+    icon: "M4 18h16v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2Zm8-8a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"
+  },
+  {
+    type: "PAIRING",
+    label: "Pairing",
+    description: "Split people into small-group calls or rounds for timed discussion.",
+    color: "bg-amber-100 text-amber-900",
+    icon: "M4 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm12 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-10 2a4 4 0 0 0-4 4v2h6v-2a4 4 0 0 0-2-4Zm8 0a4 4 0 0 0-2 4v2h6v-2a4 4 0 0 0-4-4Z"
+  },
+  {
+    type: "PAUSE",
+    label: "Pause",
+    description: "Insert a breathing space, meditation, or silent interval between activities.",
+    color: "bg-sky-100 text-sky-900",
+    icon: "M6 4h3v16H6zM11 4h3v16h-3z"
+  },
+  {
+    type: "PROMPT",
+    label: "Prompt",
+    description: "Show a guiding question, instruction, or framing message to participants.",
+    color: "bg-emerald-100 text-emerald-900",
+    icon: "M4 5h16v10H7l-3 3V5z"
+  },
+  {
+    type: "NOTES",
+    label: "Notes",
+    description: "Provide written context, notes, or facilitator guidance inside the template.",
+    color: "bg-slate-100 text-slate-900",
+    icon: "M6 4h8l4 4v12H6zM14 4v4h4"
+  },
+  {
+    type: "FORM",
+    label: "Form",
+    description: "Collect structured participant answers, votes, or short submissions.",
+    color: "bg-violet-100 text-violet-900",
+    icon: "M6 5h12v2H6zM6 10h12v2H6zM6 15h7v2H6z"
+  },
+  {
+    type: "EMBED",
+    label: "Embed",
+    description: "Display external content such as a board, document, or video inside the flow.",
+    color: "bg-orange-100 text-orange-900",
+    icon: "M7 7l-4 3 4 3M17 7l4 3-4 3M10 17l4-10"
+  },
+  {
+    type: "MATCHING",
+    label: "Matching",
+    description: "Trigger AI or rule-based rematching between rounds or group transitions.",
+    color: "bg-rose-100 text-rose-900",
+    icon: "M5 12h6M13 12h6M8 9l3 3-3 3"
+  },
+  {
+    type: "BREAK",
+    label: "Break",
+    description: "Insert a simple break block with no extra logic beyond time and pacing.",
+    color: "bg-cyan-100 text-cyan-900",
+    icon: "M7 5h4v14H7zM13 5h4v14h-4z"
+  },
+  {
+    type: "RECORD",
+    label: "Record",
+    description: "Capture spoken contributions or recording-focused moments in the template.",
+    color: "bg-indigo-100 text-indigo-900",
+    icon: "M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z"
+  },
+  {
+    type: "HARMONICA",
+    label: "Harmonica",
+    description: "Placeholder for future Harmonica integration and deliberation workflows.",
+    color: "bg-teal-100 text-teal-900",
+    icon: "M4 9h16v6H4zM7 9v6M11 9v6M15 9v6M18 9v6"
+  },
+  {
+    type: "DEMBRANE",
+    label: "Dembrane",
+    description: "Placeholder partner module for Dembrane-linked participation flows.",
+    color: "bg-cyan-100 text-cyan-900",
+    icon: "M5 6h14v12H5zM8 9h8M8 12h8M8 15h5"
+  },
+  {
+    type: "DELIBERAIDE",
+    label: "DeliberAIde",
+    description: "Placeholder partner module for future DeliberAIde assistance.",
+    color: "bg-lime-100 text-lime-900",
+    icon: "M12 4l7 4v8l-7 4-7-4V8l7-4Zm0 4v4m0 4h.01"
+  },
+  {
+    type: "POLIS",
+    label: "Pol.is",
+    description: "Placeholder partner module for Pol.is style opinion clustering.",
+    color: "bg-fuchsia-100 text-fuchsia-900",
+    icon: "M4 6h16v10H7l-3 3V6zM8 10h2M12 10h2M16 10h.01"
+  },
+  {
+    type: "AGORACITIZENS",
+    label: "Agora Citizens",
+    description: "Placeholder partner module for civic assembly and Agora Citizens flows.",
+    color: "bg-emerald-100 text-emerald-900",
+    icon: "M4 18h16M6 16V9l6-4 6 4v7M9 18v-4h6v4"
+  },
+  {
+    type: "NEXUSPOLITICS",
+    label: "Nexus Politics",
+    description: "Placeholder partner module for graph-based political collaboration tools.",
+    color: "bg-blue-100 text-blue-900",
+    icon: "M6 6h5v5H6zM13 13h5v5h-5zM13 6h5v5h-5zM6 13h5v5H6zM11 8h2M8 11v2M13 11h2M11 13v2"
+  },
+  {
+    type: "SUFFRAGO",
+    label: "Suffrago",
+    description: "Placeholder partner module for voting, ballots, and suffrage-related tools.",
+    color: "bg-rose-100 text-rose-900",
+    icon: "M6 4h12v4H6zM8 8v10m8-10v10M5 20h14"
+  }
 ];
 
 const DEFAULT_DURATIONS: Record<BlockType, number> = {
+  START: 60,
+  PARTICIPANTS: 90,
   PAIRING: 600,
   PAUSE: 300,
   PROMPT: 120,
@@ -65,14 +223,29 @@ const DEFAULT_DURATIONS: Record<BlockType, number> = {
   FORM: 120,
   EMBED: 180,
   MATCHING: 60,
-  RECORD: 120
+  BREAK: 300,
+  RECORD: 120,
+  HARMONICA: 90,
+  DEMBRANE: 90,
+  DELIBERAIDE: 90,
+  POLIS: 90,
+  AGORACITIZENS: 90,
+  NEXUSPOLITICS: 90,
+  SUFFRAGO: 90
 };
 
-const MEDITATION_ANIMATIONS = [
-  { id: "default", label: "Default Flow" },
-  { id: "pulse", label: "Pulse" },
-  { id: "wave", label: "Wave" }
+const PARTNER_MODULE_TYPES: BlockType[] = [
+  "HARMONICA",
+  "DEMBRANE",
+  "DELIBERAIDE",
+  "POLIS",
+  "AGORACITIZENS",
+  "NEXUSPOLITICS",
+  "SUFFRAGO"
 ];
+
+const BASIC_MODULES = MODULES.filter((module) => !PARTNER_MODULE_TYPES.includes(module.type));
+const PARTNER_MODULES = MODULES.filter((module) => PARTNER_MODULE_TYPES.includes(module.type));
 
 declare global {
   interface Window {
@@ -118,6 +291,7 @@ function buildNodeHtml(
 ) {
   const module = MODULES.find((item) => item.type === type);
   const label = module?.label ?? type;
+  const icon = module?.icon ?? "M5 5h14v14H5z";
   const durationValue = data.durationSeconds ?? DEFAULT_DURATIONS[type];
   const duration = Number.isFinite(durationValue) ? Math.max(1, Math.round(durationValue)) : DEFAULT_DURATIONS[type];
 
@@ -137,12 +311,35 @@ function buildNodeHtml(
 
   const matchingMode = data.matchingMode === "anti" ? "anti" : "polar";
   const choicesText = (data.formChoices ?? []).map((choice) => choice.label).join("\n");
+  const participantMode = data.participantMode ?? "manual_selected";
+  const participantUsersText = (data.participantUserIds ?? []).join("\n");
+  const participantDataspacesText = (data.participantDataspaceIds ?? []).join("\n");
+  const startMode = data.startMode ?? "specific_datetime";
+  const agreementRequired = data.agreementRequired ? "checked" : "";
+  const allowStartBeforeFull = data.allowStartBeforeFull ? "checked" : "";
 
   return `
     <div class="dr-node-card" data-type="${escapeHtml(type)}">
+      <div class="dr-node-accent"></div>
       <div class="dr-node-header">
-        <span class="dr-node-title">${escapeHtml(label)}</span>
-        <span class="dr-node-tag">${escapeHtml(type)}</span>
+        <div class="dr-node-heading">
+          <span class="dr-node-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="${icon}"/></svg>
+          </span>
+          <div class="dr-node-heading-copy">
+            <span class="dr-node-title">${escapeHtml(label)}</span>
+            <span class="dr-node-tag">${escapeHtml(type.toLowerCase())}</span>
+          </div>
+        </div>
+        <button
+          type="button"
+          class="dr-node-delete"
+          data-action="delete-node"
+          aria-label="Remove ${escapeHtml(label)} module"
+          title="Remove module"
+        >
+          ×
+        </button>
       </div>
       <div class="dr-node-body">
         <div class="dr-node-label">
@@ -154,6 +351,135 @@ function buildNodeHtml(
             <span class="dr-node-duration-unit">sec</span>
           </div>
         </div>
+        ${
+          type === "PARTICIPANTS"
+            ? `<label class="dr-node-label">
+                Selection mode
+                <select class="dr-input dr-node-input" data-field="participantMode">
+                  <option value="manual_selected" ${participantMode === "manual_selected" ? "selected" : ""}>Selected or invited manually</option>
+                  <option value="dataspace_invite_all" ${participantMode === "dataspace_invite_all" ? "selected" : ""}>Invite all from one or more dataspaces</option>
+                  <option value="dataspace_random" ${participantMode === "dataspace_random" ? "selected" : ""}>Randomly extract from dataspaces</option>
+                  <option value="ai_search_users" ${participantMode === "ai_search_users" ? "selected" : ""}>AI search in user descriptions</option>
+                </select>
+              </label>
+              ${
+                participantMode === "manual_selected"
+                  ? `<label class="dr-node-label">
+                      User IDs or emails (one per line)
+                      <textarea class="dr-input dr-node-textarea" data-field="participantUserIds">${escapeHtml(participantUsersText)}</textarea>
+                    </label>`
+                  : ""
+              }
+              ${
+                participantMode === "dataspace_invite_all" || participantMode === "dataspace_random"
+                  ? `<label class="dr-node-label">
+                      Dataspace IDs (one per line)
+                      <textarea class="dr-input dr-node-textarea" data-field="participantDataspaceIds">${escapeHtml(participantDataspacesText)}</textarea>
+                    </label>`
+                  : ""
+              }
+              ${
+                participantMode === "dataspace_random"
+                  ? `<label class="dr-node-label">
+                      Number of participants
+                      <input class="dr-input dr-node-input" type="number" min="1" data-field="participantCount" value="${data.participantCount ?? ""}" />
+                    </label>`
+                  : ""
+              }
+              ${
+                participantMode === "ai_search_users"
+                  ? `<label class="dr-node-label">
+                      AI search query
+                      <textarea class="dr-input dr-node-textarea" data-field="participantQuery" placeholder="Find participants with relevant description keywords">${escapeHtml(data.participantQuery ?? "")}</textarea>
+                    </label>`
+                  : ""
+              }
+              <label class="dr-node-label">
+                Note
+                <textarea class="dr-input dr-node-textarea" data-field="participantNote" placeholder="Optional participant-selection note">${escapeHtml(data.participantNote ?? "")}</textarea>
+              </label>`
+            : ""
+        }
+        ${
+          type === "START"
+            ? `<label class="dr-node-label">
+                Start mode
+                <select class="dr-input dr-node-input" data-field="startMode">
+                  <option value="specific_datetime" ${startMode === "specific_datetime" ? "selected" : ""}>Specific day and time</option>
+                  <option value="when_x_join" ${startMode === "when_x_join" ? "selected" : ""}>When X people join</option>
+                  <option value="organizer_manual" ${startMode === "organizer_manual" ? "selected" : ""}>Organizer clicks start</option>
+                  <option value="when_x_join_and_datetime" ${startMode === "when_x_join_and_datetime" ? "selected" : ""}>When X join and at a specific day/time</option>
+                  <option value="random_selection_among_x" ${startMode === "random_selection_among_x" ? "selected" : ""}>Random selection among X participants</option>
+                </select>
+              </label>
+              ${
+                startMode === "specific_datetime" || startMode === "when_x_join_and_datetime"
+                  ? `<label class="dr-node-label">
+                      Start date
+                      <input class="dr-input dr-node-input" type="date" data-field="startDate" value="${escapeHtml(data.startDate ?? "")}" />
+                    </label>
+                    <label class="dr-node-label">
+                      Start time
+                      <input class="dr-input dr-node-input" type="time" data-field="startTime" value="${escapeHtml(data.startTime ?? "")}" />
+                    </label>
+                    <label class="dr-node-label">
+                      Timezone
+                      <input class="dr-input dr-node-input" type="text" data-field="timezone" value="${escapeHtml(data.timezone ?? "")}" placeholder="Europe/Berlin" />
+                    </label>`
+                  : ""
+              }
+              ${
+                startMode === "when_x_join" || startMode === "when_x_join_and_datetime"
+                  ? `<label class="dr-node-label">
+                      Required participants
+                      <input class="dr-input dr-node-input" type="number" min="1" data-field="requiredParticipants" value="${data.requiredParticipants ?? ""}" />
+                    </label>
+                    <label class="dr-node-label dr-node-checkbox">
+                      <input type="checkbox" data-field="agreementRequired" ${agreementRequired} />
+                      <span>Require date-time agreement</span>
+                    </label>
+                    <label class="dr-node-label">
+                      Agreement deadline
+                      <input class="dr-input dr-node-input" type="datetime-local" data-field="agreementDeadline" value="${escapeHtml(data.agreementDeadline ?? "")}" />
+                    </label>`
+                  : ""
+              }
+              ${
+                startMode === "organizer_manual"
+                  ? `<label class="dr-node-label">
+                      Minimum participants
+                      <input class="dr-input dr-node-input" type="number" min="1" data-field="minimumParticipants" value="${data.minimumParticipants ?? ""}" />
+                    </label>
+                    <label class="dr-node-label dr-node-checkbox">
+                      <input type="checkbox" data-field="allowStartBeforeFull" ${allowStartBeforeFull} />
+                      <span>Allow start before full attendance</span>
+                    </label>`
+                  : ""
+              }
+              ${
+                startMode === "random_selection_among_x"
+                  ? `<label class="dr-node-label">
+                      Candidate pool size
+                      <input class="dr-input dr-node-input" type="number" min="1" data-field="poolSize" value="${data.poolSize ?? ""}" />
+                    </label>
+                    <label class="dr-node-label">
+                      Selected participants
+                      <input class="dr-input dr-node-input" type="number" min="1" data-field="selectedParticipants" value="${data.selectedParticipants ?? ""}" />
+                    </label>
+                    <label class="dr-node-label">
+                      Selection rule
+                      <select class="dr-input dr-node-input" data-field="selectionRule">
+                        <option value="random" ${(data.selectionRule ?? "random") === "random" ? "selected" : ""}>Random</option>
+                      </select>
+                    </label>`
+                  : ""
+              }
+              <label class="dr-node-label">
+                Note
+                <textarea class="dr-input dr-node-textarea" data-field="note" placeholder="Optional organizer note">${escapeHtml(data.note ?? "")}</textarea>
+              </label>`
+            : ""
+        }
         ${
           type === "PAIRING"
             ? `<label class="dr-node-label">
@@ -174,10 +500,10 @@ function buildNodeHtml(
             : ""
         }
         ${
-          type === "EMBED"
+          type === "EMBED" || type === "HARMONICA"
             ? `<label class="dr-node-label">
-                Embed URL
-                <input class="dr-input dr-node-input" type="text" data-field="embedUrl" value="${escapeHtml(data.embedUrl ?? "")}" placeholder="https://..." />
+                ${type === "HARMONICA" ? "Harmonica URL" : "Embed URL"}
+                <input class="dr-input dr-node-input" type="text" data-field="${type === "HARMONICA" ? "harmonicaUrl" : "embedUrl"}" value="${escapeHtml(type === "HARMONICA" ? data.harmonicaUrl ?? "" : data.embedUrl ?? "")}" placeholder="https://..." />
               </label>`
             : ""
         }
@@ -232,9 +558,29 @@ function buildNodeHtml(
 function nodeDataFromBlock(block: any): NodeData {
   return {
     durationSeconds: block.durationSeconds ?? DEFAULT_DURATIONS[block.type as BlockType],
+    startMode: block.startMode ?? "specific_datetime",
+    startDate: block.startDate ?? null,
+    startTime: block.startTime ?? null,
+    timezone: block.timezone ?? null,
+    requiredParticipants: block.requiredParticipants ?? null,
+    agreementRequired: block.agreementRequired ?? null,
+    agreementDeadline: block.agreementDeadline ?? null,
+    minimumParticipants: block.minimumParticipants ?? null,
+    allowStartBeforeFull: block.allowStartBeforeFull ?? null,
+    poolSize: block.poolSize ?? null,
+    selectedParticipants: block.selectedParticipants ?? null,
+    selectionRule: block.selectionRule ?? "random",
+    note: block.note ?? null,
+    participantMode: block.participantMode ?? "manual_selected",
+    participantUserIds: block.participantUserIds ?? [],
+    participantDataspaceIds: block.participantDataspaceIds ?? [],
+    participantCount: block.participantCount ?? null,
+    participantQuery: block.participantQuery ?? null,
+    participantNote: block.participantNote ?? null,
     roundMaxParticipants: block.roundMaxParticipants ?? null,
     posterId: block.posterId ?? null,
     embedUrl: block.embedUrl ?? null,
+    harmonicaUrl: block.harmonicaUrl ?? null,
     matchingMode: block.matchingMode ?? "polar",
     formQuestion: block.formQuestion ?? null,
     formChoices: block.formChoices ?? [],
@@ -252,9 +598,29 @@ function buildBlockFromNode(type: BlockType, data: NodeData) {
   return {
     type,
     durationSeconds,
+    startMode: data.startMode ?? (type === "START" ? "specific_datetime" : null),
+    startDate: data.startDate ?? null,
+    startTime: data.startTime ?? null,
+    timezone: data.timezone ?? null,
+    requiredParticipants: data.requiredParticipants ?? null,
+    agreementRequired: data.agreementRequired ?? null,
+    agreementDeadline: data.agreementDeadline ?? null,
+    minimumParticipants: data.minimumParticipants ?? null,
+    allowStartBeforeFull: data.allowStartBeforeFull ?? null,
+    poolSize: data.poolSize ?? null,
+    selectedParticipants: data.selectedParticipants ?? null,
+    selectionRule: data.selectionRule ?? (type === "START" ? "random" : null),
+    note: data.note ?? null,
+    participantMode: data.participantMode ?? (type === "PARTICIPANTS" ? "manual_selected" : null),
+    participantUserIds: data.participantUserIds ?? [],
+    participantDataspaceIds: data.participantDataspaceIds ?? [],
+    participantCount: data.participantCount ?? null,
+    participantQuery: data.participantQuery ?? null,
+    participantNote: data.participantNote ?? null,
     roundMaxParticipants,
     posterId: data.posterId ?? null,
     embedUrl: data.embedUrl ?? null,
+    harmonicaUrl: data.harmonicaUrl ?? null,
     matchingMode: data.matchingMode ?? (type === "MATCHING" ? "polar" : null),
     formQuestion: data.formQuestion ?? null,
     formChoices: data.formChoices ?? [],
@@ -266,36 +632,128 @@ function buildBlockFromNode(type: BlockType, data: NodeData) {
 function buildDefaultData(type: BlockType): NodeData {
   return {
     durationSeconds: DEFAULT_DURATIONS[type],
+    startMode: type === "START" ? "specific_datetime" : undefined,
+    selectionRule: type === "START" ? "random" : undefined,
+    participantMode: type === "PARTICIPANTS" ? "manual_selected" : undefined,
     matchingMode: type === "MATCHING" ? "polar" : undefined
   };
 }
 
-export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
+export function ModularBuilderClient({
+  templates = [],
+  dataspaces,
+  initialTemplateId,
+  draft,
+  onDraftChange,
+  workspaceMode = false
+}: Props) {
   const editorRef = useRef<any>(null);
   const drawflowRef = useRef<HTMLDivElement | null>(null);
+  const externalDraftSignatureRef = useRef<string>("");
+  const emittedDraftSignatureRef = useRef<string>("");
   const [drawflowReady, setDrawflowReady] = useState(false);
+  const [editorReady, setEditorReady] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const [modulesCollapsed, setModulesCollapsed] = useState(false);
   const [templatesCollapsed, setTemplatesCollapsed] = useState(true);
+  const [zoomLevel, setZoomLevel] = useState(1);
   const [currentTemplateId, setCurrentTemplateId] = useState<string | null>(
     initialTemplateId || null
   );
   const [templateName, setTemplateName] = useState("New template");
   const [templateDescription, setTemplateDescription] = useState("");
   const [templatePublic, setTemplatePublic] = useState(false);
+  const [syncMode, setSyncMode] = useState<"SERVER" | "CLIENT">("SERVER");
+  const [maxParticipantsPerRoom, setMaxParticipantsPerRoom] = useState(2);
+  const [allowOddGroup, setAllowOddGroup] = useState(false);
+  const [language, setLanguage] = useState("EN");
+  const [provider, setProvider] = useState("DEEPGRAMLIVE");
+  const [timezone, setTimezone] = useState("");
+  const [dataspaceId, setDataspaceId] = useState("");
+  const [requiresApproval, setRequiresApproval] = useState(false);
+  const [capacity, setCapacity] = useState<number | "">("");
+  const [pairingMinutes, setPairingMinutes] = useState(10);
+  const [pairingCount, setPairingCount] = useState(3);
+  const [detailsCollapsed, setDetailsCollapsed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [aiPrompt, setAiPrompt] = useState(
+    "Design a 90-minute citizen assembly template to deliberate on a civic issue. Include context setting, small-group pairing, data capture, and a closing summary."
+  );
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiRaw, setAiRaw] = useState("");
+  const [aiRequestId, setAiRequestId] = useState<string | null>(null);
+  const [pendingAiDraft, setPendingAiDraft] = useState<TemplateDraft | null>(null);
   const [posters, setPosters] = useState<Poster[]>([]);
   const [audioFiles, setAudioFiles] = useState<Array<{ name: string; url: string }>>([]);
   const [templatesState, setTemplatesState] = useState<TemplateSummary[]>(templates);
+  const [editorVersion, setEditorVersion] = useState(0);
+  const resolvedTimezone =
+    typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
+  const externalDraftSignature = useMemo(
+    () => (draft ? JSON.stringify(draft) : ""),
+    [draft]
+  );
+  const aiWorkspaceHref = useMemo(() => {
+    const params = new URLSearchParams({ mode: "ai" });
+    if (currentTemplateId) {
+      params.set("templateId", currentTemplateId);
+    }
+    return `/templates/workspace?${params.toString()}`;
+  }, [currentTemplateId]);
 
 
   useEffect(() => {
     if (!initialTemplateId) return;
+    if (workspaceMode) return;
+    if (!drawflowReady || !editorReady || !editorRef.current) return;
     const target = templatesState.find((t) => t.id === initialTemplateId);
     if (target) {
       loadTemplate(target);
     }
-  }, [initialTemplateId, templatesState]);
+  }, [initialTemplateId, templatesState, drawflowReady, editorReady, workspaceMode]);
+
+  useEffect(() => {
+    if (!workspaceMode || !draft) return;
+    if (!drawflowReady || !editorReady || !editorRef.current) return;
+    if (externalDraftSignatureRef.current === externalDraftSignature) return;
+    externalDraftSignatureRef.current = externalDraftSignature;
+    applyDraftToBuilder(draft);
+  }, [workspaceMode, draft, drawflowReady, editorReady, externalDraftSignature]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.Drawflow) {
+      setDrawflowReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    function update() {
+      const mobile = window.matchMedia("(max-width: 1023px)").matches;
+      setIsMobile(mobile);
+      if (mobile) {
+        setTemplatesCollapsed(true);
+        setDetailsCollapsed(true);
+      } else {
+        setDetailsCollapsed(false);
+      }
+    }
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, []);
 
   useEffect(() => {
     async function loadPosters() {
@@ -318,6 +776,36 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
     loadAudio().finally(() => refreshAllNodeHtml());
   }, []);
 
+  useEffect(() => {
+    if (!workspaceMode || !onDraftChange) return;
+    if (!drawflowReady || !editorReady || !editorRef.current) return;
+    const nextDraft = buildWorkspaceDraft();
+    if (!nextDraft) return;
+    const serialized = JSON.stringify(nextDraft);
+    if (serialized === emittedDraftSignatureRef.current) return;
+    emittedDraftSignatureRef.current = serialized;
+    onDraftChange(nextDraft);
+  }, [
+    workspaceMode,
+    onDraftChange,
+    drawflowReady,
+    editorReady,
+    editorVersion,
+    currentTemplateId,
+    templateName,
+    templateDescription,
+    templatePublic,
+    syncMode,
+    maxParticipantsPerRoom,
+    allowOddGroup,
+    language,
+    provider,
+    timezone,
+    dataspaceId,
+    requiresApproval,
+    capacity
+  ]);
+
   function setupEditor() {
     if (!drawflowRef.current || !window.Drawflow) return;
     const editor = new window.Drawflow(drawflowRef.current);
@@ -328,11 +816,16 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
       updateNodeHtml(id, node?.name, node?.data);
     });
     editorRef.current = editor;
+    setEditorReady(true);
   }
 
   useEffect(() => {
     if (!drawflowReady) return;
     setupEditor();
+    return () => {
+      editorRef.current = null;
+      setEditorReady(false);
+    };
   }, [drawflowReady]);
 
   function updateNodeHtml(id: number, type: BlockType, data: NodeData) {
@@ -345,6 +838,43 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
         content.innerHTML = html;
       }
     }
+  }
+
+  function updateZoomLevel() {
+    const current = editorRef.current?.zoom;
+    if (typeof current === "number" && Number.isFinite(current)) {
+      setZoomLevel(current);
+    }
+  }
+
+  function zoomIn() {
+    const editor = editorRef.current;
+    if (!editor) return;
+    if (typeof editor.zoom_in === "function") {
+      editor.zoom_in();
+      updateZoomLevel();
+      return;
+    }
+    const current = typeof editor.zoom === "number" ? editor.zoom : zoomLevel;
+    const next = Math.min(2, current + 0.1);
+    editor.zoom = next;
+    if (typeof editor.zoom_refresh === "function") editor.zoom_refresh();
+    setZoomLevel(next);
+  }
+
+  function zoomOut() {
+    const editor = editorRef.current;
+    if (!editor) return;
+    if (typeof editor.zoom_out === "function") {
+      editor.zoom_out();
+      updateZoomLevel();
+      return;
+    }
+    const current = typeof editor.zoom === "number" ? editor.zoom : zoomLevel;
+    const next = Math.max(0.5, current - 0.1);
+    editor.zoom = next;
+    if (typeof editor.zoom_refresh === "function") editor.zoom_refresh();
+    setZoomLevel(next);
   }
 
   function refreshAllNodeHtml() {
@@ -366,6 +896,13 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
     const html = buildNodeHtml(type, data, { posters, audioFiles });
     const nodeId = editor.addNode(type, 1, 1, posX, posY, type, data, html);
     setTimeout(() => updateNodeHtml(nodeId, type, data), 0);
+    setEditorVersion((prev) => prev + 1);
+  }
+
+  function addNodeAtCenter(type: BlockType) {
+    if (!drawflowRef.current) return;
+    const rect = drawflowRef.current.getBoundingClientRect();
+    addNode(type, rect.left + rect.width / 2, rect.top + rect.height / 2);
   }
 
   function handleDrop(event: React.DragEvent) {
@@ -383,6 +920,7 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
     if (!editorRef.current) return;
     editorRef.current.clearModuleSelected();
     editorRef.current.import({ drawflow: { Home: { data: {} } } });
+    setEditorVersion((prev) => prev + 1);
   }
 
   function buildChainFromExport(exported: any) {
@@ -464,11 +1002,17 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
       if (block.type === "EMBED" && !block.embedUrl) {
         return { error: "Embed blocks need a URL." };
       }
+      if (block.type === "HARMONICA" && !block.harmonicaUrl) {
+        return { error: "Harmonica blocks need a URL." };
+      }
     }
 
     const normalized = blocks.map((block) => {
       if (block.type === "EMBED" && block.embedUrl) {
         return { ...block, embedUrl: normalizeEmbedUrl(block.embedUrl) || block.embedUrl };
+      }
+      if (block.type === "HARMONICA" && block.harmonicaUrl) {
+        return { ...block, harmonicaUrl: normalizeEmbedUrl(block.harmonicaUrl) || block.harmonicaUrl };
       }
       if (block.type === "FORM") {
         const question = block.formQuestion?.trim() ?? "";
@@ -481,6 +1025,156 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
     });
 
     return { blocks: normalized };
+  }
+
+  function buildWorkspaceDraft(): TemplateDraft | null {
+    const build = buildBlocksFromEditor();
+    if ("error" in build || !build.blocks) {
+      return null;
+    }
+    return {
+      id: currentTemplateId,
+      name: templateName.trim() || "Untitled template",
+      description: templateDescription.trim() || null,
+      isPublic: templatePublic,
+      settings: {
+        syncMode,
+        maxParticipantsPerRoom,
+        allowOddGroup,
+        language,
+        transcriptionProvider: provider,
+        timezone: timezone || resolvedTimezone,
+        dataspaceId: dataspaceId || null,
+        requiresApproval,
+        capacity: capacity === "" ? null : Number(capacity)
+      },
+      blocks: build.blocks
+    };
+  }
+
+  async function runAi(mode: "generate" | "modify") {
+    setAiLoading(true);
+    setAiError(null);
+    setAiRaw("");
+    setAiRequestId(null);
+    setPendingAiDraft(null);
+    try {
+      const currentDraft = buildWorkspaceDraft();
+      const response = await fetch("/api/templates/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          prompt: aiPrompt,
+          mode,
+          draft: mode === "modify" ? currentDraft ?? undefined : undefined
+        })
+      });
+      const payloadText = await response.text();
+      setAiRaw(payloadText || "");
+      let payload: any = null;
+      try {
+        payload = payloadText ? JSON.parse(payloadText) : null;
+      } catch {
+        payload = null;
+      }
+      if (payload?.requestId) {
+        setAiRequestId(payload.requestId);
+      }
+      if (!response.ok) {
+        throw new Error(payload?.error ?? `AI request failed (${response.status}).`);
+      }
+      if (!payload?.template) {
+        throw new Error("AI did not return a template draft.");
+      }
+      setPendingAiDraft({
+        ...buildDefaultTemplateDraft(),
+        ...payload.template,
+        id: mode === "modify" ? currentTemplateId ?? null : null,
+        settings: {
+          ...buildDefaultTemplateDraft().settings,
+          ...(payload.template.settings ?? {})
+        }
+      });
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "Unable to process AI request.");
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  function applyPendingAiDraft() {
+    if (!pendingAiDraft) return;
+    applyDraftToBuilder(pendingAiDraft);
+    setPendingAiDraft(null);
+  }
+
+  function applyDraftToBuilder(nextDraft: TemplateDraft) {
+    setCurrentTemplateId(nextDraft.id ?? null);
+    setTemplateName(nextDraft.name || "New template");
+    setTemplateDescription(nextDraft.description ?? "");
+    setTemplatePublic(Boolean(nextDraft.isPublic));
+    setSyncMode(nextDraft.settings?.syncMode === "CLIENT" ? "CLIENT" : "SERVER");
+    setMaxParticipantsPerRoom(
+      Math.max(2, Math.min(12, Number(nextDraft.settings?.maxParticipantsPerRoom ?? 2) || 2))
+    );
+    setAllowOddGroup(Boolean(nextDraft.settings?.allowOddGroup));
+    setLanguage(nextDraft.settings?.language === "IT" ? "IT" : "EN");
+    setProvider(nextDraft.settings?.transcriptionProvider || "DEEPGRAMLIVE");
+    setTimezone(nextDraft.settings?.timezone ?? "");
+    setDataspaceId(nextDraft.settings?.dataspaceId ?? "");
+    setRequiresApproval(Boolean(nextDraft.settings?.requiresApproval));
+    setCapacity(
+      typeof nextDraft.settings?.capacity === "number" && Number.isFinite(nextDraft.settings.capacity)
+        ? nextDraft.settings.capacity
+        : ""
+    );
+    if (!editorRef.current) return;
+    resetEditor();
+    let prevId: number | null = null;
+    nextDraft.blocks.forEach((block, index) => {
+      const type = block.type as BlockType;
+      const data = nodeDataFromBlock(block);
+      const x = 80 + (index % 2) * 260;
+      const y = 60 + index * 140;
+      const html = buildNodeHtml(type, data, { posters, audioFiles });
+      const id = editorRef.current.addNode(type, 1, 1, x, y, type, data, html);
+      if (prevId) {
+        editorRef.current.addConnection(prevId, id, "output_1", "input_1");
+      }
+      prevId = id;
+      updateNodeHtml(id, type, data);
+    });
+    setEditorVersion((prev) => prev + 1);
+  }
+
+  function addPairingBlocks() {
+    if (!editorRef.current) return;
+    const count = Math.max(1, Math.min(50, Math.round(pairingCount || 1)));
+    const durationSeconds = Math.max(30, Math.round((pairingMinutes || 1) * 60));
+    const exported = editorRef.current.export();
+    const data = exported?.drawflow?.Home?.data ?? {};
+    const nodes = Object.values(data) as any[];
+    const maxY = nodes.reduce((acc, node) => Math.max(acc, Number(node.pos_y ?? 0)), 0);
+    let startY = nodes.length > 0 ? maxY + 140 : 80;
+    let prevId: number | null = null;
+    if (nodes.length > 0) {
+      const lastNode = nodes.reduce((acc, node) => (Number(node.pos_y ?? 0) > Number(acc.pos_y ?? 0) ? node : acc), nodes[0]);
+      prevId = Number(lastNode.id);
+    }
+    for (let index = 0; index < count; index += 1) {
+      const x = 120 + (index % 2) * 240;
+      const y = startY + index * 140;
+      const data = { durationSeconds, matchingMode: undefined };
+      const html = buildNodeHtml("PAIRING", data, { posters, audioFiles });
+      const id = editorRef.current.addNode("PAIRING", 1, 1, x, y, "PAIRING", data, html);
+      if (prevId) {
+        editorRef.current.addConnection(prevId, id, "output_1", "input_1");
+      }
+      prevId = id;
+      updateNodeHtml(id, "PAIRING", data);
+    }
+    setEditorVersion((prev) => prev + 1);
   }
 
   async function refreshTemplates() {
@@ -508,6 +1202,17 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
         name: templateName.trim() || "Untitled template",
         description: templateDescription.trim() || null,
         isPublic: templatePublic,
+        settings: {
+          syncMode,
+          maxParticipantsPerRoom,
+          allowOddGroup,
+          language,
+          transcriptionProvider: provider,
+          timezone: timezone || resolvedTimezone,
+          dataspaceId: dataspaceId || null,
+          requiresApproval,
+          capacity: capacity === "" ? null : Number(capacity)
+        },
         blocks
       };
       const response = currentTemplateId
@@ -538,6 +1243,7 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
         setCurrentTemplateId(result.id);
       }
       await refreshTemplates();
+      setEditorVersion((prev) => prev + 1);
     } catch {
       setSaveError("Unable to save template.");
     } finally {
@@ -550,6 +1256,21 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
     setTemplateName(template.name);
     setTemplateDescription(template.description ?? "");
     setTemplatePublic(template.isPublic);
+    setSyncMode(template.settings?.syncMode === "CLIENT" ? "CLIENT" : "SERVER");
+    setMaxParticipantsPerRoom(
+      Math.max(2, Math.min(12, Number(template.settings?.maxParticipantsPerRoom ?? 2) || 2))
+    );
+    setAllowOddGroup(Boolean(template.settings?.allowOddGroup));
+    setLanguage(template.settings?.language === "IT" ? "IT" : "EN");
+    setProvider(template.settings?.transcriptionProvider || "DEEPGRAMLIVE");
+    setTimezone(template.settings?.timezone ?? "");
+    setDataspaceId(template.settings?.dataspaceId ?? "");
+    setRequiresApproval(Boolean(template.settings?.requiresApproval));
+    setCapacity(
+      typeof template.settings?.capacity === "number" && Number.isFinite(template.settings.capacity)
+        ? template.settings.capacity
+        : ""
+    );
     if (!editorRef.current) return;
     resetEditor();
     const nodes = template.blocks.map((block, index) => {
@@ -569,6 +1290,7 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
       prevId = id;
       updateNodeHtml(id, node.type, node.data);
     });
+    setEditorVersion((prev) => prev + 1);
   }
 
   function createNewTemplate() {
@@ -576,6 +1298,17 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
     setTemplateName("New template");
     setTemplateDescription("");
     setTemplatePublic(false);
+    setSyncMode("SERVER");
+    setMaxParticipantsPerRoom(2);
+    setAllowOddGroup(false);
+    setLanguage("EN");
+    setProvider("DEEPGRAMLIVE");
+    setTimezone(resolvedTimezone || "");
+    setDataspaceId("");
+    setRequiresApproval(false);
+    setCapacity("");
+    setPairingMinutes(10);
+    setPairingCount(3);
     resetEditor();
   }
 
@@ -584,6 +1317,37 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
     const existing = editorRef.current.getNodeFromId(nodeId);
     const next = { ...(existing?.data || {}), ...partial };
     editorRef.current.updateNodeDataFromId(nodeId, next);
+    const type = (existing?.name as BlockType | undefined) ?? "PROMPT";
+    updateNodeHtml(nodeId, type, next);
+    setEditorVersion((prev) => prev + 1);
+  }
+
+  function removeNodeById(nodeId: number) {
+    const editor = editorRef.current;
+    if (!editor) return;
+    if (typeof editor.removeNodeId === "function") {
+      try {
+        editor.removeNodeId(`node-${nodeId}`);
+        setEditorVersion((prev) => prev + 1);
+        return;
+      } catch {}
+      try {
+        editor.removeNodeId(String(nodeId));
+        setEditorVersion((prev) => prev + 1);
+        return;
+      } catch {}
+      try {
+        editor.removeNodeId(nodeId);
+        setEditorVersion((prev) => prev + 1);
+        return;
+      } catch {}
+    }
+    if (typeof editor.removeNode === "function") {
+      try {
+        editor.removeNode(nodeId);
+        setEditorVersion((prev) => prev + 1);
+      } catch {}
+    }
   }
 
   function getNodeIdFromEventTarget(target: HTMLElement | null) {
@@ -592,6 +1356,18 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
     const raw = nodeEl.id.replace("node-", "");
     const id = Number(raw);
     return Number.isFinite(id) ? id : null;
+  }
+
+  function handleInlineClick(event: React.MouseEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+    const actionEl = target.closest?.("[data-action='delete-node']") as HTMLElement | null;
+    if (!actionEl) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const nodeId = getNodeIdFromEventTarget(actionEl);
+    if (!nodeId) return;
+    removeNodeById(nodeId);
   }
 
   function handleInlineInput(event: React.FormEvent<HTMLDivElement>) {
@@ -622,8 +1398,47 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
       updateNodeDataById(nodeId, { roundMaxParticipants: raw ? Number(raw) : null });
     } else if (field === "embedUrl") {
       updateNodeDataById(nodeId, { embedUrl: (target as HTMLInputElement).value });
+    } else if (field === "harmonicaUrl") {
+      updateNodeDataById(nodeId, { harmonicaUrl: (target as HTMLInputElement).value });
+    } else if (field === "startDate") {
+      updateNodeDataById(nodeId, { startDate: (target as HTMLInputElement).value || null });
+    } else if (field === "startTime") {
+      updateNodeDataById(nodeId, { startTime: (target as HTMLInputElement).value || null });
+    } else if (field === "timezone") {
+      updateNodeDataById(nodeId, { timezone: (target as HTMLInputElement).value || null });
+    } else if (field === "requiredParticipants") {
+      const raw = (target as HTMLInputElement).value;
+      updateNodeDataById(nodeId, { requiredParticipants: raw ? Number(raw) : null });
+    } else if (field === "participantCount") {
+      const raw = (target as HTMLInputElement).value;
+      updateNodeDataById(nodeId, { participantCount: raw ? Number(raw) : null });
+    } else if (field === "agreementDeadline") {
+      updateNodeDataById(nodeId, { agreementDeadline: (target as HTMLInputElement).value || null });
+    } else if (field === "minimumParticipants") {
+      const raw = (target as HTMLInputElement).value;
+      updateNodeDataById(nodeId, { minimumParticipants: raw ? Number(raw) : null });
+    } else if (field === "poolSize") {
+      const raw = (target as HTMLInputElement).value;
+      updateNodeDataById(nodeId, { poolSize: raw ? Number(raw) : null });
+    } else if (field === "selectedParticipants") {
+      const raw = (target as HTMLInputElement).value;
+      updateNodeDataById(nodeId, { selectedParticipants: raw ? Number(raw) : null });
     } else if (field === "formQuestion") {
       updateNodeDataById(nodeId, { formQuestion: (target as HTMLInputElement).value });
+    } else if (field === "note") {
+      updateNodeDataById(nodeId, { note: (target as HTMLTextAreaElement).value });
+    } else if (field === "participantUserIds") {
+      const raw = (target as HTMLTextAreaElement).value;
+      const values = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      updateNodeDataById(nodeId, { participantUserIds: values });
+    } else if (field === "participantDataspaceIds") {
+      const raw = (target as HTMLTextAreaElement).value;
+      const values = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      updateNodeDataById(nodeId, { participantDataspaceIds: values });
+    } else if (field === "participantQuery") {
+      updateNodeDataById(nodeId, { participantQuery: (target as HTMLTextAreaElement).value });
+    } else if (field === "participantNote") {
+      updateNodeDataById(nodeId, { participantNote: (target as HTMLTextAreaElement).value });
     } else if (field === "formChoices") {
       const raw = (target as HTMLTextAreaElement).value;
       const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
@@ -643,6 +1458,22 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
     if (field === "posterId") {
       const value = (target as HTMLSelectElement).value;
       updateNodeDataById(nodeId, { posterId: value || null });
+    } else if (field === "participantMode") {
+      updateNodeDataById(nodeId, {
+        participantMode: (target as HTMLSelectElement).value as NodeData["participantMode"]
+      });
+    } else if (field === "startMode") {
+      updateNodeDataById(nodeId, {
+        startMode: (target as HTMLSelectElement).value as NodeData["startMode"]
+      });
+    } else if (field === "selectionRule") {
+      updateNodeDataById(nodeId, {
+        selectionRule: ((target as HTMLSelectElement).value || "random") as "random"
+      });
+    } else if (field === "agreementRequired") {
+      updateNodeDataById(nodeId, { agreementRequired: (target as HTMLInputElement).checked });
+    } else if (field === "allowStartBeforeFull") {
+      updateNodeDataById(nodeId, { allowStartBeforeFull: (target as HTMLInputElement).checked });
     } else if (field === "matchingMode") {
       const value = (target as HTMLSelectElement).value === "anti" ? "anti" : "polar";
       updateNodeDataById(nodeId, { matchingMode: value });
@@ -657,18 +1488,18 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
     const target = event.target as HTMLElement | null;
     if (!target) return;
     const field = (target as HTMLInputElement).dataset?.field;
-    if (field !== "embedUrl") return;
+    if (field !== "embedUrl" && field !== "harmonicaUrl") return;
     const nodeId = getNodeIdFromEventTarget(target);
     if (!nodeId) return;
     const normalized = normalizeEmbedUrl((target as HTMLInputElement).value);
     if (normalized !== (target as HTMLInputElement).value) {
       (target as HTMLInputElement).value = normalized;
     }
-    updateNodeDataById(nodeId, { embedUrl: normalized });
+    updateNodeDataById(nodeId, field === "harmonicaUrl" ? { harmonicaUrl: normalized } : { embedUrl: normalized });
   }
 
   return (
-    <div className="flex h-[calc(100dvh-96px)] min-h-[560px] flex-col gap-3 overflow-hidden">
+    <div className={`flex min-h-[560px] flex-col gap-3 overflow-hidden ${workspaceMode ? "h-full" : "h-[calc(100dvh-96px)]"}`}>
       <Script
         src="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow@0.0.48/dist/drawflow.min.js"
         onLoad={() => setDrawflowReady(true)}
@@ -678,54 +1509,52 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
         href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow@0.0.48/dist/drawflow.min.css"
       />
 
-      <div className="dr-card flex items-center justify-between gap-4 px-4 py-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-slate-500">Modular Builder</p>
-            <h1 className="text-xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
+      {!workspaceMode ? (
+        <div className="dr-card flex items-center justify-between gap-3 px-3 py-2 sm:px-4 sm:py-3">
+          <div className="min-w-0">
+            <p className="hidden text-[10px] font-semibold uppercase tracking-[0.28em] text-slate-500 sm:block">
+              Modular Builder
+            </p>
+            <h1 className="truncate text-lg font-semibold text-slate-900 sm:text-xl" style={{ fontFamily: "var(--font-serif)" }}>
               {templateName || "New template"}
             </h1>
           </div>
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <div>
-              <label className="text-[10px] font-semibold uppercase text-slate-500">Name</label>
-              <input
-                value={templateName}
-                onChange={(event) => setTemplateName(event.target.value)}
-                className="dr-input mt-1 w-[220px] rounded px-2 py-1.5 text-xs"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-semibold uppercase text-slate-500">Description</label>
-              <input
-                value={templateDescription}
-                onChange={(event) => setTemplateDescription(event.target.value)}
-                className="dr-input mt-1 w-[280px] rounded px-2 py-1.5 text-xs"
-              />
-            </div>
-            <label className="mt-5 flex items-center gap-2 text-xs text-slate-600">
-              <input
-                type="checkbox"
-                checked={templatePublic}
-                onChange={(event) => setTemplatePublic(event.target.checked)}
-              />
-              Public
-            </label>
-            {saveError ? <p className="mt-5 text-xs text-rose-600">{saveError}</p> : null}
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href={aiWorkspaceHref}
+              className="dr-button-outline px-2 py-1 text-[11px] sm:px-3 sm:text-xs"
+            >
+              AI Builder
+            </a>
+            <button
+              type="button"
+              className="dr-button-outline px-2 py-1 text-[11px] sm:px-3 sm:text-xs"
+              onClick={addPairingBlocks}
+            >
+              Add pairings
+            </button>
+            <button
+              type="button"
+              className="dr-button px-2 py-1 text-[11px] sm:px-3 sm:text-xs"
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving ? "Saving..." : "Save template"}
+            </button>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="button" className="dr-button-outline px-3 py-1 text-xs" onClick={createNewTemplate}>
-            New template
-          </button>
-          <button type="button" className="dr-button px-3 py-1 text-xs" onClick={handleSave} disabled={saving}>
-            {saving ? "Saving..." : "Save template"}
-          </button>
-        </div>
-      </div>
+      ) : null}
 
-      <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
-        <div className={`dr-card flex flex-col gap-3 p-3 ${modulesCollapsed ? "w-[56px]" : "w-[200px]"}`}>
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden lg:flex-row">
+        <div
+          className={`dr-card flex flex-col gap-3 p-3 ${
+            isMobile
+              ? "w-full"
+              : modulesCollapsed
+                ? "w-[56px]"
+                : "w-[200px]"
+          }`}
+        >
           <div className="flex items-center justify-between">
             <div className={`text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 ${modulesCollapsed ? "sr-only" : ""}`}>
               Modules
@@ -739,46 +1568,134 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
             </button>
           </div>
           {modulesCollapsed ? (
-            <div className="flex flex-col items-center gap-2">
-              {MODULES.map((module) => (
-                <div
+            <div className={`flex ${isMobile ? "flex-row flex-wrap" : "flex-col"} items-center gap-2`}>
+              {BASIC_MODULES.map((module) => (
+                <button
                   key={module.type}
-                  draggable
+                  type="button"
+                  draggable={!isMobile}
                   onDragStart={(event) => handleDragStart(event, module.type)}
+                  onClick={() => (isMobile ? addNodeAtCenter(module.type) : undefined)}
                   title={module.label}
-                  className={`flex h-9 w-9 cursor-grab items-center justify-center rounded-xl border border-slate-200 bg-white text-[10px] font-semibold ${module.color}`}
+                  className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white text-[10px] font-semibold ${module.color}`}
                 >
-                  {module.label.slice(0, 2).toUpperCase()}
-                </div>
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+                    <path d={module.icon} />
+                  </svg>
+                </button>
+              ))}
+              {PARTNER_MODULES.map((module) => (
+                <button
+                  key={module.type}
+                  type="button"
+                  draggable={!isMobile}
+                  onDragStart={(event) => handleDragStart(event, module.type)}
+                  onClick={() => (isMobile ? addNodeAtCenter(module.type) : undefined)}
+                  title={module.label}
+                  className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white text-[10px] font-semibold ${module.color}`}
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+                    <path d={module.icon} />
+                  </svg>
+                </button>
               ))}
             </div>
           ) : (
             <>
-              <div className="space-y-2 overflow-auto">
-                {MODULES.map((module) => (
-                  <div
-                    key={module.type}
-                    draggable
-                    onDragStart={(event) => handleDragStart(event, module.type)}
-                    className={`flex cursor-grab items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold ${module.color}`}
-                  >
-                    {module.label}
+              <div className={`${isMobile ? "space-y-3" : "space-y-3 overflow-auto"}`}>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-2">
+                  <div className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Basic modules
                   </div>
-                ))}
+                  <div className={`${isMobile ? "flex flex-wrap gap-2" : "space-y-2"}`}>
+                    {BASIC_MODULES.map((module) => (
+                      <button
+                        key={module.type}
+                        type="button"
+                        draggable={!isMobile}
+                        onDragStart={(event) => handleDragStart(event, module.type)}
+                        onClick={() => (isMobile ? addNodeAtCenter(module.type) : undefined)}
+                        title={`${module.label}: ${module.description}`}
+                        className={`group relative flex cursor-pointer items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold ${module.color}`}
+                      >
+                        <svg viewBox="0 0 24 24" className="mr-2 h-4 w-4" fill="currentColor" aria-hidden="true">
+                          <path d={module.icon} />
+                        </svg>
+                        {module.label}
+                        {!isMobile ? (
+                          <span className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-20 hidden w-56 -translate-y-1/2 rounded-2xl border border-slate-200 bg-slate-950 px-3 py-2 text-left text-[11px] font-medium leading-4 text-white shadow-xl group-hover:block">
+                            {module.description}
+                          </span>
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-2">
+                  <div className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    Partner modules
+                  </div>
+                  <div className={`${isMobile ? "flex flex-wrap gap-2" : "space-y-2"}`}>
+                    {PARTNER_MODULES.map((module) => (
+                      <button
+                        key={module.type}
+                        type="button"
+                        draggable={!isMobile}
+                        onDragStart={(event) => handleDragStart(event, module.type)}
+                        onClick={() => (isMobile ? addNodeAtCenter(module.type) : undefined)}
+                        title={`${module.label}: ${module.description}`}
+                        className={`group relative flex cursor-pointer items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold ${module.color}`}
+                      >
+                        <svg viewBox="0 0 24 24" className="mr-2 h-4 w-4" fill="currentColor" aria-hidden="true">
+                          <path d={module.icon} />
+                        </svg>
+                        {module.label}
+                        {!isMobile ? (
+                          <span className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-20 hidden w-56 -translate-y-1/2 rounded-2xl border border-slate-200 bg-slate-950 px-3 py-2 text-left text-[11px] font-medium leading-4 text-white shadow-xl group-hover:block">
+                            {module.description}
+                          </span>
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
               <p className="mt-auto text-[11px] text-slate-500">
-                Drag a module into the canvas to add it to your template.
+                {isMobile ? "Tap a module to add it to the canvas." : "Drag a module into the canvas to add it to your template."}
               </p>
             </>
           )}
         </div>
 
         <div className="dr-card relative min-h-0 flex-1 p-0">
+          <div className="pointer-events-none absolute right-3 top-3 z-10 flex flex-col items-end gap-2">
+            <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-slate-200 bg-white/90 px-2 py-1 text-[10px] font-semibold text-slate-600 shadow-sm">
+              <span>Zoom</span>
+              <span className="text-slate-800">{Math.round(zoomLevel * 100)}%</span>
+            </div>
+            <div className="pointer-events-auto flex flex-col gap-1 rounded-xl border border-slate-200 bg-white/90 p-1 shadow-sm">
+              <button
+                type="button"
+                onClick={zoomIn}
+                className="rounded-lg px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                +
+              </button>
+              <button
+                type="button"
+                onClick={zoomOut}
+                className="rounded-lg px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                −
+              </button>
+            </div>
+          </div>
           <div
             ref={drawflowRef}
-            className="h-full min-h-[520px] w-full rounded-2xl"
+            className={`h-full w-full rounded-2xl ${isMobile ? "min-h-[360px]" : "min-h-[520px]"}`}
             onDragOver={(event) => event.preventDefault()}
             onDrop={handleDrop}
+            onClick={handleInlineClick}
             onInput={handleInlineInput}
             onChange={handleInlineChange}
             onBlur={handleInlineBlur}
@@ -790,7 +1707,16 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
           ) : null}
         </div>
 
-        <div className={`dr-card flex flex-col p-3 ${templatesCollapsed ? "w-[56px]" : "w-[260px]"}`}>
+        {!workspaceMode ? (
+        <div
+          className={`dr-card flex flex-col p-3 ${
+            isMobile
+              ? "w-full"
+              : templatesCollapsed
+                ? "w-[56px]"
+                : "w-[260px]"
+          }`}
+        >
           <div className="flex items-center justify-between">
             <h3 className={`text-sm font-semibold text-slate-900 ${templatesCollapsed ? "sr-only" : ""}`}>Templates</h3>
             <button
@@ -798,12 +1724,83 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
               onClick={() => setTemplatesCollapsed((prev) => !prev)}
               className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 hover:text-slate-900"
             >
-              {templatesCollapsed ? "<" : ">"}
+              {templatesCollapsed ? ">" : "<"}
             </button>
           </div>
           {!templatesCollapsed ? (
             <>
-              <div className="mt-3 flex-1 space-y-2 overflow-auto">
+              <div className="mt-3 rounded-2xl border border-slate-200 bg-white/70 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                    Info
+                  </div>
+                  <button
+                    type="button"
+                    onClick={createNewTemplate}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[10px] font-semibold text-slate-700"
+                  >
+                    New template
+                  </button>
+                </div>
+                <div className="mt-3 grid gap-3">
+                  <label className="text-[11px] font-medium text-slate-700">
+                    Name
+                    <input
+                      value={templateName}
+                      onChange={(event) => setTemplateName(event.target.value)}
+                      className="dr-input mt-1 w-full rounded px-2 py-1 text-[11px]"
+                    />
+                  </label>
+                  <label className="text-[11px] font-medium text-slate-700">
+                    Description
+                    <input
+                      value={templateDescription}
+                      onChange={(event) => setTemplateDescription(event.target.value)}
+                      className="dr-input mt-1 w-full rounded px-2 py-1 text-[11px]"
+                    />
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="text-[11px] font-medium text-slate-700">
+                      Minutes per pairing
+                      <input
+                        type="number"
+                        min={1}
+                        max={240}
+                        value={pairingMinutes}
+                        onChange={(event) => setPairingMinutes(Number(event.target.value))}
+                        className="dr-input mt-1 w-full rounded px-2 py-1 text-[11px]"
+                      />
+                    </label>
+                    <label className="text-[11px] font-medium text-slate-700">
+                      Pairings
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={pairingCount}
+                        onChange={(event) => setPairingCount(Number(event.target.value))}
+                        className="dr-input mt-1 w-full rounded px-2 py-1 text-[11px]"
+                      />
+                    </label>
+                  </div>
+                  <label className="flex items-center gap-2 text-[11px] text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={templatePublic}
+                      onChange={(event) => setTemplatePublic(event.target.checked)}
+                    />
+                    Public
+                  </label>
+                  {saveError ? <p className="text-[11px] text-rose-600">{saveError}</p> : null}
+                </div>
+              </div>
+
+              <div className="mt-3">
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  All templates
+                </div>
+              </div>
+              <div className={`flex-1 space-y-2 overflow-auto ${isMobile ? "max-h-[22dvh]" : ""}`}>
                 {templatesState.map((template) => (
                   <button
                     key={template.id}
@@ -823,9 +1820,84 @@ export function ModularBuilderClient({ templates, initialTemplateId }: Props) {
               <div className="mt-2 text-[10px] text-slate-500">{templatesState.length} templates</div>
             </>
           ) : (
-            <div className="mt-2 text-center text-[10px] text-slate-500">{templatesState.length}</div>
+            <div className="mt-2 text-center text-[10px] text-slate-500">
+              <div className="font-semibold uppercase tracking-[0.2em]">More</div>
+            </div>
           )}
         </div>
+        ) : null}
+
+        {!workspaceMode ? (
+          <div className={`dr-card flex flex-col p-3 ${isMobile ? "w-full" : "w-[300px]"}`}>
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                AI helper
+              </div>
+              <h3 className="mt-1 text-sm font-semibold text-slate-900">Generate or modify this template</h3>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Use AI without leaving the modular canvas. Generate a new draft or update the current one.
+              </p>
+            </div>
+
+            <textarea
+              value={aiPrompt}
+              onChange={(event) => setAiPrompt(event.target.value)}
+              className="dr-input mt-3 min-h-[150px] w-full rounded-xl px-3 py-2 text-xs"
+            />
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="dr-button px-3 py-1 text-xs"
+                onClick={() => runAi("generate")}
+                disabled={aiLoading}
+              >
+                {aiLoading ? "Working..." : "Generate"}
+              </button>
+              <button
+                type="button"
+                className="dr-button-outline px-3 py-1 text-xs"
+                onClick={() => runAi("modify")}
+                disabled={aiLoading}
+              >
+                Modify
+              </button>
+            </div>
+
+            {aiError ? <p className="mt-3 text-xs text-rose-600">{aiError}</p> : null}
+            {aiRequestId ? <p className="mt-2 text-[11px] text-slate-400">Request ID: {aiRequestId}</p> : null}
+
+            {pendingAiDraft ? (
+              <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3">
+                <p className="text-xs font-semibold text-emerald-900">AI draft ready</p>
+                <p className="mt-1 text-[11px] text-emerald-800">
+                  {pendingAiDraft.name || "Untitled template"} · {pendingAiDraft.blocks.length} blocks
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <button type="button" className="dr-button px-3 py-1 text-xs" onClick={applyPendingAiDraft}>
+                    Apply
+                  </button>
+                  <button
+                    type="button"
+                    className="dr-button-outline px-3 py-1 text-xs"
+                    onClick={() => setPendingAiDraft(null)}
+                  >
+                    Discard
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="mt-3 flex-1 overflow-auto rounded-2xl border border-slate-200 bg-white/70 p-3">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                Raw output
+              </div>
+              <pre className="mt-2 whitespace-pre-wrap break-words text-[11px] text-slate-700">
+                {aiRaw || "No AI output yet."}
+              </pre>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

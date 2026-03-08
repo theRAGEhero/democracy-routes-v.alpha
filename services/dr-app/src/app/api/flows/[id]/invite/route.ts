@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { sendMail } from "@/lib/mailer";
 import { inviteMemberSchema } from "@/lib/validators";
-import bcrypt from "bcrypt";
+import bcrypt from "@/lib/bcrypt";
 import crypto from "crypto";
 import { checkRateLimit, getRequestIp } from "@/lib/rateLimit";
 

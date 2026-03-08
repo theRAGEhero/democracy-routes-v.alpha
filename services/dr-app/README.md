@@ -1,58 +1,106 @@
-# Democracy Routes
+# dr-app
 
-Minimal full-stack app to manage access and links for Democracy Routes call rooms (link + optional embed).
+Main Democracy Routes application.
+
+## Responsibilities
+
+- authentication and account management
+- dashboard, dataspaces, meetings, templates, texts
+- admin UI
+- embedded integration shell for `dr-video`, `dr-thinker`, `dr-matching`, and audio admin tools
+- template AI generation
+- workflow APIs for internal services
+- backup/admin controls
 
 ## Local setup
 
 ```bash
 npm install
 cp .env.example .env
-# edit .env and set DEMOCRACYROUTES_CALL_BASE_URL + NEXTAUTH_SECRET + DEEPGRAM_BASE_URL
+npm run prisma:generate
 npm run db:push
 npm run db:seed
 npm run dev
 ```
 
-Open http://localhost:3015
+Default local URL:
 
-### Admin seed
+- `http://localhost:3015`
 
-- Email: `admin@example.com`
-- Password: `admin1234`
+## Important env vars
 
-## SMTP (optional)
+- `DATABASE_URL`
+- `APP_BASE_URL`
+- `NEXTAUTH_URL`
+- `NEXTAUTH_SECRET`
+- `DEMOCRACYROUTES_CALL_BASE_URL`
+- `DEEPGRAM_BASE_URL`
+- `VOSK_BASE_URL`
+- `TRANSCRIPTION_HUB_BASE_URL`
+- `TRANSCRIPTION_HUB_API_KEY`
+- `EVENT_HUB_BASE_URL`
+- `EVENT_HUB_API_KEY`
+- `WORKFLOW_API_KEY`
+- `GEMINI_API_KEY`
+- `GEMINI_MODEL`
 
-Email is sent via SMTP using `.env` values. If SMTP is not configured, the app will skip sending email and show a warning, but it will not crash.
+## Main UI routes
 
-## Main routes
-
-- `/login`
-- `/register`
 - `/dashboard`
 - `/dataspace`
+- `/dataspace/[id]`
 - `/meetings/new`
 - `/meetings/[id]`
-- `/admin/users` (ADMIN only)
-- `/account/change-password`
+- `/flows`
+- `/flows/new`
+- `/flows/[id]`
+- `/modular`
+- `/templates/ai`
+- `/texts/new`
+- `/texts/[id]`
+- `/tutorial`
+- `/admin`
 
-## Notes
+## Main API groups
 
-- The “Join call” button opens a new tab with `${DEMOCRACYROUTES_CALL_BASE_URL}/meet/{roomId}?name={email}&autojoin=1`.
-- The meeting page can embed the call in an iframe using the same URL.
-- Transcription is fetched from `DEEPGRAM_BASE_URL` or `VOSK_BASE_URL` based on the meeting setting, and shown under the embed. If the meeting is not linked, it auto-detects by matching the meeting `roomId` in the round name.
-- Invites require the user to already exist; no auto-signup in this version.
-- Plan analysis calls analyze-tables-modular using `ANALYZE_TABLES_API_URL` and `ANALYZE_TABLES_API_KEY`.
+Auth and account:
 
-## Workflow API (service-to-service)
+- `/api/account/*`
+- `/api/auth/*`
+- `/api/register`
 
-These endpoints use `x-api-key: <WORKFLOW_API_KEY>` and are read-only:
+Admin:
 
-- `GET /api/integrations/workflow/meetings`
-- `GET /api/integrations/workflow/meetings/{id}`
-- `GET /api/integrations/workflow/meetings/{id}/transcription/meta`
-- `GET /api/integrations/workflow/meetings/{id}/transcription/participants`
-- `GET /api/integrations/workflow/meetings/{id}/transcription/contributions`
-- `GET /api/integrations/workflow/meetings/{id}/transcription/words` (optional)
-- `GET /api/integrations/workflow/plans`
-- `GET /api/integrations/workflow/plans/{id}`
-- `GET /api/integrations/workflow/plans/{id}/recap`
+- `/api/admin/analyses`
+- `/api/admin/backups`
+- `/api/admin/embed-auth`
+- `/api/admin/feedback`
+- `/api/admin/inbox`
+- `/api/admin/registration/*`
+- `/api/admin/site-settings`
+- `/api/admin/transcriptions*`
+- `/api/admin/users*`
+
+Core product:
+
+- `/api/dataspaces*`
+- `/api/meetings*`
+- `/api/flows*`
+- `/api/plan-templates*`
+- `/api/templates/ai`
+- `/api/texts*`
+- `/api/posters`
+- `/api/uploads*`
+
+Internal integration:
+
+- `/api/integrations/workflow/*`
+- `/api/telegram/webhook`
+- `/api/logs`
+
+## Current architecture notes
+
+- `dr-app` is the system of record for users, meetings, templates/plans, dataspaces, and texts.
+- Meeting transcript truth is moving to `transcription-hub`; `dr-app` fetches from it and also keeps convenience copies where needed.
+- Centralized stack events are posted to `dr-event-hub`.
+- User-facing language is progressively shifting toward `templates`, but internal APIs still contain `flows` and `plans`.

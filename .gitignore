@@ -17,3 +17,6 @@ services/dr-app/data/
 
 # Local-only repo
 /services/dr-thinker/
+
+# Local dev env
+/.env.dev

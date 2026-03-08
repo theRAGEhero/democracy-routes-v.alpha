@@ -4,6 +4,7 @@ import { useState } from "react";
 
 type Props = {
   initialTelegramHandle: string;
+  initialPersonalDescription: string;
   initialCalComLink: string;
   initialAvatarUrl: string;
   initialNotifyEmailMeetingInvites: boolean;
@@ -18,6 +19,7 @@ type Props = {
 
 export function ProfileSettingsForm({
   initialTelegramHandle,
+  initialPersonalDescription,
   initialCalComLink,
   initialAvatarUrl,
   initialNotifyEmailMeetingInvites,
@@ -30,6 +32,7 @@ export function ProfileSettingsForm({
   initialNotifyTelegramDataspaceActivity
 }: Props) {
   const [telegramHandle, setTelegramHandle] = useState(initialTelegramHandle);
+  const [personalDescription, setPersonalDescription] = useState(initialPersonalDescription);
   const [calComLink, setCalComLink] = useState(initialCalComLink);
   const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl);
   const [notifyEmailMeetingInvites, setNotifyEmailMeetingInvites] = useState(
@@ -76,6 +79,7 @@ export function ProfileSettingsForm({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         telegramHandle,
+        personalDescription,
         calComLink,
         avatarUrl,
         notifyEmailMeetingInvites,
@@ -167,6 +171,20 @@ export function ProfileSettingsForm({
           placeholder="@username"
         />
         <p className="mt-1 text-xs text-slate-500">We store it without the @ symbol.</p>
+      </div>
+      <div>
+        <label className="text-sm font-medium">Personal description</label>
+        <textarea
+          value={personalDescription}
+          onChange={(event) => setPersonalDescription(event.target.value)}
+          className="dr-input mt-1 min-h-[120px] w-full rounded px-3 py-2 text-sm"
+          placeholder="Tell others who you are, what you work on, or what perspective you bring."
+          maxLength={1200}
+        />
+        <div className="mt-1 flex items-center justify-between gap-3 text-xs text-slate-500">
+          <span>Shown on your profile when user profiles are opened.</span>
+          <span>{personalDescription.length}/1200</span>
+        </div>
       </div>
       <div>
         <label className="text-sm font-medium">Cal.com link</label>

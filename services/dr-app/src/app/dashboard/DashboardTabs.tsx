@@ -14,6 +14,7 @@ type RecentItem = {
   href: string;
   join?: { isPublic: boolean; joinStatus: "PENDING" | "JOINED" | "NONE"; canJoin: boolean };
   dataspaceColor?: string | null;
+  dataspaceKey: string;
 };
 
 type UpcomingItem = {
@@ -24,6 +25,7 @@ type UpcomingItem = {
   href: string;
   join?: { isPublic: boolean; joinStatus: "PENDING" | "JOINED" | "NONE"; canJoin: boolean };
   dataspaceColor?: string | null;
+  dataspaceKey: string;
 };
 
 type InviteRow = {
@@ -62,6 +64,24 @@ export function DashboardTabs({
   const [tab, setTab] = useState<TabKey>(
     upcomingInvites.length > 0 ? "Invites" : "Overview"
   );
+  const [selectedDataspaces, setSelectedDataspaces] = useState<string[]>([]);
+
+  const activeDataspaceKeys = selectedDataspaces.length > 0 ? new Set(selectedDataspaces) : null;
+  const includeByDataspace = (key: string) =>
+    !activeDataspaceKeys || activeDataspaceKeys.has(key);
+
+  const scopedMeetings = meetingRows.filter((row) => includeByDataspace(row.dataspaceKey));
+  const scopedPlans = planRows.filter((row) => includeByDataspace(row.dataspaceKey));
+  const scopedTexts = textRows.filter((row) => includeByDataspace(row.dataspaceKey));
+  const scopedRecent = recentItems.filter((row) => includeByDataspace(row.dataspaceKey));
+  const scopedUpcoming = upcomingItems.filter((row) => includeByDataspace(row.dataspaceKey));
+  const scopedCalendar = calendarEvents.filter((row) => includeByDataspace(row.dataspaceKey));
+
+  function toggleDataspace(key: string) {
+    setSelectedDataspaces((current) =>
+      current.includes(key) ? current.filter((entry) => entry !== key) : [...current, key]
+    );
+  }
 
   return (
     <div className="flex h-full flex-col gap-4">
@@ -99,6 +119,42 @@ export function DashboardTabs({
         })}
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setSelectedDataspaces([])}
+          className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+            selectedDataspaces.length === 0
+              ? "border-slate-900 bg-slate-900 text-white"
+              : "border-slate-200 bg-white/70 text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          All dataspaces
+        </button>
+        {dataspaceOptions.map((option) => (
+          <button
+            key={option.key}
+            type="button"
+            onClick={() => toggleDataspace(option.key)}
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${
+              selectedDataspaces.includes(option.key)
+                ? "border-slate-900 bg-slate-900 text-white"
+                : "border-slate-200 bg-white/70 text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            {option.color ? (
+              <span
+                className={`h-2.5 w-2.5 rounded-full border shadow-sm ${
+                  selectedDataspaces.includes(option.key) ? "border-white/70" : "border-slate-200"
+                }`}
+                style={{ backgroundColor: option.color }}
+              />
+            ) : null}
+            {option.label}
+          </button>
+        ))}
+      </div>
+
       <div className="flex-1 overflow-hidden">
         {tab === "Overview" ? (
           <div className="h-full overflow-auto">
@@ -106,10 +162,10 @@ export function DashboardTabs({
               <div className="dr-card p-6">
                 <h2 className="text-sm font-semibold uppercase text-slate-500">Recent activity</h2>
                 <div className="mt-3 space-y-3 text-sm text-slate-700">
-                  {recentItems.length === 0 ? (
+                  {scopedRecent.length === 0 ? (
                     <p className="text-slate-500">No recent activity yet.</p>
                   ) : (
-                    recentItems.map((item) => (
+                    scopedRecent.map((item) => (
                       <div
                         key={`${item.type}-${item.id}`}
                         className="flex flex-wrap items-center justify-between gap-3 rounded border border-slate-200 bg-white/70 px-3 py-2"
@@ -141,10 +197,10 @@ export function DashboardTabs({
                 <div className="dr-card p-6">
                   <h2 className="text-sm font-semibold uppercase text-slate-500">Upcoming events</h2>
                   <div className="mt-3 space-y-3 text-sm text-slate-700">
-                    {upcomingItems.length === 0 ? (
+                    {scopedUpcoming.length === 0 ? (
                       <p className="text-slate-500">No upcoming events scheduled.</p>
                     ) : (
-                      upcomingItems.map((item) => (
+                      scopedUpcoming.map((item) => (
                         <div
                           key={`${item.type}-${item.id}`}
                           className="flex flex-wrap items-center justify-between gap-3 rounded border border-slate-200 bg-white/70 px-3 py-2"
@@ -178,10 +234,10 @@ export function DashboardTabs({
         {tab === "Meetings" ? (
           <div className="h-full overflow-auto">
             <MeetingsTable
-              initialMeetings={meetingRows}
+              initialMeetings={scopedMeetings}
               dataspaceOptions={dataspaceOptions}
-              flows={planRows}
-              texts={textRows}
+              flows={scopedPlans}
+              texts={scopedTexts}
               showCreatedBy={false}
               showFlagFilters={true}
               initialMode="MEETINGS"
@@ -193,10 +249,10 @@ export function DashboardTabs({
         {tab === "Templates" ? (
           <div className="h-full overflow-auto">
             <MeetingsTable
-              initialMeetings={meetingRows}
+              initialMeetings={scopedMeetings}
               dataspaceOptions={dataspaceOptions}
-              flows={planRows}
-              texts={textRows}
+              flows={scopedPlans}
+              texts={scopedTexts}
               showCreatedBy={false}
               showFlagFilters={true}
               initialMode="PLANS"
@@ -212,7 +268,7 @@ export function DashboardTabs({
         ) : null}
         {tab === "Calendar" ? (
           <div className="h-full overflow-auto">
-            <CalendarPanel events={calendarEvents} />
+            <CalendarPanel events={scopedCalendar} />
           </div>
         ) : null}
       </div>

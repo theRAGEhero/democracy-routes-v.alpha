@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { JoinButton } from "@/components/JoinButton";
 
 type MeetingRow = {
@@ -52,7 +52,7 @@ type TextRow = {
 
 type Props = {
   initialMeetings: MeetingRow[];
-  dataspaceOptions: Array<{ key: string; label: string }>;
+  dataspaceOptions: Array<{ key: string; label: string; color?: string | null }>;
   flows: PlanRow[];
   texts: TextRow[];
   showCreatedBy?: boolean;
@@ -204,9 +204,17 @@ export function MeetingsTable({
       .includes(term);
   });
 
+  useEffect(() => {
+    setMeetings(initialMeetings);
+  }, [initialMeetings]);
+
+  useEffect(() => {
+    setFiltered(filterMeetings(initialMeetings, query, dataspaceFilter, meetingFlagFilter, showPast));
+  }, [initialMeetings, query, dataspaceFilter, meetingFlagFilter, showPast]);
+
   return (
     <div className="dr-card">
-      <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 border-b border-slate-200 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex w-full flex-1 flex-col gap-2 sm:flex-row sm:items-center">
           <input
             value={query}
@@ -260,7 +268,7 @@ export function MeetingsTable({
                 applyFilters(query, value, meetingFlagFilter);
               }
             }}
-            className="dr-input w-full rounded px-3 py-2 text-sm sm:w-52"
+            className="dr-input w-full rounded px-3 py-2 text-sm sm:w-44"
           >
             <option value="all">All dataspaces</option>
             <option value="none">No dataspace</option>
@@ -280,7 +288,7 @@ export function MeetingsTable({
                 setMeetingFlagFilter(value);
                 applyFilters(query, dataspaceFilter, value);
               }}
-              className="dr-input w-full rounded px-3 py-2 text-sm sm:w-44"
+              className="dr-input w-full rounded px-3 py-2 text-sm sm:w-40"
             >
               <option value="all">All meetings</option>
               <option value="public">Public only</option>
@@ -309,7 +317,7 @@ export function MeetingsTable({
             <select
               value={planFlagFilter}
               onChange={(event) => setPlanFlagFilter(event.target.value)}
-              className="dr-input w-full rounded px-3 py-2 text-sm sm:w-44"
+              className="dr-input w-full rounded px-3 py-2 text-sm sm:w-40"
             >
               <option value="all">All templates</option>
               <option value="public">Public only</option>
@@ -340,9 +348,9 @@ export function MeetingsTable({
       </div>
       {mode === "MEETINGS" ? (
         <div className="overflow-x-auto">
-          <div className={`${showCreatedBy ? "min-w-[920px]" : "min-w-[820px]"}`}>
+          <div className={`${showCreatedBy ? "min-w-[860px]" : "min-w-[760px]"}`}>
           <div
-            className={`grid ${showCreatedBy ? "grid-cols-8" : "grid-cols-7"} gap-4 border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase text-slate-500`}
+            className={`grid ${showCreatedBy ? "grid-cols-8" : "grid-cols-7"} gap-3 border-b border-slate-200 px-3 py-2 text-[11px] font-semibold uppercase text-slate-500`}
           >
             <span className="col-span-2">Title</span>
             <span>Status</span>
@@ -360,18 +368,18 @@ export function MeetingsTable({
               filtered.map((meeting) => (
                 <div
                   key={meeting.id}
-                  className={`grid ${showCreatedBy ? "grid-cols-8" : "grid-cols-7"} gap-4 px-4 py-4 text-sm`}
+                  className={`grid ${showCreatedBy ? "grid-cols-8" : "grid-cols-7"} gap-3 px-3 py-3 text-sm`}
                 >
                   <div className="col-span-2">
-                    <p className="font-medium text-slate-900">{meeting.title}</p>
+                    <p className="font-medium leading-tight text-slate-900">{meeting.title}</p>
                   </div>
-                  <div className={meeting.statusLabel === "Active" ? "text-emerald-600" : "text-slate-400"}>
+                  <div className={`text-xs font-semibold ${meeting.statusLabel === "Active" ? "text-emerald-600" : "text-slate-400"}`}>
                     {meeting.statusLabel}
                   </div>
-                  <div className="text-slate-500">{meeting.expiresLabel}</div>
-                  <div className="text-slate-700">{meeting.language}</div>
-                  <div className="text-slate-700">{meeting.providerLabel}</div>
-                  <div className="flex items-center gap-2 text-slate-600">
+                  <div className="text-xs text-slate-500">{meeting.expiresLabel}</div>
+                  <div className="text-xs text-slate-700">{meeting.language}</div>
+                  <div className="text-xs text-slate-700">{meeting.providerLabel}</div>
+                  <div className="flex items-center gap-2 text-xs text-slate-600">
                     {meeting.dataspaceColor ? (
                       <span
                         className="h-2.5 w-2.5 rounded-full border border-white/70 shadow-sm"
@@ -381,7 +389,7 @@ export function MeetingsTable({
                     <span>{meeting.dataspaceLabel}</span>
                   </div>
                     <div className="text-right">
-                      <div className="flex items-center justify-end gap-3">
+                      <div className="flex flex-wrap items-center justify-end gap-2">
                         {meeting.isPublic ? (
                           <JoinButton
                             resourceType="meeting"
@@ -392,14 +400,14 @@ export function MeetingsTable({
                         ) : null}
                         <Link
                           href={`/meetings/${meeting.id}`}
-                          className="text-sm font-medium text-slate-900 hover:underline"
+                          className="rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-900 hover:bg-slate-50"
                         >
-                          View
+                          Open
                       </Link>
                       {meeting.canEdit ? (
                         <Link
                           href={`/meetings/${meeting.id}/edit`}
-                          className="text-sm font-medium text-slate-600 hover:underline"
+                          className="rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                         >
                           Edit
                         </Link>
@@ -408,7 +416,7 @@ export function MeetingsTable({
                         <button
                           type="button"
                           onClick={() => handleDelete(meeting.id)}
-                          className="text-sm font-medium text-red-600 hover:text-red-700"
+                          className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100"
                           disabled={deletingId === meeting.id}
                         >
                           {deletingId === meeting.id ? "Deleting..." : "Delete"}
@@ -427,8 +435,8 @@ export function MeetingsTable({
         </div>
       ) : mode === "PLANS" ? (
         <div className="overflow-x-auto">
-          <div className="min-w-[720px]">
-            <div className="grid grid-cols-6 gap-4 border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase text-slate-500">
+          <div className="min-w-[700px]">
+            <div className="grid grid-cols-6 gap-3 border-b border-slate-200 px-3 py-2 text-[11px] font-semibold uppercase text-slate-500">
               <span className="col-span-2">Title</span>
               <span>Starts</span>
               <span>Rounds</span>
@@ -440,7 +448,7 @@ export function MeetingsTable({
                 <div className="px-4 py-6 text-sm text-slate-500">No templates found.</div>
               ) : (
                 filteredPlans.map((plan) => (
-                  <div key={plan.id} className="grid grid-cols-6 gap-4 px-4 py-4 text-sm">
+                  <div key={plan.id} className="grid grid-cols-6 gap-3 px-3 py-3 text-sm">
                     <div className="col-span-2">
                       <Link
                         href={`/flows/${plan.id}`}
@@ -449,9 +457,9 @@ export function MeetingsTable({
                         {plan.title}
                       </Link>
                     </div>
-                    <div className="text-slate-600">{plan.startLabel}</div>
-                    <div className="text-slate-600">{plan.roundsCount}</div>
-                    <div className="flex items-center gap-2 text-slate-600">
+                    <div className="text-xs text-slate-600">{plan.startLabel}</div>
+                    <div className="text-xs text-slate-600">{plan.roundsCount}</div>
+                    <div className="flex items-center gap-2 text-xs text-slate-600">
                       {plan.dataspaceColor ? (
                         <span
                           className="h-2.5 w-2.5 rounded-full border border-white/70 shadow-sm"
@@ -461,7 +469,7 @@ export function MeetingsTable({
                       <span>{plan.dataspaceLabel}</span>
                     </div>
                     <div className="text-right">
-                      <div className="flex items-center justify-end gap-3">
+                      <div className="flex flex-wrap items-center justify-end gap-2">
                         {plan.isPublic ? (
                           <JoinButton
                             resourceType="plan"
@@ -472,14 +480,14 @@ export function MeetingsTable({
                         ) : null}
                         <Link
                           href={`/flows/${plan.id}`}
-                          className="text-sm font-medium text-slate-900 hover:underline"
+                          className="rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-900 hover:bg-slate-50"
                         >
-                          View
+                          Open
                         </Link>
                         {plan.canEdit ? (
                           <Link
                             href={`/flows/${plan.id}/edit`}
-                            className="text-sm font-medium text-slate-600 hover:underline"
+                            className="rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                           >
                             Edit
                           </Link>
@@ -495,7 +503,7 @@ export function MeetingsTable({
       ) : (
         <div className="overflow-x-auto">
           <div className="min-w-[640px]">
-            <div className="grid grid-cols-4 gap-4 border-b border-slate-200 px-4 py-3 text-xs font-semibold uppercase text-slate-500">
+            <div className="grid grid-cols-4 gap-3 border-b border-slate-200 px-3 py-2 text-[11px] font-semibold uppercase text-slate-500">
               <span className="col-span-2">Text</span>
               <span>Updated</span>
               <span>Dataspace</span>
@@ -505,7 +513,7 @@ export function MeetingsTable({
                 <div className="px-4 py-6 text-sm text-slate-500">No texts yet.</div>
               ) : (
                 filteredTexts.map((text) => (
-                  <div key={text.id} className="grid grid-cols-4 gap-4 px-4 py-4 text-sm">
+                  <div key={text.id} className="grid grid-cols-4 gap-3 px-3 py-3 text-sm">
                     <div className="col-span-2">
                       <Link
                         href={`/texts/${text.id}`}
@@ -514,8 +522,8 @@ export function MeetingsTable({
                         {text.snippet || "Untitled text"}
                       </Link>
                     </div>
-                    <div className="text-slate-600">{text.updatedLabel}</div>
-                    <div className="flex items-center gap-2 text-slate-600">
+                    <div className="text-xs text-slate-600">{text.updatedLabel}</div>
+                    <div className="flex items-center gap-2 text-xs text-slate-600">
                       {text.dataspaceColor ? (
                         <span
                           className="h-2.5 w-2.5 rounded-full border border-white/70 shadow-sm"

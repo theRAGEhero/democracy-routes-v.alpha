@@ -11,6 +11,7 @@ import { JoinButton } from "@/components/JoinButton";
 import { DataspaceSettingsModal } from "@/app/dataspace/[id]/DataspaceSettingsModal";
 import { DataspaceImportSources } from "@/app/dataspace/[id]/DataspaceImportSources";
 import { DEFAULT_DATASPACE_COLOR, getDataspaceTheme } from "@/lib/dataspaceColor";
+import { UserProfileLink } from "@/components/UserProfileLink";
 
 export default async function DataspaceDetailPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -24,8 +25,8 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
     prisma.dataspace.findUnique({
       where: { id: params.id },
       include: {
-        createdBy: { select: { email: true } },
-        members: { include: { user: { select: { email: true } } } },
+        createdBy: { select: { id: true, email: true } },
+        members: { include: { user: { select: { id: true, email: true } } } },
         meetings: { where: { isHidden: false }, orderBy: { createdAt: "desc" } },
         plans: { orderBy: { startAt: "desc" } },
         texts: { orderBy: { updatedAt: "desc" } }
@@ -138,7 +139,13 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
           </div>
           <p className="text-sm text-slate-600">{dataspace.description || "No description"}</p>
           <p className="mt-1 text-xs text-slate-500">
-            Created by {dataspace.createdBy.email} · {formatDateTime(dataspace.createdAt)}
+            Created by{" "}
+            <UserProfileLink
+              userId={dataspace.createdBy.id}
+              email={dataspace.createdBy.email}
+              className="font-medium text-slate-600 hover:text-slate-900 hover:underline"
+            />{" "}
+            · {formatDateTime(dataspace.createdAt)}
           </p>
           <div className="mt-2 flex items-center gap-3 text-xs text-slate-500">
             <span
@@ -163,11 +170,12 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
             isSubscribed={Boolean(subscription)}
             hasTelegramHandle={Boolean(currentUser?.telegramHandle)}
           />
+          <DataspaceImportSources dataspaceId={dataspace.id} />
           <Link
-            href={`/dataspace/${dataspace.id}#import-sources`}
-            className="dr-button-outline px-3 py-2 text-xs"
+            href={`/dataspace/${dataspace.id}/analytics`}
+            className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:border-slate-300 hover:text-slate-900"
           >
-            Import Sources
+            Analytics
           </Link>
           <DataspaceSettingsModal
             dataspaceId={dataspace.id}
@@ -313,8 +321,6 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
           </div>
         </div>
 
-        <DataspaceImportSources dataspaceId={dataspace.id} />
-
         <div className="space-y-4">
           <div className="dr-card p-6">
             <h2 className="text-sm font-semibold uppercase text-slate-500">Members</h2>
@@ -325,7 +331,11 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
                 dataspace.members.map(
                   (member: (typeof dataspace.members)[number]) => (
                   <span key={member.id} className="rounded-full bg-white px-3 py-1">
-                    {member.user.email}
+                    <UserProfileLink
+                      userId={member.user.id}
+                      email={member.user.email}
+                      className="text-slate-700 hover:text-slate-900 hover:underline"
+                    />
                   </span>
                   )
                 )
@@ -349,34 +359,6 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
               </div>
             </div>
           ) : null}
-
-          <div className="dr-card p-6">
-            <h2 className="text-sm font-semibold uppercase text-slate-500">Text notes</h2>
-            <div className="mt-3 space-y-3 text-sm text-slate-700">
-              {dataspace.texts.length === 0 ? (
-                <p className="text-slate-500">No text notes yet.</p>
-              ) : (
-                dataspace.texts.map(
-                  (text: (typeof dataspace.texts)[number]) => (
-                  <div key={text.id} className="flex items-center justify-between gap-3 rounded border border-slate-200 bg-white/70 px-3 py-2">
-                    <div>
-                      <p className="font-medium text-slate-900">
-                        {text.content.trim().split("\n")[0]?.slice(0, 80) || "Text draft"}
-                      </p>
-                      <p className="text-xs text-slate-500">{formatDateTime(text.updatedAt)}</p>
-                    </div>
-                    <Link
-                      href={`/texts/${text.id}`}
-                      className="text-xs font-semibold text-slate-700 hover:underline"
-                    >
-                      Open
-                    </Link>
-                  </div>
-                  )
-                )
-              )}
-            </div>
-          </div>
 
           <div className="dr-card p-6">
             <h2 className="text-sm font-semibold uppercase text-slate-500">Templates</h2>

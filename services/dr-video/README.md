@@ -1,58 +1,52 @@
-# DR-video (standalone)
+# dr-video
 
-Minimal standalone SFU MVP for local testing before replacing dr-app SFU.
+RTC/video service for Democracy Routes.
 
-## What this includes
+## Responsibilities
 
-- Node.js SFU signaling server (`mediasoup` + WebSocket)
-- Basic browser client (join room, webcam/mic, consume remote streams)
-- Near-real-time recording upload (2s `MediaRecorder` chunks to server)
-- Recording files written to `recordings/<roomId>/<sessionId>.webm`
+- room join and signaling
+- mediasoup SFU transport
+- local webcam/mic publishing and remote consumption
+- embed mode for dr-app
+- access-token validation for protected joins
+- optional auto-record on join
+- Deepgram live transcription forwarding
+- finalize transcript/recording payloads to `transcription-hub`
+- operational event posting to `dr-event-hub`
 
-## What this is not (yet)
+## Runtime
 
-- Production hardening (auth, TURN, TLS termination, clustering)
-- Advanced moderation/UI
-- Server-side compositor recording
+This service is usually started through the root `docker-compose.yml`.
 
-## Run
-
-1. Install dependencies:
+Direct local run:
 
 ```bash
-cd /root/DR-video
 npm install
+node server.js
 ```
 
-2. Create env file:
+Default local URL:
 
-```bash
-cp .env.example .env
-```
+- `http://localhost:3020`
 
-3. Start:
+## Important env vars
 
-```bash
-npm run dev
-```
+- `PORT`
+- `HOST`
+- `ANNOUNCED_IP`
+- `RTC_MIN_PORT`
+- `RTC_MAX_PORT`
+- `DEEPGRAM_API_KEY`
+- `TRANSCRIPTION_HUB_URL`
+- `TRANSCRIPTION_HUB_API_KEY`
+- `EVENT_HUB_BASE_URL`
+- `EVENT_HUB_API_KEY`
+- `DR_VIDEO_ACCESS_SECRET`
+- `DR_VIDEO_REQUIRE_ACCESS`
 
-4. Open in browser:
+## Notes
 
-```text
-http://localhost:3020
-```
-
-5. Open a second tab/browser and join same room.
-
-## Recording behavior
-
-- Client starts recording automatically after join if `AUTO_RECORD_ON_JOIN=true` or checkbox enabled.
-- Chunks are appended server-side in near-real-time.
-- Metadata is written to `.jsonl` alongside the media file.
-
-## Next recommended steps
-
-1. Add JWT auth from dr-app to this service.
-2. Add TURN + HTTPS for non-local networks.
-3. Add room policy: auto-record only when host/presenter joins.
-4. Add server-side ffmpeg post-processing pipeline.
+- This is not just a standalone demo client anymore; it is part of the production stack.
+- `dr-app` builds signed access tokens for embedded joins.
+- Transcript persistence should be treated as hub-first, with `transcription-hub` as the canonical destination.
+- Recordings and retry payloads are still written locally under the service volume.

@@ -32,6 +32,7 @@ export default async function EditPlanPage({ params }: { params: { id: string } 
           formChoicesJson: true,
           posterId: true,
           embedUrl: true,
+          harmonicaUrl: true,
           matchingMode: true,
           meditationAnimationId: true,
           meditationAudioUrl: true
@@ -59,7 +60,7 @@ export default async function EditPlanPage({ params }: { params: { id: string } 
   const normalizedBlocks: PlanBlockInput[] = (plan.blocks ?? []).reduce(
     (acc: PlanBlockInput[], block: (typeof plan.blocks)[number]) => {
       const type = block.type as PlanBlockType;
-      if (!["PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING"].includes(type)) {
+      if (!["PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "HARMONICA", "MATCHING"].includes(type)) {
         return acc;
       }
       acc.push({
@@ -79,6 +80,7 @@ export default async function EditPlanPage({ params }: { params: { id: string } 
         })(),
         posterId: block.posterId ?? null,
         embedUrl: block.embedUrl ?? null,
+        harmonicaUrl: block.harmonicaUrl ?? null,
         matchingMode: normalizeMatchingMode(block.matchingMode)
       });
       return acc;
@@ -177,6 +179,7 @@ export default async function EditPlanPage({ params }: { params: { id: string } 
             })(),
             posterId: block.posterId,
             embedUrl: block.embedUrl ?? null,
+            harmonicaUrl: block.harmonicaUrl ?? null,
             meditationAnimationId: block.meditationAnimationId ?? null,
             meditationAudioUrl: block.meditationAudioUrl ?? null
           }))

@@ -111,7 +111,7 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
   const normalizedBlocks: PlanBlockInput[] = (plan.blocks ?? []).reduce(
     (acc: PlanBlockInput[], block: (typeof plan.blocks)[number]) => {
       const type = block.type as PlanBlockType;
-      if (!["PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING"].includes(type)) {
+      if (!["PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "HARMONICA", "MATCHING"].includes(type)) {
         return acc;
       }
         acc.push({
@@ -329,6 +329,7 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
             }
           })(),
           embedUrl: block.embedUrl ?? null,
+          harmonicaUrl: block.harmonicaUrl ?? null,
           matchingMode: normalizeMatchingMode(block.matchingMode),
           meditationAnimationId: block.meditationAnimationId ?? null,
           meditationAudioUrl: block.meditationAudioUrl ?? null,

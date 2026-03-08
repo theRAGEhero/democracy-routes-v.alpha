@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ModularBuilderClient } from "@/app/modular/ModularBuilderClient";
+import type { TemplateBlock, TemplateDraftSettings } from "@/lib/templateDraft";
 
 type PageProps = {
   searchParams?: { templateId?: string };
@@ -14,28 +15,41 @@ export default async function ModularBuilderPage({ searchParams }: PageProps) {
     return null;
   }
 
-  const templates = await prisma.planTemplate.findMany({
-    where: {
-      OR: [{ isPublic: true }, { createdById: session.user.id }]
-    },
-    orderBy: { updatedAt: "desc" },
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      blocksJson: true,
-      updatedAt: true,
-      isPublic: true,
-      createdById: true
-    }
-  });
+  const [templates, dataspaces] = await Promise.all([
+    prisma.planTemplate.findMany({
+      where: {
+        OR: [{ isPublic: true }, { createdById: session.user.id }]
+      },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        blocksJson: true,
+        settingsJson: true,
+        updatedAt: true,
+        isPublic: true,
+        createdById: true
+      }
+    }),
+    prisma.dataspace.findMany({
+      orderBy: { name: "asc" },
+      select: { id: true, name: true }
+    })
+  ]);
 
   const parsedTemplates = templates.map((template) => {
-    let blocks: Array<Record<string, unknown>> = [];
+    let blocks: TemplateBlock[] = [];
+    let settings: TemplateDraftSettings | null = null;
     try {
-      blocks = JSON.parse(template.blocksJson);
+      blocks = JSON.parse(template.blocksJson) as TemplateBlock[];
     } catch {
       blocks = [];
+    }
+    try {
+      settings = template.settingsJson ? (JSON.parse(template.settingsJson) as TemplateDraftSettings) : null;
+    } catch {
+      settings = null;
     }
     return {
       id: template.id,
@@ -44,7 +58,8 @@ export default async function ModularBuilderPage({ searchParams }: PageProps) {
       updatedAt: template.updatedAt.toISOString(),
       isPublic: template.isPublic,
       createdById: template.createdById,
-      blocks
+      blocks,
+      settings
     };
   });
 
@@ -52,6 +67,7 @@ export default async function ModularBuilderPage({ searchParams }: PageProps) {
     <div className="relative left-1/2 right-1/2 h-[calc(100dvh-72px)] w-screen -mx-[50vw] overflow-hidden px-2">
       <ModularBuilderClient
         templates={parsedTemplates}
+        dataspaces={dataspaces}
         initialTemplateId={searchParams?.templateId ?? null}
       />
     </div>

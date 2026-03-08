@@ -47,6 +47,7 @@ const HUB_PENDING_DIR = path.resolve(RECORDINGS_DIR, "_hub_pending");
 const HUB_RETRY_SCAN_MS = Number(process.env.HUB_RETRY_SCAN_MS || 15000);
 const ACCESS_SECRET = String(process.env.DR_VIDEO_ACCESS_SECRET || "").trim();
 const REQUIRE_ACCESS = String(process.env.DR_VIDEO_REQUIRE_ACCESS || "true") === "true";
+const ADMIN_API_KEY = String(process.env.DR_VIDEO_ADMIN_API_KEY || ACCESS_SECRET || "").trim();
 
 fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
 fs.mkdirSync(LOG_DIR, { recursive: true });
@@ -139,6 +140,18 @@ function requireAccessToken(req, roomId) {
   const meetingId = String(req.query?.meetingId || "").trim() || null;
   const token = String(req.query?.access || req.headers["x-access-token"] || "").trim();
   return verifyAccessToken(token, roomId, meetingId);
+}
+
+function requireAdminApiKey(req) {
+  if (!ADMIN_API_KEY) return false;
+  const headerValue = String(req.headers["x-api-key"] || "").trim();
+  if (headerValue && timingSafeEqual(headerValue, ADMIN_API_KEY)) return true;
+  const authHeader = String(req.headers.authorization || "").trim();
+  if (authHeader.toLowerCase().startsWith("bearer ")) {
+    const token = authHeader.slice(7).trim();
+    if (token && timingSafeEqual(token, ADMIN_API_KEY)) return true;
+  }
+  return false;
 }
 
 function rotateLogsIfNeeded() {
@@ -611,6 +624,66 @@ function pickRecordingOwner(room, excludedPeerId = null) {
     return candidateId;
   }
   return null;
+}
+
+function getRoomSummary(roomId) {
+  const room = rooms.get(roomId);
+  if (!room) {
+    return {
+      roomId,
+      exists: false,
+      participantCount: 0,
+      participants: [],
+      recordingEnabled: false,
+      recordingOwnerPeerId: null,
+      transcriptionActive: false,
+      canClose: false
+    };
+  }
+
+  const participants = Array.from(room.peers)
+    .map((peerId) => peers.get(peerId))
+    .filter(Boolean)
+    .map((peer) => ({
+      peerId: peer.id,
+      name: peer.name,
+      connected: peer.ws?.readyState === 1
+    }));
+
+  return {
+    roomId: room.id,
+    exists: true,
+    participantCount: participants.filter((peer) => peer.connected).length,
+    participants,
+    recordingEnabled: Boolean(room.recordingState.enabled),
+    recordingOwnerPeerId: room.recordingState.ownerPeerId || null,
+    transcriptionActive: transcriptionSessions.has(room.id),
+    canClose: participants.filter((peer) => peer.connected).length === 0
+  };
+}
+
+function closeRoomById(roomId, reason = "room_closed") {
+  const room = rooms.get(roomId);
+  if (!room) return false;
+
+  if (room.recordingState.enabled) {
+    room.recordingState.enabled = false;
+    room.recordingState.ownerPeerId = null;
+    room.recordingState.mode = "av";
+    room.recordingState.transcriptionLanguage = "";
+    endRecordingRun(roomId, reason);
+  }
+
+  stopTranscriptionSession(roomId, reason);
+  chatSessions.delete(roomId);
+
+  try {
+    room.router.close();
+  } catch {}
+
+  rooms.delete(roomId);
+  logger.info("room_closed", { roomId, reason });
+  return true;
 }
 
 function recordingRunKey(roomId, runId) {
@@ -1973,20 +2046,7 @@ function closePeer(peerId) {
     broadcastToRoom(roomId, "peer-left", { peerId }, peerId);
 
     if (room.peers.size === 0) {
-      if (room.recordingState.enabled) {
-        room.recordingState.enabled = false;
-        room.recordingState.ownerPeerId = null;
-        room.recordingState.mode = "av";
-        room.recordingState.transcriptionLanguage = "";
-        endRecordingRun(roomId, "room_closed");
-      }
-      stopTranscriptionSession(roomId, "room_closed");
-      chatSessions.delete(roomId);
-      try {
-        room.router.close();
-      } catch {}
-      rooms.delete(roomId);
-      logger.info("room_closed", { roomId });
+      closeRoomById(roomId, "room_closed");
     }
   }
 
@@ -2179,6 +2239,21 @@ app.post("/api/record/finalize", express.json(), (req, res) => {
         fs.rmdirSync(partsDir);
       } catch {}
     }
+  }
+
+  if (!exists && chunksCount === 0) {
+    logger.warn("record_finalize_no_media_chunks", {
+      requestId: req.requestId,
+      roomId,
+      sessionId,
+      mode: ingest?.mode || mode
+    });
+    traceRecTrans("record_finalize_no_media_chunks", {
+      requestId: req.requestId,
+      roomId,
+      sessionId,
+      mode: ingest?.mode || mode
+    });
   }
   const ingestKey = `${roomId}:${sessionId}`;
   const ingest = recordingIngest.get(ingestKey);
@@ -2652,6 +2727,74 @@ app.get("/api/admin/status", (_req, res) => {
     rooms: roomsState,
     ingest,
     transcription
+  });
+});
+
+app.get("/api/rooms/state", (req, res) => {
+  if (!requireAdminApiKey(req)) {
+    return json(res, 403, { error: "Access denied" });
+  }
+
+  const roomId = String(req.query.roomId || req.query.room || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 64);
+
+  if (!roomId) {
+    return json(res, 400, { error: "roomId is required" });
+  }
+
+  return json(res, 200, {
+    ok: true,
+    ...getRoomSummary(roomId)
+  });
+});
+
+app.post("/api/rooms/close-if-empty", express.json(), (req, res) => {
+  if (!requireAdminApiKey(req)) {
+    return json(res, 403, { error: "Access denied" });
+  }
+
+  const roomId = String(req.body?.roomId || req.body?.room || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 64);
+
+  if (!roomId) {
+    return json(res, 400, { error: "roomId is required" });
+  }
+
+  const summary = getRoomSummary(roomId);
+  if (!summary.exists) {
+    return json(res, 200, {
+      ok: true,
+      closed: false,
+      reason: "room_not_found",
+      ...summary
+    });
+  }
+
+  if (summary.participantCount > 0) {
+    return json(res, 409, {
+      ok: false,
+      closed: false,
+      reason: "room_not_empty",
+      ...summary
+    });
+  }
+
+  const closed = closeRoomById(roomId, "api_close_if_empty");
+  return json(res, 200, {
+    ok: true,
+    closed,
+    reason: closed ? "room_closed" : "room_not_found",
+    ...getRoomSummary(roomId)
   });
 });
 

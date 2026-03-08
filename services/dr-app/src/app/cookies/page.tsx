@@ -37,12 +37,25 @@ export default function CookiePolicyPage() {
         <div>
           <h2 className="text-sm font-semibold uppercase text-slate-500">3. Cookie list</h2>
           <p className="mt-2">
-            Below is a representative list. Update it with the exact cookie names and durations in use.
+            Below is a representative list of cookies currently used by the Service.
           </p>
           <div className="mt-3 space-y-2 rounded-lg border border-slate-200 bg-white/70 p-3 text-xs text-slate-600">
-            <p><strong>Session/auth</strong>: used to maintain login session (strictly necessary).</p>
-            <p><strong>Preferences</strong>: used to store UI preferences.</p>
-            <p><strong>Analytics</strong>: used to measure usage (if enabled).</p>
+            <p>
+              <strong>Auth session</strong>: <code>next-auth.session-token</code> or
+              <code>__Secure-next-auth.session-token</code> (strictly necessary).
+            </p>
+            <p>
+              <strong>CSRF protection</strong>: <code>next-auth.csrf-token</code> (strictly necessary).
+            </p>
+            <p>
+              <strong>Callback URL</strong>: <code>next-auth.callback-url</code> (strictly necessary).
+            </p>
+            <p>
+              <strong>Analytics</strong>: Matomo cookies (only if enabled and consented).
+            </p>
+            <p>
+              <strong>dr_analytics_consent</strong>: stores your analytics choice (accept/reject).
+            </p>
           </div>
         </div>
 

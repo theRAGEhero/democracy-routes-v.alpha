@@ -1,4 +1,6 @@
 export type PlanBlockType =
+  | "START"
+  | "PARTICIPANTS"
   | "PAIRING"
   | "PAUSE"
   | "PROMPT"
@@ -6,18 +8,57 @@ export type PlanBlockType =
   | "RECORD"
   | "FORM"
   | "EMBED"
-  | "MATCHING";
+  | "MATCHING"
+  | "BREAK"
+  | "HARMONICA"
+  | "DEMBRANE"
+  | "DELIBERAIDE"
+  | "POLIS"
+  | "AGORACITIZENS"
+  | "NEXUSPOLITICS"
+  | "SUFFRAGO";
 
 export type PlanBlockInput = {
   id?: string | null;
   type: PlanBlockType;
   durationSeconds: number;
+  startMode?:
+    | "specific_datetime"
+    | "when_x_join"
+    | "organizer_manual"
+    | "when_x_join_and_datetime"
+    | "random_selection_among_x"
+    | null;
+  startDate?: string | null;
+  startTime?: string | null;
+  timezone?: string | null;
+  requiredParticipants?: number | null;
+  agreementRequired?: boolean | null;
+  agreementDeadline?: string | null;
+  minimumParticipants?: number | null;
+  allowStartBeforeFull?: boolean | null;
+  poolSize?: number | null;
+  selectedParticipants?: number | null;
+  selectionRule?: "random" | null;
+  note?: string | null;
+  participantMode?:
+    | "manual_selected"
+    | "dataspace_invite_all"
+    | "dataspace_random"
+    | "ai_search_users"
+    | null;
+  participantUserIds?: string[] | null;
+  participantDataspaceIds?: string[] | null;
+  participantCount?: number | null;
+  participantQuery?: string | null;
+  participantNote?: string | null;
   roundNumber?: number | null;
   roundMaxParticipants?: number | null;
   formQuestion?: string | null;
   formChoices?: Array<{ key: string; label: string }> | null;
   posterId?: string | null;
   embedUrl?: string | null;
+  harmonicaUrl?: string | null;
   matchingMode?: "polar" | "anti" | null;
 };
 

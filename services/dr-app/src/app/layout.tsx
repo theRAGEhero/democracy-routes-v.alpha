@@ -1,25 +1,42 @@
-import type { Metadata } from "next";
-import { Fraunces, Space_Grotesk } from "next/font/google";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
 import { AppHeader } from "@/components/AppHeader";
 import { FeedbackButton } from "@/components/FeedbackButton";
 import { AppFooter } from "@/components/AppFooter";
 import { Suspense } from "react";
+import type { CSSProperties } from "react";
 import { FirstTimeTutorial } from "@/components/FirstTimeTutorial";
 import { getSiteSetting } from "@/lib/siteSettings";
 import { AnalyticsConsent } from "@/components/AnalyticsConsent";
+import { PwaRegister } from "@/components/PwaRegister";
 
-const sans = Space_Grotesk({ subsets: ["latin"], variable: "--font-sans" });
-const serif = Fraunces({ subsets: ["latin"], variable: "--font-serif" });
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Democracy Routes",
   description: "Manage Democracy Routes meeting links",
   icons: {
-    icon: "/albero-logo-dr-120.png",
-    apple: "/albero-logo-dr-120.png"
+    icon: [
+      { url: "/dr-tree-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/dr-tree-512.png", sizes: "512x512", type: "image/png" }
+    ],
+    shortcut: "/dr-tree-192.png",
+    apple: "/dr-tree-192.png"
+  },
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Democracy Routes"
   }
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#f97316"
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
@@ -36,13 +53,23 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="en">
-      <body className={`${sans.variable} ${serif.variable}`}>
+      <body
+        style={
+          {
+            "--font-sans": '"Space Grotesk", "IBM Plex Sans", sans-serif',
+            "--font-serif": '"Fraunces", "Iowan Old Style", "Palatino Linotype", serif'
+          } as CSSProperties
+        }
+      >
         <Providers>
-          <AppHeader />
+          <Suspense>
+            <AppHeader />
+          </Suspense>
           <main className="mx-auto w-full max-w-[1400px] px-3 py-6 md:px-4">{children}</main>
           <AppFooter />
           <FirstTimeTutorial />
           <AnalyticsConsent enabled={shouldInject} snippet={analyticsSnippet} />
+          <PwaRegister />
           <Suspense>
             <FeedbackButton />
           </Suspense>

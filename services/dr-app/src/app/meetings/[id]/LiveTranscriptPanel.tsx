@@ -13,6 +13,7 @@ type Props = {
   meetingId: string;
   enabled: boolean;
   visible: boolean;
+  className?: string;
 };
 
 const POLL_MS = 2000;
@@ -22,8 +23,7 @@ function formatSpeaker(speaker?: number | string) {
   return `Speaker ${speaker}`;
 }
 
-export function LiveTranscriptPanel({ meetingId, enabled, visible }: Props) {
-  const [collapsed, setCollapsed] = useState(false);
+export function LiveTranscriptPanel({ meetingId, enabled, visible, className = "" }: Props) {
   const [lines, setLines] = useState<LiveLine[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,39 +70,39 @@ export function LiveTranscriptPanel({ meetingId, enabled, visible }: Props) {
   }
 
   return (
-    <div className={`relative h-full ${collapsed ? "w-8" : "w-full lg:w-80"}`}>
-      <button
-        type="button"
-        onClick={() => setCollapsed((prev) => !prev)}
-        className="absolute right-0 top-3 z-10 rounded-l bg-slate-900/80 px-2 py-1 text-[11px] font-semibold text-white"
-      >
-        {collapsed ? "Transcript" : "Collapse"}
-      </button>
-      <div
-        className={`h-full border-l border-slate-200 bg-white/90 ${collapsed ? "opacity-0 pointer-events-none" : "opacity-100"}`}
-      >
-        <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2">
-          <h3 className="text-xs font-semibold uppercase text-slate-600">Live transcript</h3>
-          <span className="text-[10px] text-slate-400">Auto</span>
+    <section
+      className={`flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-sm ${className}`}
+    >
+      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+            Live transcription
+          </h3>
+          <p className="mt-1 text-[11px] text-slate-400">Deepgram Live · Auto</p>
         </div>
-        <div className="h-full overflow-auto px-3 py-2 text-xs text-slate-800">
-          {error ? <p className="text-xs text-amber-700">{error}</p> : null}
-          {mergedLines.length === 0 && !error ? (
-            <p className="text-xs text-slate-500">Waiting for live transcription…</p>
-          ) : (
-            <div className="space-y-2">
-              {mergedLines.map((line) => (
-                <div key={line.id} className="rounded border border-slate-200 bg-white px-2 py-1">
-                  <p className="text-[10px] font-semibold uppercase text-slate-500">
-                    {formatSpeaker(line.speaker)}
-                  </p>
-                  <p className="text-slate-800">{line.text}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
+          Live
+        </span>
       </div>
-    </div>
+      <div className="min-h-0 flex-1 overflow-auto px-4 py-3 text-xs text-slate-800">
+        {error ? <p className="text-xs text-amber-700">{error}</p> : null}
+        {mergedLines.length === 0 && !error ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-xs text-slate-500">
+            Waiting for live transcription…
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {mergedLines.map((line) => (
+              <div key={line.id} className="rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  {formatSpeaker(line.speaker)}
+                </p>
+                <p className="mt-1 text-[13px] leading-5 text-slate-800">{line.text}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }

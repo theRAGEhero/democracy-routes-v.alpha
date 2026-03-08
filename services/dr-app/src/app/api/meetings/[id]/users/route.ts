@@ -16,6 +16,14 @@ export async function GET(
     include: {
       members: {
         where: { userId: session.user.id }
+      },
+      dataspace: {
+        include: {
+          members: {
+            where: { userId: session.user.id },
+            select: { userId: true }
+          }
+        }
       }
     }
   });
@@ -28,7 +36,10 @@ export async function GET(
   const isHost = meeting.members.some(
     (member: (typeof meeting.members)[number]) => member.role === "HOST"
   );
-  if (!isAdmin && !isHost) {
+  const isDataspaceMember = Boolean(
+    meeting.isPublic && meeting.dataspace?.members.some((member) => member.userId === session.user.id)
+  );
+  if (!isAdmin && !isHost && !isDataspaceMember) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -51,7 +62,8 @@ export async function GET(
   const users = await prisma.user.findMany({
     where: {
       email: { contains: query },
-      id: { notIn: excludeIds }
+      id: { notIn: excludeIds },
+      isDeleted: false
     },
     orderBy: { email: "asc" },
     take: 8,

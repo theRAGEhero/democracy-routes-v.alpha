@@ -188,7 +188,7 @@ export default async function GuestPlanPage({ params }: { params: { token: strin
         meditationAudioUrl={plan.meditationAudioUrl}
         blocks={plan.blocks.map((block: (typeof plan.blocks)[number]) => ({
           id: block.id,
-          type: block.type as "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING",
+          type: block.type as "START" | "PARTICIPANTS" | "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING" | "BREAK" | "HARMONICA" | "DEMBRANE" | "DELIBERAIDE" | "POLIS" | "AGORACITIZENS" | "NEXUSPOLITICS" | "SUFFRAGO",
           durationSeconds: block.durationSeconds,
           roundNumber: block.roundNumber,
           formQuestion: block.formQuestion ?? null,
@@ -203,6 +203,7 @@ export default async function GuestPlanPage({ params }: { params: { token: strin
           meditationAnimationId: block.meditationAnimationId ?? null,
           meditationAudioUrl: block.meditationAudioUrl ?? null,
           embedUrl: block.embedUrl ?? null,
+          harmonicaUrl: block.harmonicaUrl ?? null,
           matchingMode: normalizeMatchingMode(block.matchingMode),
           poster: block.poster
             ? { id: block.poster.id, title: block.poster.title, content: block.poster.content }

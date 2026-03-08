@@ -22,6 +22,7 @@ model User {
   telegramVerificationExpiresAt DateTime?
   calComLink         String?
   avatarUrl          String?
+  personalDescription String?
   notifyEmailMeetingInvites Boolean @default(true)
   notifyTelegramMeetingInvites Boolean @default(true)
   notifyEmailPlanInvites Boolean @default(true)
@@ -63,6 +64,8 @@ model User {
   planGuestInvitesCreated PlanGuestInvite[] @relation("PlanGuestInviteCreator")
   planGuestInvites   PlanGuestInvite[] @relation("PlanGuestInviteUser")
   matchingRuns       MatchingRun[]    @relation("MatchingRunCreator")
+  remoteWorkers      RemoteWorker[]
+  templateAiConversations TemplateAiConversation[]
 
   @@index([role])
   @@index([emailVerificationToken])
@@ -332,6 +335,7 @@ model PlanBlock {
   formChoicesJson String?
   posterId       String?
   embedUrl       String?
+  harmonicaUrl   String?
   matchingMode   String?
   meditationAnimationId String?
   meditationAudioUrl   String?
@@ -446,6 +450,71 @@ model MatchingRun {
   creator    User?    @relation("MatchingRunCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@index([planId])
+  @@index([createdAt])
+}
+
+model RemoteWorker {
+  id              String   @id @default(cuid())
+  userId          String
+  label           String?
+  status          String   @default("IDLE")
+  capabilitiesJson String?
+  browserInfo     String?
+  lastSeenAt      DateTime?
+  lastClaimAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  claimedJobs     RemoteWorkerJob[] @relation("RemoteWorkerJobClaimant")
+  results         RemoteWorkerResult[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([lastSeenAt])
+}
+
+model RemoteWorkerJob {
+  id                String   @id @default(cuid())
+  sourceType        String
+  sourceId          String?
+  chunkIndex        Int      @default(0)
+  status            String   @default("PENDING")
+  provider          String?
+  model             String?
+  language          String?
+  payloadJson       String?
+  audioUrl          String?
+  audioChecksum     String?
+  claimedByWorkerId String?
+  claimedAt         DateTime?
+  completedAt       DateTime?
+  attempts          Int      @default(0)
+  error             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  claimedByWorker   RemoteWorker? @relation("RemoteWorkerJobClaimant", fields: [claimedByWorkerId], references: [id], onDelete: SetNull)
+  results           RemoteWorkerResult[]
+
+  @@index([status])
+  @@index([sourceType])
+  @@index([createdAt])
+  @@index([claimedByWorkerId])
+}
+
+model RemoteWorkerResult {
+  id             String   @id @default(cuid())
+  jobId          String
+  workerId       String
+  transcriptText String?
+  transcriptJson String?
+  confidence     Float?
+  durationMs     Int?
+  createdAt      DateTime @default(now())
+  job            RemoteWorkerJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  worker         RemoteWorker    @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([workerId])
   @@index([createdAt])
 }
 
@@ -614,15 +683,33 @@ model PlanTemplate {
   name        String
   description String?
   blocksJson  String
+  settingsJson String?
   createdById String
   isPublic    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   createdBy   User     @relation("PlanTemplateCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  aiConversations TemplateAiConversation[]
 
   @@index([createdById])
   @@index([isPublic])
   @@index([createdAt])
+}
+
+model TemplateAiConversation {
+  id          String   @id @default(cuid())
+  templateId  String
+  userId      String
+  messagesJson String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  template    PlanTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, userId])
+  @@index([templateId])
+  @@index([userId])
+  @@index([updatedAt])
 }
 
 model DataspaceGuestInvite {

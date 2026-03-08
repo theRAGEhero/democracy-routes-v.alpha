@@ -117,17 +117,19 @@ export default async function AboutPage() {
         </p>
         <div className="mt-4 flex flex-wrap gap-3">
           <a
-            href="https://cloud.9minuti.it/s/J3kmw2cckboSgjx"
+            href="/resources/democracy-routes-whitepaper-2.0.pdf"
             target="_blank"
             rel="noreferrer noopener"
+            download
             className="dr-button-outline px-4 py-2 text-sm"
           >
             Whitepaper
           </a>
           <a
-            href="https://cloud.9minuti.it/s/e5MksJD9wCD6Kfb"
+            href="/resources/proof-of-political-power-2.pdf"
             target="_blank"
             rel="noreferrer noopener"
+            download
             className="dr-button-outline px-4 py-2 text-sm"
           >
             PoPP

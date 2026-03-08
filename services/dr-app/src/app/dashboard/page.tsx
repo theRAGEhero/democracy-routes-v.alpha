@@ -44,7 +44,7 @@ export default async function DashboardPage() {
         ]
       },
       orderBy: { createdAt: "desc" },
-      select: { id: true, name: true, personalOwnerId: true }
+      select: { id: true, name: true, personalOwnerId: true, color: true }
     }),
     prisma.meetingInvite.findMany({
       where: { userId: session.user.id, status: "PENDING" },
@@ -113,6 +113,7 @@ export default async function DashboardPage() {
             roundNumber: true,
             posterId: true,
             embedUrl: true,
+            harmonicaUrl: true,
             matchingMode: true
           }
         },
@@ -209,9 +210,13 @@ export default async function DashboardPage() {
       providerLabel:
         meeting.transcriptionProvider === "VOSK"
           ? "Vosk"
-          : meeting.transcriptionProvider === "DEEPGRAMLIVE"
-            ? "Deepgram Live"
-            : "Deepgram",
+          : meeting.transcriptionProvider === "AUTOREMOTE"
+            ? "Auto Remote"
+          : meeting.transcriptionProvider === "WHISPERREMOTE"
+            ? "Whisper Remote"
+            : meeting.transcriptionProvider === "DEEPGRAMLIVE"
+              ? "Deepgram Live"
+              : "Deepgram",
       dataspaceLabel:
         meeting.dataspace?.personalOwnerId === session.user.id
           ? "My Data Space"
@@ -239,7 +244,7 @@ export default async function DashboardPage() {
       const normalizedBlocks: PlanBlockInput[] = (plan.blocks ?? []).reduce(
         (acc: PlanBlockInput[], block: (typeof plan.blocks)[number]) => {
         const type = block.type as PlanBlockType;
-        if (!["PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING"].includes(type)) {
+        if (!["START", "PARTICIPANTS", "PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING", "BREAK", "HARMONICA", "DEMBRANE", "DELIBERAIDE", "POLIS", "AGORACITIZENS", "NEXUSPOLITICS", "SUFFRAGO"].includes(type)) {
           return acc;
         }
         acc.push({
@@ -249,6 +254,7 @@ export default async function DashboardPage() {
             roundNumber: block.roundNumber ?? null,
             posterId: block.posterId ?? null,
             embedUrl: block.embedUrl ?? null,
+            harmonicaUrl: block.harmonicaUrl ?? null,
             matchingMode: normalizeMatchingMode(block.matchingMode)
           });
         return acc;
@@ -352,7 +358,11 @@ export default async function DashboardPage() {
       type: "Meeting" as const,
       href: `/meetings/${meeting.id}`,
       join: meetingJoinMap.get(meeting.id),
-      dataspaceColor: meeting.dataspace?.color ?? null
+      dataspaceColor: meeting.dataspace?.color ?? null,
+      dataspaceKey:
+        meeting.dataspace?.personalOwnerId === session.user.id
+          ? "personal"
+          : meeting.dataspace?.id ?? "none"
     }));
 
   const upcomingPlans = flows
@@ -364,7 +374,11 @@ export default async function DashboardPage() {
       type: "Template" as const,
       href: `/flows/${plan.id}`,
       join: planJoinMap.get(plan.id),
-      dataspaceColor: plan.dataspace?.color ?? null
+      dataspaceColor: plan.dataspace?.color ?? null,
+      dataspaceKey:
+        plan.dataspace?.personalOwnerId === session.user.id
+          ? "personal"
+          : plan.dataspace?.id ?? "none"
     }));
 
   const upcomingItems = [...upcomingMeetings, ...upcomingPlans]
@@ -379,7 +393,11 @@ export default async function DashboardPage() {
       date: meeting.createdAt,
       href: `/meetings/${meeting.id}`,
       join: meetingJoinMap.get(meeting.id),
-      dataspaceColor: meeting.dataspace?.color ?? null
+      dataspaceColor: meeting.dataspace?.color ?? null,
+      dataspaceKey:
+        meeting.dataspace?.personalOwnerId === session.user.id
+          ? "personal"
+          : meeting.dataspace?.id ?? "none"
     })),
     ...flows.map((plan: (typeof flows)[number]) => ({
       id: plan.id,
@@ -388,7 +406,11 @@ export default async function DashboardPage() {
       date: plan.createdAt,
       href: `/flows/${plan.id}`,
       join: planJoinMap.get(plan.id),
-      dataspaceColor: plan.dataspace?.color ?? null
+      dataspaceColor: plan.dataspace?.color ?? null,
+      dataspaceKey:
+        plan.dataspace?.personalOwnerId === session.user.id
+          ? "personal"
+          : plan.dataspace?.id ?? "none"
     })),
     ...texts.map((text: (typeof texts)[number]) => ({
       id: text.id,
@@ -396,7 +418,11 @@ export default async function DashboardPage() {
       type: "Text" as const,
       date: text.updatedAt,
       href: `/texts/${text.id}`,
-      dataspaceColor: text.dataspace?.color ?? null
+      dataspaceColor: text.dataspace?.color ?? null,
+      dataspaceKey:
+        text.dataspace?.personalOwnerId === session.user.id
+          ? "personal"
+          : text.dataspace?.id ?? "none"
     }))
   ]
     .sort((a, b) => b.date.getTime() - a.date.getTime())
@@ -410,7 +436,11 @@ export default async function DashboardPage() {
         title: meeting.title,
         type: "Meeting" as const,
         startsAt: start.toISOString(),
-        href: `/meetings/${meeting.id}`
+        href: `/meetings/${meeting.id}`,
+        dataspaceKey:
+          meeting.dataspace?.personalOwnerId === session.user.id
+            ? "personal"
+            : meeting.dataspace?.id ?? "none"
       };
     }),
     ...flows.map((plan: (typeof flows)[number]) => ({
@@ -418,14 +448,22 @@ export default async function DashboardPage() {
       title: plan.title,
       type: "Template" as const,
       startsAt: plan.startAt.toISOString(),
-      href: `/flows/${plan.id}`
+      href: `/flows/${plan.id}`,
+      dataspaceKey:
+        plan.dataspace?.personalOwnerId === session.user.id
+          ? "personal"
+          : plan.dataspace?.id ?? "none"
     })),
     ...texts.map((text: (typeof texts)[number]) => ({
       id: `text-${text.id}`,
       title: text.content.trim().split("\n")[0]?.slice(0, 60) || "Text draft",
       type: "Text" as const,
       startsAt: text.updatedAt.toISOString(),
-      href: `/texts/${text.id}`
+      href: `/texts/${text.id}`,
+      dataspaceKey:
+        text.dataspace?.personalOwnerId === session.user.id
+          ? "personal"
+          : text.dataspace?.id ?? "none"
     }))
   ];
 
@@ -447,13 +485,14 @@ export default async function DashboardPage() {
     }));
 
   const dataspaceOptions = [
-    { key: "personal", label: "My Data Space" },
-    { key: "none", label: "No dataspace" },
+    { key: "personal", label: "My Data Space", color: null },
+    { key: "none", label: "No dataspace", color: null },
     ...dataspaces
       .filter((dataspace: (typeof dataspaces)[number]) => !dataspace.personalOwnerId)
       .map((dataspace: (typeof dataspaces)[number]) => ({
         key: dataspace.id,
-        label: dataspace.name
+        label: dataspace.name,
+        color: dataspace.color ?? null
       }))
   ];
 

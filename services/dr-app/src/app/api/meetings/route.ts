@@ -105,6 +105,10 @@ export async function POST(request: Request) {
   const providerLabel =
     transcriptionProvider === "VOSK"
       ? "Vosk"
+      : transcriptionProvider === "AUTOREMOTE"
+        ? "AUTOREMOTE"
+      : transcriptionProvider === "WHISPERREMOTE"
+        ? "WHISPERREMOTE"
       : transcriptionProvider === "DEEPGRAMLIVE"
         ? "DEEPGRAMLIVE"
         : "Deepgram";

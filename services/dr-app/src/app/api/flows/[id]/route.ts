@@ -57,13 +57,14 @@ function rotate(userIds: string[]) {
 }
 
 type BlockInput = {
-  type: "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING";
+  type: "START" | "PARTICIPANTS" | "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING" | "BREAK" | "HARMONICA" | "DEMBRANE" | "DELIBERAIDE" | "POLIS" | "AGORACITIZENS" | "NEXUSPOLITICS" | "SUFFRAGO";
   durationSeconds: number;
   roundMaxParticipants?: number | null;
   formQuestion?: string | null;
   formChoices?: Array<{ key: string; label: string }> | null;
   posterId?: string | null;
   embedUrl?: string | null;
+  harmonicaUrl?: string | null;
   matchingMode?: "polar" | "anti" | null;
   meditationAnimationId?: string | null;
   meditationAudioUrl?: string | null;
@@ -147,13 +148,14 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       roundMaxParticipants: true,
       posterId: true,
       embedUrl: true,
+      harmonicaUrl: true,
       matchingMode: true
     }
   });
   const normalizedBlocks: PlanBlockInput[] = existingBlocks.reduce(
     (acc: PlanBlockInput[], block: (typeof existingBlocks)[number]) => {
       const type = block.type as PlanBlockType;
-      if (!["PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING"].includes(type)) {
+      if (!["START", "PARTICIPANTS", "PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING", "BREAK", "HARMONICA", "DEMBRANE", "DELIBERAIDE", "POLIS", "AGORACITIZENS", "NEXUSPOLITICS", "SUFFRAGO"].includes(type)) {
         return acc;
       }
       acc.push({
@@ -164,6 +166,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         roundMaxParticipants: block.roundMaxParticipants ?? null,
         posterId: block.posterId ?? null,
         embedUrl: block.embedUrl ?? null,
+        harmonicaUrl: block.harmonicaUrl ?? null,
         matchingMode: normalizeMatchingMode(block.matchingMode)
       });
       return acc;
@@ -246,6 +249,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   const missingEmbed = blocksInput.some(
     (block) => block.type === "EMBED" && !block.embedUrl
   );
+  const missingHarmonica = blocksInput.some(
+    (block) => block.type === "HARMONICA" && !block.harmonicaUrl
+  );
 
   if (roundBlocks.length < 1) {
     if (blocksInput.length < 1) {
@@ -257,6 +263,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   }
   if (missingEmbed) {
     return NextResponse.json({ error: "Enter a URL for every embed block." }, { status: 400 });
+  }
+  if (missingHarmonica) {
+    return NextResponse.json({ error: "Enter a URL for every Harmonica block." }, { status: 400 });
   }
 
   const posterIds = Array.from(
@@ -319,6 +328,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       formChoicesJson: block.formChoices ? JSON.stringify(block.formChoices) : null,
       posterId: block.posterId ?? null,
       embedUrl: block.embedUrl ?? null,
+      harmonicaUrl: block.harmonicaUrl ?? null,
       matchingMode: block.matchingMode ?? null,
       meditationAnimationId: block.meditationAnimationId ?? null,
       meditationAudioUrl: block.meditationAudioUrl ?? null,

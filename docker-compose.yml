@@ -10,12 +10,13 @@ services:
       NODE_ENV: production
       PORT: ${DR_APP_PORT:-3015}
       DATABASE_URL: ${DR_APP_DATABASE_URL:-file:/data/dev.db}
+      UPLOADS_DIR: /data/uploads
       DEEPGRAM_BASE_URL: ${AUDIO_DEEPGRAM_BASE_URL:-http://audio-deepgram:3000}
       VOSK_BASE_URL: ${AUDIO_VOSK_BASE_URL:-http://audio-vosk:3009}
       TRANSCRIPTION_HUB_BASE_URL: ${TRANSCRIPTION_HUB_BASE_URL:-http://transcription-hub:3030}
       EVENT_HUB_BASE_URL: ${EVENT_HUB_BASE_URL:-http://dr-event-hub:3040}
       EVENT_HUB_API_KEY: ${EVENT_HUB_API_KEY:-}
-      NEXT_PUBLIC_BASE_PATH: /thinking-admin
+      NEXT_PUBLIC_BASE_PATH: ""
       BACKUP_DIR: /backups
       BACKUP_SCRIPT_PATH: /app/scripts/backup-runner.sh
     expose:
@@ -130,6 +131,7 @@ services:
       DEMOCRACY_ROUTES_ANALYSIS_WEBHOOK_URL: ${APP_BASE_URL:-}
       ANALYZE_TABLES_API_KEY: ${ANALYZE_TABLES_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3-flash-preview}
       OLLAMA_API_URL: ${OLLAMA_API_URL:-http://ollama:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-deepseek-r1:1.5b}
       EVENT_HUB_BASE_URL: ${EVENT_HUB_BASE_URL:-http://dr-event-hub:3040}
@@ -152,12 +154,29 @@ services:
       DR_MATCHING_API_KEY: ${DR_MATCHING_API_KEY:-}
       DR_MATCHING_DATA_DIR: /app/data
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3-flash-preview}
       EVENT_HUB_BASE_URL: ${EVENT_HUB_BASE_URL:-http://dr-event-hub:3040}
       EVENT_HUB_API_KEY: ${EVENT_HUB_API_KEY:-}
     expose:
       - "3002"
     volumes:
       - dr_matching_data:/app/data
+    networks:
+      - dr_net
+
+  dr-remote-worker:
+    build:
+      context: ./services/dr-remote-worker
+      dockerfile: Dockerfile
+    container_name: dr-remote-worker
+    env_file:
+      - ./.env
+    environment:
+      NODE_ENV: production
+      DR_REMOTE_WORKER_PORT: ${DR_REMOTE_WORKER_PORT:-3012}
+      NEXT_PUBLIC_BASE_PATH: /remote-worker-app
+    expose:
+      - "3012"
     networks:
       - dr_net
 
@@ -220,6 +239,7 @@ services:
     depends_on:
       - dr-app
       - dr-video
+      - dr-remote-worker
       - audio-deepgram
       - audio-vosk
     ports:
