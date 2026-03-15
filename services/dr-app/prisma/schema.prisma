@@ -170,6 +170,7 @@ model Meeting {
   transcriptionJobs TranscriptionJob[]
   aiAgents    MeetingAiAgent[]
   aiAgentRuns MeetingAiAgentRun[]
+  aiAgentMessages MeetingAiAgentMessage[]
 
   @@index([createdById])
   @@index([isActive])
@@ -277,6 +278,21 @@ model MeetingAiAgentRun {
   @@index([agentId])
   @@index([status])
   @@index([evaluatedAt])
+}
+
+model MeetingAiAgentMessage {
+  id                String   @id @default(cuid())
+  meetingId         String
+  agentId           String
+  text              String
+  transcriptWindowHash String?
+  createdAt         DateTime @default(now())
+  meeting           Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  agent             AiAgent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId])
+  @@index([agentId])
+  @@index([createdAt])
 }
 
 model MeetingGuestInvite {

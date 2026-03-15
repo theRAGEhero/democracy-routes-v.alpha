@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { maybeRunMeetingAiAgents } from "@/lib/meetingAiAgentRuntime";
 
 type LiveLine = {
   id: string;
@@ -49,7 +50,21 @@ export async function GET(
     where: { id: params.id },
     include: {
       transcript: true,
-      members: { where: { userId: session.user.id } }
+      members: { where: { userId: session.user.id } },
+      aiAgentMessages: {
+        include: {
+          agent: {
+            select: {
+              id: true,
+              name: true,
+              username: true,
+              color: true
+            }
+          }
+        },
+        orderBy: { createdAt: "asc" },
+        take: 50
+      }
     }
   });
 
@@ -67,14 +82,53 @@ export async function GET(
   }
 
   if (!meeting.transcript?.transcriptJson) {
-    return NextResponse.json({ lines: [] });
+    return NextResponse.json({
+      lines: [],
+      agentMessages: meeting.aiAgentMessages.map((message) => ({
+        id: message.id,
+        text: message.text,
+        createdAt: message.createdAt.toISOString(),
+        agent: {
+          id: message.agent.id,
+          name: message.agent.name,
+          username: message.agent.username,
+          color: message.agent.color
+        }
+      }))
+    });
   }
 
   try {
     const payload = JSON.parse(meeting.transcript.transcriptJson) as TranscriptPayload;
-    return NextResponse.json({ lines: payload.liveLines ?? [] });
+    return NextResponse.json({
+      lines: payload.liveLines ?? [],
+      agentMessages: meeting.aiAgentMessages.map((message) => ({
+        id: message.id,
+        text: message.text,
+        createdAt: message.createdAt.toISOString(),
+        agent: {
+          id: message.agent.id,
+          name: message.agent.name,
+          username: message.agent.username,
+          color: message.agent.color
+        }
+      }))
+    });
   } catch {
-    return NextResponse.json({ lines: [] });
+    return NextResponse.json({
+      lines: [],
+      agentMessages: meeting.aiAgentMessages.map((message) => ({
+        id: message.id,
+        text: message.text,
+        createdAt: message.createdAt.toISOString(),
+        agent: {
+          id: message.agent.id,
+          name: message.agent.name,
+          username: message.agent.username,
+          color: message.agent.color
+        }
+      }))
+    });
   }
 }
 
@@ -180,6 +234,8 @@ export async function POST(
       transcriptText: updatedLines.map((line) => line.text).join(" ")
     }
   });
+
+  void maybeRunMeetingAiAgents(meeting.id).catch(() => null);
 
   return NextResponse.json({ status: "ok" });
 }
