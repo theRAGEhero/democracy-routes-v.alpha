@@ -23,8 +23,9 @@ type Props = {
   meetingId: string;
   canManage: boolean;
   canInvite: boolean;
-  transcriptVisible: boolean;
-  onToggleTranscript: () => void;
+  sidePanelVisible: boolean;
+  sidePanelLabel: string;
+  onToggleSidePanel: () => void;
 };
 
 export function EmbedCall({
@@ -43,8 +44,9 @@ export function EmbedCall({
   meetingId,
   canManage,
   canInvite,
-  transcriptVisible,
-  onToggleTranscript
+  sidePanelVisible,
+  sidePanelLabel,
+  onToggleSidePanel
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -179,11 +181,11 @@ export function EmbedCall({
             <MeetingFilesModal meetingId={meetingId} />
             <button
               type="button"
-              onClick={onToggleTranscript}
+              onClick={onToggleSidePanel}
               className="dr-button-outline px-2 py-1 text-[11px]"
               disabled={!isActive}
             >
-              {transcriptVisible ? "Hide transcript" : "Show transcript"}
+              {sidePanelVisible ? `Hide ${sidePanelLabel}` : `Show ${sidePanelLabel}`}
             </button>
             <button
               type="button"

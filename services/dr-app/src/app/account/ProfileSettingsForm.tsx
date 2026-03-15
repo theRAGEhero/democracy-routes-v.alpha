@@ -144,6 +144,21 @@ export function ProfileSettingsForm({
           placeholder="https://example.com/avatar.png"
         />
         <p className="mt-1 text-xs text-slate-500">Used across your profile and call pages.</p>
+        <div className="mt-3 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/70 px-3 py-3">
+          <span className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-white/70 bg-slate-100 text-sm font-semibold text-slate-500 shadow-sm">
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="Profile preview" className="h-full w-full object-cover" />
+            ) : (
+              "No photo"
+            )}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-slate-900">Profile photo preview</p>
+            <p className="text-xs text-slate-500">
+              This is how your avatar appears in the app menu and public profile.
+            </p>
+          </div>
+        </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <input
             type="file"

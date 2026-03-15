@@ -3,11 +3,11 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { RegistrationSettings } from "@/app/admin/RegistrationSettings";
-import { TranscriptionJobsTable } from "@/app/admin/TranscriptionJobsTable";
 import { AdminInbox } from "@/app/admin/AdminInbox";
 import { AdminFeedbackList } from "@/app/admin/AdminFeedbackList";
 import { AdminBackupPanel } from "@/app/admin/AdminBackupPanel";
 import { formatDateTime } from "@/lib/utils";
+import { readResourceDownloadCounts } from "@/lib/resourceDownloadCounters";
 
 export const dynamic = "force-dynamic";
 
@@ -127,11 +127,15 @@ export default async function AdminHomePage({
     hubStatus,
     eventHubStatus,
     thinkerStatus,
-    jobs,
     eventHubEvents,
     eventHubSummary,
     drVideoMetrics,
     drVideoHealth,
+    recentMeetingTranscripts,
+    transcriptProviderCounts,
+    pendingRemoteWorkerJobs,
+    runningRemoteWorkerJobs,
+    currentPostCallFailures,
     recentMeetings,
     recentPlans,
     recentTemplates,
@@ -139,7 +143,8 @@ export default async function AdminHomePage({
     recentTexts,
     recentMeetingInvites,
     recentDataspaceInvites,
-    recentMatchingRuns
+    recentMatchingRuns,
+    resourceDownloadCounts
   ] =
     await Promise.all([
     prisma.user.count(),
@@ -164,15 +169,6 @@ export default async function AdminHomePage({
       process.env.EVENT_HUB_BASE_URL
     ),
     checkService("DR Thinker", process.env.ANALYZE_TABLES_API_URL, "/"),
-    prisma.transcriptionJob.findMany({
-      orderBy: { updatedAt: "desc" },
-      take: 50,
-      include: {
-        meeting: { select: { id: true, title: true } },
-        plan: { select: { id: true, title: true } },
-        user: { select: { email: true } }
-      }
-    }),
     fetch(
       `${String(process.env.EVENT_HUB_BASE_URL || "")
         .replace(/\/$/, "")}/api/events?limit=50${
@@ -209,6 +205,38 @@ export default async function AdminHomePage({
     fetch(`${drVideoBaseUrl.replace(/\/$/, "")}/api/health`, { cache: "no-store" })
       .then((res) => (res.ok ? res.json() : null))
       .catch(() => null),
+    prisma.meetingTranscript.findMany({
+      orderBy: { updatedAt: "desc" },
+      take: 10,
+      select: {
+        provider: true,
+        updatedAt: true,
+        meeting: { select: { id: true, title: true, transcriptionProvider: true } }
+      }
+    }),
+    prisma.meetingTranscript.groupBy({
+      by: ["provider"],
+      _count: { provider: true }
+    }),
+    prisma.remoteWorkerJob.count({
+      where: { status: "PENDING" }
+    }),
+    prisma.remoteWorkerJob.count({
+      where: { status: "RUNNING" }
+    }),
+    prisma.transcriptionJob.findMany({
+      where: {
+        kind: "MEETING",
+        provider: { in: ["DEEPGRAM", "VOSK"] },
+        status: "FAILED"
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 8,
+      include: {
+        meeting: { select: { id: true, title: true } },
+        user: { select: { email: true } }
+      }
+    }),
     prisma.meeting.findMany({
       orderBy: { createdAt: "desc" },
       take: 6,
@@ -248,7 +276,8 @@ export default async function AdminHomePage({
       orderBy: { createdAt: "desc" },
       take: 6,
       select: { createdAt: true, planId: true, plan: { select: { title: true } }, mode: true }
-    })
+    }),
+    readResourceDownloadCounts()
   ]);
 
   const recentEvents = [
@@ -323,6 +352,28 @@ export default async function AdminHomePage({
     "Event Hub": null,
     "DR Thinker": "/admin/thinking"
   };
+
+  const transcriptionProviderCards = [
+    {
+      label: "Deepgram Live",
+      value: transcriptProviderCounts.find((item) => item.provider === "DEEPGRAMLIVE")?._count.provider ?? 0
+    },
+    {
+      label: "Deepgram",
+      value: transcriptProviderCounts.find((item) => item.provider === "DEEPGRAM")?._count.provider ?? 0
+    },
+    {
+      label: "Vosk",
+      value: transcriptProviderCounts.find((item) => item.provider === "VOSK")?._count.provider ?? 0
+    },
+    {
+      label: "Remote",
+      value:
+        (transcriptProviderCounts.find((item) => item.provider === "WHISPERREMOTE")?._count.provider ?? 0) +
+        (transcriptProviderCounts.find((item) => item.provider === "REMOTE_WORKER")?._count.provider ?? 0) +
+        (transcriptProviderCounts.find((item) => item.provider === "AUTOREMOTE")?._count.provider ?? 0)
+    }
+  ];
 
   const stackServices = [
     drAppStatus,
@@ -659,36 +710,135 @@ export default async function AdminHomePage({
             </div>
           </div>
 
-          <TranscriptionJobsTable
-            initialJobs={jobs.map((job: (typeof jobs)[number]) => ({
-              id: job.id,
-              kind: job.kind,
-              status: job.status,
-              provider: job.provider,
-              roundId: job.roundId,
-              meditationIndex: job.meditationIndex,
-              attempts: job.attempts,
-              lastError: job.lastError,
-              lastAttemptAt: job.lastAttemptAt ? job.lastAttemptAt.toISOString() : null,
-              updatedAt: job.updatedAt.toISOString(),
-              meeting: job.meeting,
-              plan: job.plan,
-              userEmail: job.user?.email ?? null
-            }))}
-            initialMetrics={{
-              drVideo: {
-                ok: drVideoStatus.status === "online",
-                rooms: drVideoHealth?.rooms ?? 0,
-                peers: drVideoHealth?.peers ?? 0
-              },
-              hub: {
-                ok: Boolean(drVideoMetrics?.ok),
-                hubConfigured: Boolean(drVideoMetrics?.hubConfigured),
-                pendingQueueSize: drVideoMetrics?.pendingQueueSize ?? 0,
-                metrics: drVideoMetrics?.metrics ?? null
-              }
-            }}
-          />
+          <div className="dr-card p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Transcription overview</h2>
+                <p className="mt-2 text-sm text-slate-600">
+                  Current-stack transcription health, queues, and recent completed sessions.
+                </p>
+              </div>
+              <Link href="/admin/analytics" className="dr-button-outline px-4 py-2 text-sm">
+                Open analytics
+              </Link>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-4">
+              <div className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3">
+                <p className="text-[11px] uppercase text-slate-500">Live rooms</p>
+                <p className="mt-1 text-lg font-semibold text-slate-900">
+                  {drVideoStatus.status === "online" ? drVideoHealth?.rooms ?? 0 : "-"}
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  Active peers: {drVideoStatus.status === "online" ? drVideoHealth?.peers ?? 0 : "-"}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3">
+                <p className="text-[11px] uppercase text-slate-500">Hub queue</p>
+                <p className="mt-1 text-lg font-semibold text-slate-900">
+                  {Boolean(drVideoMetrics?.ok) ? drVideoMetrics?.pendingQueueSize ?? 0 : "-"}
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  {Boolean(drVideoMetrics?.hubConfigured) ? "Hub configured" : "Hub not configured"}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3">
+                <p className="text-[11px] uppercase text-slate-500">Remote worker queue</p>
+                <p className="mt-1 text-lg font-semibold text-slate-900">{pendingRemoteWorkerJobs}</p>
+                <p className="text-[11px] text-slate-400">Running: {runningRemoteWorkerJobs}</p>
+              </div>
+              <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3">
+                <p className="text-[11px] uppercase text-rose-700">Post-call failures</p>
+                <p className="mt-1 text-lg font-semibold text-rose-700">{currentPostCallFailures.length}</p>
+                <p className="text-[11px] text-rose-700">
+                  Latest provider failures only
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-4">
+              {transcriptionProviderCards.map((card) => (
+                <div key={card.label} className="rounded-2xl border border-slate-200 bg-white/70 p-4">
+                  <p className="text-sm font-semibold text-slate-800">{card.label}</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-900">{card.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Recent transcription sessions</h3>
+                <div className="mt-3 overflow-x-auto rounded-2xl border border-slate-200 bg-white/70">
+                  <table className="min-w-full text-xs text-slate-700">
+                    <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold">Provider</th>
+                        <th className="px-3 py-2 text-left font-semibold">Meeting</th>
+                        <th className="px-3 py-2 text-left font-semibold">Updated</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {recentMeetingTranscripts.length === 0 ? (
+                        <tr>
+                          <td className="px-3 py-3 text-slate-500" colSpan={3}>No transcript sessions yet.</td>
+                        </tr>
+                      ) : (
+                        recentMeetingTranscripts.map((entry) => (
+                          <tr key={`${entry.meeting.id}-${entry.updatedAt.toISOString()}`}>
+                            <td className="px-3 py-2">{entry.provider}</td>
+                            <td className="px-3 py-2">
+                              <Link href={`/meetings/${entry.meeting.id}`} className="font-semibold text-slate-900 hover:underline">
+                                {entry.meeting.title}
+                              </Link>
+                            </td>
+                            <td className="px-3 py-2 text-slate-500">{formatDateTime(entry.updatedAt, null)}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Recent post-call failures</h3>
+                <div className="mt-3 overflow-x-auto rounded-2xl border border-slate-200 bg-white/70">
+                  <table className="min-w-full text-xs text-slate-700">
+                    <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold">Provider</th>
+                        <th className="px-3 py-2 text-left font-semibold">Meeting</th>
+                        <th className="px-3 py-2 text-left font-semibold">Error</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {currentPostCallFailures.length === 0 ? (
+                        <tr>
+                          <td className="px-3 py-3 text-slate-500" colSpan={3}>No recent provider failures.</td>
+                        </tr>
+                      ) : (
+                        currentPostCallFailures.map((job) => (
+                          <tr key={job.id}>
+                            <td className="px-3 py-2">{job.provider}</td>
+                            <td className="px-3 py-2">
+                              {job.meeting?.id ? (
+                                <Link href={`/meetings/${job.meeting.id}`} className="font-semibold text-slate-900 hover:underline">
+                                  {job.meeting.title}
+                                </Link>
+                              ) : (
+                                <span className="text-slate-500">Unknown meeting</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-slate-500">{job.lastError ?? "—"}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
         </>
       ) : null}
 
@@ -714,6 +864,30 @@ export default async function AdminHomePage({
                   {shortcut.label}
                 </Link>
               ))}
+            </div>
+          </div>
+          <div className="dr-card p-6">
+            <h2 className="text-lg font-semibold text-slate-900">Resource downloads</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Download counts for the public research PDFs.
+            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  Whitepaper
+                </p>
+                <p className="mt-2 text-2xl font-semibold text-slate-900">
+                  {resourceDownloadCounts.whitepaper}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  PoPP
+                </p>
+                <p className="mt-2 text-2xl font-semibold text-slate-900">
+                  {resourceDownloadCounts.popp}
+                </p>
+              </div>
             </div>
           </div>
           <AdminBackupPanel />

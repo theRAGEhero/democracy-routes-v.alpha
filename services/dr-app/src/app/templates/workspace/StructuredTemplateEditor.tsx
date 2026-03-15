@@ -1,12 +1,15 @@
 "use client";
 
+import Link from "next/link";
+import { useSession } from "next-auth/react";
+import { useEffect, useState } from "react";
 import { MEDITATION_ANIMATIONS } from "@/lib/meditation";
 import type { TemplateBlock, TemplateBlockType, TemplateDraft } from "@/lib/templateDraft";
 
-const MODULES: Array<{ type: TemplateBlockType; label: string }> = [
+const BASIC_MODULES: Array<{ type: TemplateBlockType; label: string }> = [
   { type: "START", label: "Start" },
   { type: "PARTICIPANTS", label: "Participants" },
-  { type: "PAIRING", label: "Pairing" },
+  { type: "PAIRING", label: "Discussion" },
   { type: "PAUSE", label: "Pause" },
   { type: "PROMPT", label: "Prompt" },
   { type: "NOTES", label: "Notes" },
@@ -14,7 +17,10 @@ const MODULES: Array<{ type: TemplateBlockType; label: string }> = [
   { type: "EMBED", label: "Embed" },
   { type: "MATCHING", label: "Matching" },
   { type: "BREAK", label: "Break" },
-  { type: "RECORD", label: "Record" },
+  { type: "RECORD", label: "Record" }
+];
+
+const PARTICIPATION_PLATFORMS: Array<{ type: TemplateBlockType; label: string }> = [
   { type: "HARMONICA", label: "Harmonica" },
   { type: "DEMBRANE", label: "Dembrane" },
   { type: "DELIBERAIDE", label: "DeliberAIde" },
@@ -52,6 +58,13 @@ type Props = {
   onChange: (draft: TemplateDraft) => void;
 };
 
+type AiAgentOption = {
+  id: string;
+  name: string;
+  username: string;
+  color: string;
+};
+
 function createBlock(type: TemplateBlockType): TemplateBlock {
   return {
     type,
@@ -77,6 +90,44 @@ function createBlock(type: TemplateBlockType): TemplateBlock {
 }
 
 export function StructuredTemplateEditor({ draft, posters, audioFiles, onChange }: Props) {
+  const { data: session } = useSession();
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
+  const [aiAgents, setAiAgents] = useState<AiAgentOption[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadAiAgents() {
+      try {
+        const response = await fetch("/api/ai-agents", { credentials: "include" });
+        if (!response.ok) return;
+        const payload = await response.json().catch(() => null);
+        if (!active) return;
+        setAiAgents(Array.isArray(payload?.agents) ? payload.agents : []);
+      } catch {}
+    }
+    loadAiAgents();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  function durationMinutes(value: number | null | undefined) {
+    const total = Math.max(0, Number(value) || 0);
+    return Math.floor(total / 60);
+  }
+
+  function durationSecondsRemainder(value: number | null | undefined) {
+    const total = Math.max(0, Number(value) || 0);
+    return total % 60;
+  }
+
+  function updateDuration(index: number, nextMinutes: number, nextSeconds: number) {
+    const minutes = Math.max(0, Math.floor(nextMinutes) || 0);
+    const seconds = Math.max(0, Math.min(59, Math.floor(nextSeconds) || 0));
+    updateBlock(index, { durationSeconds: Math.max(30, minutes * 60 + seconds) });
+  }
+
   function updateBlocks(blocks: TemplateBlock[]) {
     onChange({ ...draft, blocks });
   }
@@ -102,6 +153,26 @@ export function StructuredTemplateEditor({ draft, posters, audioFiles, onChange 
     updateBlocks(next);
   }
 
+  function moveBlockToIndex(from: number, to: number) {
+    if (from === to || from < 0 || from >= draft.blocks.length) return;
+    const next = [...draft.blocks];
+    const [item] = next.splice(from, 1);
+    const adjustedTarget = from < to ? to - 1 : to;
+    next.splice(Math.max(0, Math.min(next.length, adjustedTarget)), 0, item);
+    updateBlocks(next);
+  }
+
+  function clearDragState() {
+    setDraggingIndex(null);
+    setDropIndex(null);
+  }
+
+  function handleDrop(targetIndex: number) {
+    if (draggingIndex === null) return;
+    moveBlockToIndex(draggingIndex, targetIndex);
+    clearDragState();
+  }
+
   return (
     <div className="dr-card flex h-full min-h-0 flex-col p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -109,17 +180,49 @@ export function StructuredTemplateEditor({ draft, posters, audioFiles, onChange 
           <h2 className="text-base font-semibold text-slate-900">Structured Builder</h2>
           <p className="text-xs text-slate-600">Edit the same template draft as an ordered form.</p>
         </div>
-        <div className="-mx-1 flex w-full gap-1.5 overflow-x-auto rounded-2xl border border-slate-200/70 bg-slate-50/80 px-2 py-2 md:mx-0 md:w-auto md:flex-wrap md:overflow-visible md:px-2 md:py-2">
-          {MODULES.map((module) => (
-            <button
-              key={module.type}
-              type="button"
-              onClick={() => updateBlocks([...draft.blocks, createBlock(module.type)])}
-              className="shrink-0 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+        <div className="grid w-full gap-2 xl:w-auto xl:min-w-[360px]">
+          <div className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-2">
+            <div className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+              Basic modules
+            </div>
+            <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 md:mx-0 md:flex-wrap md:overflow-visible md:px-0">
+              {BASIC_MODULES.map((module) => (
+                <button
+                  key={module.type}
+                  type="button"
+                  onClick={() => updateBlocks([...draft.blocks, createBlock(module.type)])}
+                  className="shrink-0 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Add {module.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-slate-200/70 bg-slate-50/80 p-2">
+            <div className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+              Participation platforms
+            </div>
+            <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 md:mx-0 md:flex-wrap md:overflow-visible md:px-0">
+              {PARTICIPATION_PLATFORMS.map((module) => (
+                <button
+                  key={module.type}
+                  type="button"
+                  onClick={() => updateBlocks([...draft.blocks, createBlock(module.type)])}
+                  className="shrink-0 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Add {module.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {session?.user?.role === "ADMIN" ? (
+            <Link
+              href="/templates/workspace/modules"
+              className="block rounded-2xl border border-dashed border-emerald-300 bg-emerald-50/80 px-3 py-2 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-100"
             >
-              Add {module.label}
-            </button>
-          ))}
+              Edit module descriptions
+            </Link>
+          ) : null}
         </div>
       </div>
 
@@ -130,7 +233,47 @@ export function StructuredTemplateEditor({ draft, posters, audioFiles, onChange 
           </div>
         ) : null}
         {draft.blocks.map((block, index) => (
-          <div key={`${block.type}-${index}`} className="rounded-2xl border border-slate-200 bg-white/80 p-2.5 sm:p-3">
+          <div key={`${block.type}-${index}`} className="space-y-2">
+            <div
+              onDragOver={(event) => {
+                event.preventDefault();
+                if (draggingIndex !== null) setDropIndex(index);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                handleDrop(index);
+              }}
+              className={`h-2 rounded-full transition-all ${
+                draggingIndex !== null && dropIndex === index
+                  ? "bg-emerald-400/80 shadow-[0_0_0_4px_rgba(52,211,153,0.18)]"
+                  : "bg-transparent"
+              }`}
+            />
+            <div
+              draggable
+              onDragStart={() => {
+                setDraggingIndex(index);
+                setDropIndex(index);
+              }}
+              onDragEnd={clearDragState}
+              onDragOver={(event) => {
+                event.preventDefault();
+                const rect = event.currentTarget.getBoundingClientRect();
+                const insertAfter = event.clientY > rect.top + rect.height / 2;
+                setDropIndex(insertAfter ? index + 1 : index);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                const rect = event.currentTarget.getBoundingClientRect();
+                const insertAfter = event.clientY > rect.top + rect.height / 2;
+                handleDrop(insertAfter ? index + 1 : index);
+              }}
+              className={`rounded-2xl border bg-white/80 p-2.5 transition-all sm:p-3 ${
+                draggingIndex === index
+                  ? "border-emerald-300 opacity-60 shadow-[0_18px_36px_rgba(16,185,129,0.18)]"
+                  : "border-slate-200"
+              }`}
+            >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2.5">
                 <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
@@ -165,14 +308,38 @@ export function StructuredTemplateEditor({ draft, posters, audioFiles, onChange 
 
             <div className="mt-2.5 grid gap-2 md:grid-cols-2 lg:grid-cols-3">
               <label className="text-xs font-medium text-slate-700">
-                Duration (seconds)
-                <input
-                  type="number"
-                  min={1}
-                  value={block.durationSeconds}
-                  onChange={(event) => updateBlock(index, { durationSeconds: Math.max(1, Number(event.target.value) || 1) })}
-                  className="dr-input mt-1 w-full"
-                />
+                Duration
+                <div className="mt-1 grid grid-cols-[1fr_auto_1fr_auto] items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    value={durationMinutes(block.durationSeconds)}
+                    onChange={(event) =>
+                      updateDuration(
+                        index,
+                        Number(event.target.value) || 0,
+                        durationSecondsRemainder(block.durationSeconds)
+                      )
+                    }
+                    className="dr-input w-full"
+                  />
+                  <span className="text-[10px] uppercase tracking-[0.12em] text-slate-500">min</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={59}
+                    value={durationSecondsRemainder(block.durationSeconds)}
+                    onChange={(event) =>
+                      updateDuration(
+                        index,
+                        durationMinutes(block.durationSeconds),
+                        Number(event.target.value) || 0
+                      )
+                    }
+                    className="dr-input w-full"
+                  />
+                  <span className="text-[10px] uppercase tracking-[0.12em] text-slate-500">sec</span>
+                </div>
               </label>
 
               {block.type === "START" ? (
@@ -442,39 +609,170 @@ export function StructuredTemplateEditor({ draft, posters, audioFiles, onChange 
               ) : null}
 
               {block.type === "PAIRING" ? (
-                <label className="text-xs font-medium text-slate-700">
-                  Max participants
-                  <input
-                    type="number"
-                    min={2}
-                    max={12}
-                    value={block.roundMaxParticipants ?? ""}
-                    onChange={(event) =>
-                      updateBlock(index, {
-                        roundMaxParticipants: event.target.value ? Number(event.target.value) : null
-                      })
-                    }
-                    className="dr-input mt-1 w-full"
-                  />
-                </label>
+                <>
+                  <label className="text-xs font-medium text-slate-700">
+                    Max participants
+                    <input
+                      type="number"
+                      min={2}
+                      max={12}
+                      value={block.roundMaxParticipants ?? ""}
+                      onChange={(event) =>
+                        updateBlock(index, {
+                          roundMaxParticipants: event.target.value ? Number(event.target.value) : null
+                        })
+                      }
+                      className="dr-input mt-1 w-full"
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(block.aiAgentsEnabled)}
+                      onChange={(event) =>
+                        updateBlock(index, {
+                          aiAgentsEnabled: event.target.checked,
+                          aiAgentIds: event.target.checked ? block.aiAgentIds ?? [] : [],
+                          aiAgentIntervalSeconds: event.target.checked ? block.aiAgentIntervalSeconds ?? 60 : null,
+                          aiAgentCooldownSeconds: event.target.checked ? block.aiAgentCooldownSeconds ?? 120 : null,
+                          aiAgentMaxReplies: event.target.checked ? block.aiAgentMaxReplies ?? 5 : null
+                        })
+                      }
+                    />
+                    Enable AI participants
+                  </label>
+                  {block.aiAgentsEnabled ? (
+                    <>
+                      <label className="text-xs font-medium text-slate-700 md:col-span-2 lg:col-span-3">
+                        AI agents
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                          {aiAgents.length === 0 ? (
+                            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-xs text-slate-500">
+                              No enabled AI agents available yet.
+                            </div>
+                          ) : (
+                            aiAgents.map((agent) => {
+                              const checked = (block.aiAgentIds ?? []).includes(agent.id);
+                              return (
+                                <label
+                                  key={agent.id}
+                                  className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={(event) => {
+                                      const current = new Set(block.aiAgentIds ?? []);
+                                      if (event.target.checked) current.add(agent.id);
+                                      else current.delete(agent.id);
+                                      updateBlock(index, { aiAgentIds: Array.from(current) });
+                                    }}
+                                  />
+                                  <span
+                                    className="inline-flex h-3 w-3 rounded-full border border-white/80 shadow-sm"
+                                    style={{ backgroundColor: agent.color }}
+                                  />
+                                  <span className="font-medium text-slate-900">{agent.name}</span>
+                                  <span className="text-xs text-slate-500">@{agent.username}</span>
+                                </label>
+                              );
+                            })
+                          )}
+                        </div>
+                      </label>
+                      <label className="text-xs font-medium text-slate-700">
+                        Reply interval (sec)
+                        <input
+                          type="number"
+                          min={15}
+                          max={3600}
+                          value={block.aiAgentIntervalSeconds ?? 60}
+                          onChange={(event) =>
+                            updateBlock(index, {
+                              aiAgentIntervalSeconds: event.target.value ? Number(event.target.value) : 60
+                            })
+                          }
+                          className="dr-input mt-1 w-full"
+                        />
+                      </label>
+                      <label className="text-xs font-medium text-slate-700">
+                        Cooldown (sec)
+                        <input
+                          type="number"
+                          min={15}
+                          max={7200}
+                          value={block.aiAgentCooldownSeconds ?? 120}
+                          onChange={(event) =>
+                            updateBlock(index, {
+                              aiAgentCooldownSeconds: event.target.value ? Number(event.target.value) : 120
+                            })
+                          }
+                          className="dr-input mt-1 w-full"
+                        />
+                      </label>
+                      <label className="text-xs font-medium text-slate-700">
+                        Max replies
+                        <input
+                          type="number"
+                          min={1}
+                          max={100}
+                          value={block.aiAgentMaxReplies ?? 5}
+                          onChange={(event) =>
+                            updateBlock(index, {
+                              aiAgentMaxReplies: event.target.value ? Number(event.target.value) : 5
+                            })
+                          }
+                          className="dr-input mt-1 w-full"
+                        />
+                      </label>
+                      <label className="text-xs font-medium text-slate-700 md:col-span-2 lg:col-span-3">
+                        AI prompt override
+                        <textarea
+                          value={block.aiAgentPromptOverride ?? ""}
+                          onChange={(event) => updateBlock(index, { aiAgentPromptOverride: event.target.value })}
+                          className="dr-input mt-1 min-h-[84px] w-full"
+                        />
+                      </label>
+                    </>
+                  ) : null}
+                </>
               ) : null}
 
               {block.type === "PROMPT" ? (
-                <label className="text-xs font-medium text-slate-700">
-                  Prompt
-                  <select
-                    value={block.posterId ?? ""}
-                    onChange={(event) => updateBlock(index, { posterId: event.target.value || null })}
-                    className="dr-input mt-1 w-full"
-                  >
-                    <option value="">Select prompt</option>
-                    {posters.map((poster) => (
-                      <option key={poster.id} value={poster.id}>
-                        {poster.title}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <>
+                  <label className="text-xs font-medium text-slate-700">
+                    Prompt source
+                    <select
+                      value={block.posterId ?? ""}
+                      onChange={(event) => updateBlock(index, { posterId: event.target.value || null })}
+                      className="dr-input mt-1 w-full"
+                    >
+                      <option value="">Write prompt directly</option>
+                      {posters.map((poster) => (
+                        <option key={poster.id} value={poster.id}>
+                          {poster.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-xs font-medium text-slate-700 md:col-span-2 lg:col-span-2">
+                    Prompt title
+                    <input
+                      type="text"
+                      value={block.posterTitle ?? ""}
+                      onChange={(event) => updateBlock(index, { posterTitle: event.target.value })}
+                      className="dr-input mt-1 w-full"
+                    />
+                  </label>
+                  <label className="text-xs font-medium text-slate-700 md:col-span-2 lg:col-span-2">
+                    Prompt text
+                    <textarea
+                      value={block.posterContent ?? block.note ?? ""}
+                      onChange={(event) => updateBlock(index, { posterContent: event.target.value })}
+                      className="dr-input mt-1 min-h-[96px] w-full rounded-2xl px-3 py-2"
+                    />
+                  </label>
+                </>
               ) : null}
 
               {block.type === "EMBED" ? (
@@ -583,7 +881,25 @@ export function StructuredTemplateEditor({ draft, posters, audioFiles, onChange 
               ) : null}
             </div>
           </div>
+          </div>
         ))}
+        {draft.blocks.length > 0 ? (
+          <div
+            onDragOver={(event) => {
+              event.preventDefault();
+              if (draggingIndex !== null) setDropIndex(draft.blocks.length);
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              handleDrop(draft.blocks.length);
+            }}
+            className={`h-2 rounded-full transition-all ${
+              draggingIndex !== null && dropIndex === draft.blocks.length
+                ? "bg-emerald-400/80 shadow-[0_0_0_4px_rgba(52,211,153,0.18)]"
+                : "bg-transparent"
+            }`}
+          />
+        ) : null}
       </div>
     </div>
   );

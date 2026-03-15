@@ -13,7 +13,8 @@ export default async function EditMeetingPage({ params }: { params: { id: string
   const meeting = await prisma.meeting.findUnique({
     where: { id: params.id },
     include: {
-      members: { select: { userId: true, role: true } }
+      members: { select: { userId: true, role: true } },
+      aiAgents: { select: { agentId: true } }
     }
   });
 
@@ -40,32 +41,35 @@ export default async function EditMeetingPage({ params }: { params: { id: string
   });
 
   return (
-    <div className="max-w-lg space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
-          Edit meeting
-        </h1>
-        <p className="text-sm text-slate-500">Update meeting details.</p>
-      </div>
-      <div className="dr-card p-6">
-        <NewMeetingForm
-          dataspaces={dataspaces}
-          mode="edit"
-          initialMeeting={{
-            id: meeting.id,
-            title: meeting.title,
-            description: meeting.description,
-            scheduledStartAt: meeting.scheduledStartAt?.toISOString() ?? null,
-            expiresAt: meeting.expiresAt?.toISOString() ?? null,
-            language: meeting.language,
-            transcriptionProvider: meeting.transcriptionProvider,
-            timezone: meeting.timezone ?? null,
-            dataspaceId: meeting.dataspaceId,
-            isPublic: meeting.isPublic,
-            requiresApproval: meeting.requiresApproval,
-            capacity: meeting.capacity
-          }}
-        />
+    <div className="mx-auto flex w-full justify-center px-4 sm:px-6">
+      <div className="w-full max-w-2xl space-y-4">
+        <div className="text-center sm:text-left">
+          <h1 className="text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
+            Edit meeting
+          </h1>
+          <p className="text-sm text-slate-500">Update meeting details.</p>
+        </div>
+        <div className="dr-card p-6">
+          <NewMeetingForm
+            dataspaces={dataspaces}
+            mode="edit"
+            initialMeeting={{
+              id: meeting.id,
+              title: meeting.title,
+              description: meeting.description,
+              scheduledStartAt: meeting.scheduledStartAt?.toISOString() ?? null,
+              expiresAt: meeting.expiresAt?.toISOString() ?? null,
+              language: meeting.language,
+              transcriptionProvider: meeting.transcriptionProvider,
+              timezone: meeting.timezone ?? null,
+              dataspaceId: meeting.dataspaceId,
+              isPublic: meeting.isPublic,
+              requiresApproval: meeting.requiresApproval,
+              capacity: meeting.capacity,
+              aiAgentIds: meeting.aiAgents.map((item) => item.agentId)
+            }}
+          />
+        </div>
       </div>
     </div>
   );

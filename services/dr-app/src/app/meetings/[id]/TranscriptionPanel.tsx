@@ -12,6 +12,7 @@ type Props = {
   subtitle?: string;
   statusLabel?: string;
   className?: string;
+  onActivityChange?: (active: boolean) => void;
 };
 
 type TranscriptStatus = {
@@ -30,7 +31,8 @@ export function TranscriptionPanel({
   title = "Transcription",
   subtitle,
   statusLabel,
-  className = ""
+  className = "",
+  onActivityChange
 }: Props) {
   const [roundId, setRoundId] = useState(initialRoundId ?? "");
   const [loading, setLoading] = useState(false);
@@ -89,6 +91,18 @@ export function TranscriptionPanel({
     }, 10000);
     return () => window.clearInterval(interval);
   }, [autoRefresh, data, handleFetch]);
+
+  useEffect(() => {
+    if (!data && !status) return;
+    const active =
+      Boolean(data) ||
+      Boolean(
+        status &&
+          status.stage !== "idle" &&
+          status.stage !== "waiting_for_call_end"
+      );
+    onActivityChange?.(active);
+  }, [data, status, onActivityChange]);
 
   const wrapperClassName =
     variant === "embedded"

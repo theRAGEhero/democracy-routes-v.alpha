@@ -55,9 +55,17 @@ export type TemplateBlock = {
   participantQuery?: string | null;
   participantNote?: string | null;
   roundMaxParticipants?: number | null;
+  aiAgentsEnabled?: boolean | null;
+  aiAgentIds?: string[] | null;
+  aiAgentIntervalSeconds?: number | null;
+  aiAgentCooldownSeconds?: number | null;
+  aiAgentMaxReplies?: number | null;
+  aiAgentPromptOverride?: string | null;
   formQuestion?: string | null;
   formChoices?: Array<{ key: string; label: string }> | null;
   posterId?: string | null;
+  posterTitle?: string | null;
+  posterContent?: string | null;
   embedUrl?: string | null;
   harmonicaUrl?: string | null;
   matchingMode?: "polar" | "anti" | null;

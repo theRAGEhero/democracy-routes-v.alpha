@@ -3,6 +3,7 @@ import { ingestMeetingTranscriptToHub } from "@/lib/transcriptionHubIngest";
 import { postEventHubEvent } from "@/lib/eventHub";
 import { extractTranscriptTextFromTranscription } from "@/lib/transcriptionHub";
 import { canStartProviderWork } from "@/lib/transcriptionLimits";
+import { ensureMeetingAiSummary } from "@/lib/meetingAiSummary";
 
 type RecordingItem = {
   roomId: string;
@@ -198,6 +199,8 @@ export async function importExistingDrVideoTranscriptForMeeting(meetingId: strin
       sessionId: artifact.sessionId
     }
   }).catch(() => null);
+
+  await ensureMeetingAiSummary(meeting.id).catch(() => null);
 
   return { imported: true, sessionId: artifact.sessionId };
 }
@@ -463,6 +466,8 @@ async function processMeetingTranscriptionJob(jobId: string, provider: "VOSK" | 
         sessionId: recording.sessionId
       }
     });
+
+    await ensureMeetingAiSummary(job.meeting.id).catch(() => null);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Meeting transcription failed";
     const waitingForRecording = errorMessage === "Meeting recording not found";

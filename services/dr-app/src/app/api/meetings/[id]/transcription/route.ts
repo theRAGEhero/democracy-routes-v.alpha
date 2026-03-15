@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { chooseAutoRemoteAssignee, parseAutoRemoteAssignment } from "@/lib/autoRemoteAssignment";
 import { getSession } from "@/lib/session";
 import {
   importExistingDrVideoTranscriptForMeeting,
@@ -50,6 +51,7 @@ function buildStatusFromState(args: {
     status: string;
     provider: string | null;
     error: string | null;
+    payloadJson?: string | null;
   } | null;
   hasTranscript: boolean;
 }): TranscriptStatus {
@@ -72,11 +74,16 @@ function buildStatusFromState(args: {
   }
 
   if (args.remoteJob) {
+    const assignment = parseAutoRemoteAssignment(args.remoteJob.payloadJson);
+    const assigneeDetail =
+      args.remoteJob.provider === "AUTOREMOTE" && assignment
+        ? ` Assigned to ${assignment.assignedUserEmail}.`
+        : "";
     if (args.remoteJob.status === "CLAIMED") {
       return {
         stage: "running",
         label: "Transcription in progress",
-        detail: "A remote worker is currently processing the recording.",
+        detail: `A remote worker is currently processing the recording.${assigneeDetail}`,
         error: null
       };
     }
@@ -84,7 +91,10 @@ function buildStatusFromState(args: {
       return {
         stage: "queued",
         label: "Transcription queued",
-        detail: "The recording is queued for a remote worker.",
+        detail:
+          args.remoteJob.provider === "AUTOREMOTE" && assignment
+            ? `The recording is queued for ${assignment.assignedUserEmail} to process after the call.`
+            : "The recording is queued for a remote worker.",
         error: null
       };
     }
@@ -136,7 +146,16 @@ function buildStatusFromState(args: {
 async function ensureRemoteMeetingJob(meetingId: string, roomId: string, title: string) {
   const meeting = await prisma.meeting.findUnique({
     where: { id: meetingId },
-    select: { transcriptionProvider: true, language: true }
+    select: {
+      transcriptionProvider: true,
+      language: true,
+      members: {
+        include: {
+          user: { select: { email: true } }
+        },
+        orderBy: { createdAt: "asc" }
+      }
+    }
   });
   if (!meeting) return null;
 
@@ -146,9 +165,30 @@ async function ensureRemoteMeetingJob(meetingId: string, roomId: string, title: 
       sourceId: meetingId,
       status: { in: ["PENDING", "CLAIMED"] }
     },
-    select: { id: true }
+    select: { id: true, payloadJson: true, provider: true }
   });
-  if (existing) return existing.id;
+  const assignment =
+    meeting.transcriptionProvider === "AUTOREMOTE"
+      ? chooseAutoRemoteAssignee(meeting.members)
+      : null;
+  if (existing) {
+    if (existing.provider === "AUTOREMOTE" && assignment && !parseAutoRemoteAssignment(existing.payloadJson)) {
+      let payload: Record<string, unknown> = {};
+      try {
+        payload = existing.payloadJson ? JSON.parse(existing.payloadJson) : {};
+      } catch {}
+      await prisma.remoteWorkerJob.update({
+        where: { id: existing.id },
+        data: {
+          payloadJson: JSON.stringify({
+            ...payload,
+            ...assignment
+          })
+        }
+      });
+    }
+    return existing.id;
+  }
 
   const response = await fetch(`${getDrVideoBase()}/api/recordings`, { cache: "no-store" });
   const payload = await response.json().catch(() => null);
@@ -176,7 +216,8 @@ async function ensureRemoteMeetingJob(meetingId: string, roomId: string, title: 
         sessionId: recording.sessionId,
         bytes: recording.bytes,
         updatedAt: recording.updatedAt,
-        transcriptionProvider: meeting.transcriptionProvider
+        transcriptionProvider: meeting.transcriptionProvider,
+        ...(assignment ?? {})
       })
     },
     select: { id: true }
@@ -261,7 +302,8 @@ export async function GET(
             id: true,
             status: true,
             provider: true,
-            error: true
+            error: true,
+            payloadJson: true
           }
         })
       : null;
@@ -371,7 +413,8 @@ export async function GET(
             select: {
               status: true,
               provider: true,
-              error: true
+              error: true,
+              payloadJson: true
             }
           })
         : remoteJob;

@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 
 export function AppFooter() {
   const pathname = usePathname() || "";
-  if (pathname.startsWith("/meetings/")) {
+  if (pathname !== "/") {
     return null;
   }
 

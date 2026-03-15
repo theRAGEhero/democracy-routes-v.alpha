@@ -257,54 +257,117 @@ export function DataspaceEditForm({
             </div>
           </div>
         </div>
-        <div>
-          <label className="text-sm font-medium">RSS feed</label>
-          <div className="mt-2 flex items-center justify-between rounded border border-slate-200 bg-white/70 px-3 py-2 text-sm text-slate-700">
-            <div className="flex items-center gap-2">
-              <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold uppercase text-orange-700">
-                RSS
-              </span>
-              <span className="text-xs text-slate-500">Coming soon</span>
-            </div>
-            <label className="flex items-center gap-2 text-xs text-slate-600">
-              <input
-                type="checkbox"
-                checked={rssEnabled}
-                onChange={(event) => setRssEnabled(event.target.checked)}
-                className="h-4 w-4"
-              />
-              <span>Enable</span>
-            </label>
+        <section className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">Sharing</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Connect external channels where this dataspace can be shared or mirrored.
+            </p>
           </div>
-        </div>
-        <div>
-          <label className="text-sm font-medium">Telegram group</label>
-          <div className="mt-2 space-y-2 rounded border border-slate-200 bg-white/70 p-3 text-sm text-slate-700">
-            {telegramGroupChatId ? (
-              <p className="text-xs text-emerald-700">Group linked and receiving updates.</p>
-            ) : (
-              <p className="text-xs text-slate-500">
-                Add the Democracy Routes bot to your Telegram group, then send the code below in the group.
-              </p>
-            )}
-            {telegramGroupLinkCode ? (
-              <div className="flex items-center gap-3">
-                <span className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700">
-                  {telegramGroupLinkCode}
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-white/80 p-3 text-sm text-slate-700">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <label className="text-sm font-medium">RSS feed</label>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Publish dataspace activity as an RSS stream.
+                  </p>
+                </div>
+                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold uppercase text-orange-700">
+                  RSS
                 </span>
-                <span className="text-[11px] text-slate-500">Share this in the group</span>
               </div>
-            ) : null}
-            <button
-              type="button"
-              onClick={handleGenerateLinkCode}
-              className="dr-button-outline px-3 py-1 text-xs"
-              disabled={linkingGroup}
-            >
-              {linkingGroup ? "Generating..." : telegramGroupChatId ? "Relink group" : "Generate link code"}
-            </button>
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <span className="text-xs text-slate-500">Placeholder for feed publishing.</span>
+                <label className="flex items-center gap-2 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={rssEnabled}
+                    onChange={(event) => setRssEnabled(event.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  <span>Enable</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white/80 p-3 text-sm text-slate-700">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <label className="text-sm font-medium">Telegram group</label>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Link a Telegram group to receive updates from this dataspace.
+                  </p>
+                </div>
+                <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold uppercase text-sky-700">
+                  Live
+                </span>
+              </div>
+              <div className="mt-3 space-y-2">
+                {telegramGroupChatId ? (
+                  <p className="text-xs text-emerald-700">Group linked and receiving updates.</p>
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    Add the Democracy Routes bot to your Telegram group, then send the code below in the group.
+                  </p>
+                )}
+                {telegramGroupLinkCode ? (
+                  <div className="flex items-center gap-3">
+                    <span className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+                      {telegramGroupLinkCode}
+                    </span>
+                    <span className="text-[11px] text-slate-500">Share this in the group</span>
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={handleGenerateLinkCode}
+                  className="dr-button-outline px-3 py-1 text-xs"
+                  disabled={linkingGroup}
+                >
+                  {linkingGroup ? "Generating..." : telegramGroupChatId ? "Relink group" : "Generate link code"}
+                </button>
+              </div>
+            </div>
+
+            {[
+              {
+                label: "Discord",
+                badge: "Placeholder",
+                description: "Connect a Discord bot or channel mirror for dataspace updates."
+              },
+              {
+                label: "Slack",
+                badge: "Placeholder",
+                description: "Post dataspace activity into a Slack workspace or channel."
+              },
+              {
+                label: "Mail sharing",
+                badge: "Placeholder",
+                description: "Share updates by email digest or mailing-list style distribution."
+              },
+              {
+                label: "Fediverse",
+                badge: "Placeholder",
+                description: "Publish selected dataspace activity to ActivityPub-compatible networks."
+              }
+            ].map((item) => (
+              <div
+                key={item.label}
+                className="rounded-2xl border border-dashed border-slate-300 bg-white/70 p-3 text-sm text-slate-700"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-medium text-slate-900">{item.label}</span>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold uppercase text-slate-600">
+                    {item.badge}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">{item.description}</p>
+              </div>
+            ))}
           </div>
-        </div>
+        </section>
         {error ? <p className="text-sm text-red-700">{error}</p> : null}
         {success ? <p className="text-xs text-emerald-700">Saved.</p> : null}
         <button type="submit" className="dr-button px-4 py-2 text-sm" disabled={saving}>

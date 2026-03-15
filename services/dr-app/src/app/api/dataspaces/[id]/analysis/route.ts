@@ -277,3 +277,50 @@ export async function POST(
     provider
   });
 }
+
+export async function GET(
+  _request: Request,
+  { params }: { params: { id: string } }
+) {
+  const session = await getSession();
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const dataspace = await prisma.dataspace.findUnique({
+    where: { id: params.id },
+    include: {
+      members: { select: { userId: true } }
+    }
+  });
+
+  if (!dataspace) {
+    return NextResponse.json({ error: "Dataspace not found" }, { status: 404 });
+  }
+
+  const isAdmin = session.user.role === "ADMIN";
+  const isMember = dataspace.members.some((member) => member.userId === session.user.id);
+  if (!isAdmin && !isMember) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const analyses = await prisma.dataspaceAnalysis.findMany({
+    where: { dataspaceId: params.id },
+    orderBy: { createdAt: "desc" },
+    take: 25,
+    select: {
+      id: true,
+      prompt: true,
+      provider: true,
+      analysis: true,
+      createdAt: true
+    }
+  });
+
+  return NextResponse.json({
+    analyses: analyses.map((entry) => ({
+      ...entry,
+      createdAt: entry.createdAt.toISOString()
+    }))
+  });
+}

@@ -1,12 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { getSiteSetting } from "@/lib/siteSettings";
 
-export type LimitedTranscriptionProvider = "DEEPGRAM" | "VOSK" | "WHISPERREMOTE";
+export type LimitedTranscriptionProvider = "DEEPGRAM" | "VOSK" | "WHISPERREMOTE" | "AUTOREMOTE";
 
 const PROVIDER_KEYS: Record<LimitedTranscriptionProvider, string> = {
   DEEPGRAM: "transcriptionLimitDeepgram",
   VOSK: "transcriptionLimitVosk",
-  WHISPERREMOTE: "transcriptionLimitWhisperRemote"
+  WHISPERREMOTE: "transcriptionLimitWhisperRemote",
+  AUTOREMOTE: "transcriptionLimitWhisperRemote"
 };
 
 function parseLimit(value: string | null) {
@@ -20,10 +21,10 @@ export async function getProviderConcurrencyLimit(provider: LimitedTranscription
 }
 
 export async function getProviderActiveCount(provider: LimitedTranscriptionProvider) {
-  if (provider === "WHISPERREMOTE") {
+  if (provider === "WHISPERREMOTE" || provider === "AUTOREMOTE") {
     return prisma.remoteWorkerJob.count({
       where: {
-        provider: "WHISPERREMOTE",
+        provider,
         status: "CLAIMED"
       }
     });

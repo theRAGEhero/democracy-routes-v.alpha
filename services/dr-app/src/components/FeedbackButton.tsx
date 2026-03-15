@@ -160,7 +160,7 @@ export function FeedbackButton() {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col-reverse items-end gap-2 sm:bottom-6 sm:right-6">
+    <div className="fixed bottom-4 right-4 z-40 flex flex-col-reverse items-end gap-2 sm:bottom-6 sm:right-6">
       <button
         type="button"
         onClick={() => setOpen(true)}

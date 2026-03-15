@@ -69,6 +69,15 @@ function emptyParticipant(): Participant {
   };
 }
 
+function formatSlot(slot: Slot) {
+  const label = new Date(`${slot.date}T00:00:00`).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric"
+  });
+  return `${label} · ${slot.startTime}-${slot.endTime}`;
+}
+
 export function FindTimeClient() {
   const [title, setTitle] = useState("Scheduling session");
   const [timezone, setTimezone] = useState("Europe/Berlin");
@@ -98,12 +107,9 @@ export function FindTimeClient() {
         if (!active) return;
         setError(cause instanceof Error ? cause.message : "Unable to load scheduling demo");
       } finally {
-        if (active) {
-          setLoading(false);
-        }
+        if (active) setLoading(false);
       }
     })();
-
     return () => {
       active = false;
     };
@@ -174,18 +180,13 @@ export function FindTimeClient() {
   function toggleAvailability(participantId: string, slotId: string) {
     setParticipants((current) =>
       current.map((participant) => {
-        if (participant.id !== participantId) {
-          return participant;
-        }
-        const nextSet = new Set(participant.availableSlotIds);
-        if (nextSet.has(slotId)) {
-          nextSet.delete(slotId);
-        } else {
-          nextSet.add(slotId);
-        }
+        if (participant.id !== participantId) return participant;
+        const next = new Set(participant.availableSlotIds);
+        if (next.has(slotId)) next.delete(slotId);
+        else next.add(slotId);
         return {
           ...participant,
-          availableSlotIds: Array.from(nextSet)
+          availableSlotIds: Array.from(next)
         };
       })
     );
@@ -193,47 +194,56 @@ export function FindTimeClient() {
 
   if (loading) {
     return (
-      <div className="dr-card flex min-h-[60dvh] items-center justify-center p-8 text-sm text-slate-600">
+      <div className="rounded-[24px] border border-[color:var(--stroke)] bg-[color:var(--card)] p-8 text-center text-sm text-slate-600 shadow-[0_24px_60px_rgba(18,18,18,0.12)] backdrop-blur">
         Loading scheduling workspace...
       </div>
     );
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.9fr)]">
-      <section className="dr-card space-y-5 p-4 sm:p-5">
+    <div className="grid gap-7">
+      <header className="text-center">
+        <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500">Create a</p>
+        <h1
+          className="mt-2 text-[clamp(2.4rem,6vw,3.6rem)] font-semibold text-[color:var(--accent-deep)]"
+          style={{ fontFamily: "var(--font-serif)" }}
+        >
+          TIME
+        </h1>
+      </header>
+
+      <section className="rounded-[24px] border border-[color:var(--stroke)] bg-[color:var(--card)] p-6 shadow-[0_24px_60px_rgba(18,18,18,0.12)] backdrop-blur">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div className="space-y-2">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-500">FindTime</p>
-            <h1 className="text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
-              Shared availability builder
-            </h1>
-            <p className="max-w-2xl text-sm text-slate-600">
-              Basic scheduling workspace for candidate slots, participant availability, and best-slot matching. This is the
-              front-end shell we can later wire into templates, `Start`, `Participants`, and meeting planning.
-            </p>
+          <div>
+            <h2 className="text-[1.4rem] font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
+              Give your event a name
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">Or leave it as a draft while you shape the availability matrix.</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className="dr-button-outline px-4 py-2 text-sm" onClick={runMatch} disabled={matching}>
-              {matching ? "Matching..." : "Recalculate"}
-            </button>
-          </div>
+          <button
+            type="button"
+            className="rounded-full bg-[color:var(--accent)] px-6 py-3 text-sm font-bold text-white shadow-[0_14px_28px_rgba(249,115,22,0.25)] transition hover:bg-orange-400"
+            onClick={runMatch}
+            disabled={matching}
+          >
+            {matching ? "Matching..." : "Recalculate"}
+          </button>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-[minmax(0,1.1fr)_220px]">
-          <label className="space-y-2 text-sm font-medium text-slate-700">
+        <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1.1fr)_240px]">
+          <label className="text-sm font-medium text-slate-700">
             Session title
             <input
-              className="dr-input w-full rounded-2xl px-4 py-3 text-sm"
+              className="dr-input mt-2 w-full rounded-[12px] px-4 py-3 text-sm"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              placeholder="Citizen assembly scheduling"
+              placeholder="Brainstorming civic tech"
             />
           </label>
-          <label className="space-y-2 text-sm font-medium text-slate-700">
+          <label className="text-sm font-medium text-slate-700">
             Timezone
             <select
-              className="dr-input w-full rounded-2xl px-4 py-3 text-sm"
+              className="dr-input mt-2 w-full rounded-[12px] px-4 py-3 text-sm"
               value={timezone}
               onChange={(event) => setTimezone(event.target.value)}
             >
@@ -246,130 +256,140 @@ export function FindTimeClient() {
           </label>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-          <div className="space-y-3">
+        <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+          <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
-                Candidate slots
-              </h2>
+              <div>
+                <h3 className="text-[1.1rem] font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
+                  What dates might work?
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">Create candidate slots directly.</p>
+              </div>
               <button
                 type="button"
-                className="dr-button-outline px-3 py-2 text-xs"
+                className="rounded-full border border-[color:var(--stroke)] bg-white/80 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-white"
                 onClick={() => setSlots((current) => [...current, emptySlot()])}
               >
                 Add slot
               </button>
             </div>
+
             <div className="space-y-3">
               {slots.map((slot) => (
-                <div key={slot.id} className="rounded-3xl border border-slate-200/80 bg-white/70 p-4">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="space-y-1 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
+                <div
+                  key={slot.id}
+                  className="rounded-[16px] border border-[color:var(--stroke)] bg-white/75 p-4"
+                >
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_130px_130px_auto]">
+                    <label className="text-xs font-medium text-slate-700">
                       Date
                       <input
                         type="date"
-                        className="dr-input w-full rounded-2xl px-3 py-2 text-sm normal-case tracking-normal"
                         value={slot.date}
                         onChange={(event) => updateSlot(slot.id, { date: event.target.value })}
+                        className="dr-input mt-2 w-full rounded-[12px] px-3 py-2 text-sm"
                       />
                     </label>
-                    <label className="space-y-1 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
-                      Label
-                      <input
-                        className="dr-input w-full rounded-2xl px-3 py-2 text-sm normal-case tracking-normal"
-                        value={slot.label ?? ""}
-                        onChange={(event) => updateSlot(slot.id, { label: event.target.value })}
-                        placeholder="Thursday evening"
-                      />
-                    </label>
-                  </div>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <label className="space-y-1 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
+                    <label className="text-xs font-medium text-slate-700">
                       Start
                       <input
                         type="time"
-                        className="dr-input w-full rounded-2xl px-3 py-2 text-sm normal-case tracking-normal"
                         value={slot.startTime}
                         onChange={(event) => updateSlot(slot.id, { startTime: event.target.value })}
+                        className="dr-input mt-2 w-full rounded-[12px] px-3 py-2 text-sm"
                       />
                     </label>
-                    <label className="space-y-1 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
+                    <label className="text-xs font-medium text-slate-700">
                       End
                       <input
                         type="time"
-                        className="dr-input w-full rounded-2xl px-3 py-2 text-sm normal-case tracking-normal"
                         value={slot.endTime}
                         onChange={(event) => updateSlot(slot.id, { endTime: event.target.value })}
+                        className="dr-input mt-2 w-full rounded-[12px] px-3 py-2 text-sm"
                       />
                     </label>
+                    <div className="flex items-end">
+                      <button
+                        type="button"
+                        className="w-full rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700"
+                        onClick={() => removeSlot(slot.id)}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
-                  <div className="mt-3 flex justify-end">
-                    <button type="button" className="text-xs font-medium text-rose-600" onClick={() => removeSlot(slot.id)}>
-                      Remove slot
-                    </button>
-                  </div>
+                  <label className="mt-3 block text-xs font-medium text-slate-700">
+                    Label
+                    <input
+                      value={slot.label ?? ""}
+                      onChange={(event) => updateSlot(slot.id, { label: event.target.value })}
+                      className="dr-input mt-2 w-full rounded-[12px] px-3 py-2 text-sm"
+                      placeholder="Evening option"
+                    />
+                  </label>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
-                Participant availability
-              </h2>
+              <div>
+                <h3 className="text-[1.1rem] font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
+                  Participants
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">Mark availability across all candidate slots.</p>
+              </div>
               <button
                 type="button"
-                className="dr-button-outline px-3 py-2 text-xs"
+                className="rounded-full border border-[color:var(--stroke)] bg-white/80 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-white"
                 onClick={() => setParticipants((current) => [...current, emptyParticipant()])}
               >
                 Add participant
               </button>
             </div>
+
             <div className="space-y-3">
               {participants.map((participant) => (
-                <div key={participant.id} className="rounded-3xl border border-slate-200/80 bg-white/70 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <label className="min-w-0 flex-1 space-y-1 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
-                      Participant
-                      <input
-                        className="dr-input w-full rounded-2xl px-3 py-2 text-sm normal-case tracking-normal"
-                        value={participant.name}
-                        onChange={(event) => updateParticipant(participant.id, { name: event.target.value })}
-                        placeholder="Participant name"
-                      />
-                    </label>
+                <div
+                  key={participant.id}
+                  className="rounded-[16px] border border-[color:var(--stroke)] bg-white/75 p-4"
+                >
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <input
+                      className="dr-input w-full rounded-[12px] px-4 py-3 text-sm md:max-w-sm"
+                      value={participant.name}
+                      onChange={(event) => updateParticipant(participant.id, { name: event.target.value })}
+                      placeholder="Participant name"
+                    />
                     <button
                       type="button"
-                      className="pt-7 text-xs font-medium text-rose-600"
+                      className="rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700"
                       onClick={() => removeParticipant(participant.id)}
                     >
                       Remove
                     </button>
                   </div>
-                  <div className="mt-3 grid gap-2">
+
+                  <div className="mt-4 grid gap-2">
                     {slots.map((slot) => {
-                      const checked = participant.availableSlotIds.includes(slot.id);
+                      const selected = participant.availableSlotIds.includes(slot.id);
                       return (
-                        <label
-                          key={`${participant.id}-${slot.id}`}
-                          className={`flex items-center justify-between rounded-2xl border px-3 py-2 text-sm ${
-                            checked ? "border-emerald-300 bg-emerald-50 text-emerald-900" : "border-slate-200 bg-white/80"
+                        <button
+                          key={slot.id}
+                          type="button"
+                          onClick={() => toggleAvailability(participant.id, slot.id)}
+                          className={`flex items-center justify-between rounded-[14px] border px-3 py-2 text-left text-sm transition ${
+                            selected
+                              ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+                              : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
                           }`}
                         >
-                          <span className="min-w-0 pr-3">
-                            <span className="block truncate font-medium text-slate-900">{slot.label || slot.date}</span>
-                            <span className="block text-xs text-slate-500">
-                              {slot.date} · {slot.startTime}-{slot.endTime}
-                            </span>
+                          <span>{formatSlot(slot)}</span>
+                          <span className="text-xs font-semibold uppercase tracking-[0.12em]">
+                            {selected ? "Available" : "Free?"}
                           </span>
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleAvailability(participant.id, slot.id)}
-                            className="h-4 w-4 rounded border-slate-300 text-emerald-600"
-                          />
-                        </label>
+                        </button>
                       );
                     })}
                   </div>
@@ -378,89 +398,100 @@ export function FindTimeClient() {
             </div>
           </div>
         </div>
+
+        {error ? <p className="mt-4 text-sm font-semibold text-rose-600">{error}</p> : null}
       </section>
 
-      <aside className="dr-card space-y-4 p-4 sm:p-5">
-        <div>
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Match result</p>
-          <h2 className="mt-2 text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
-            Best shared slots
-          </h2>
-          <p className="mt-2 text-sm text-slate-600">
-            Basic API-backed scoring for the future template scheduling flow.
-          </p>
+      <section className="rounded-[24px] border border-[color:var(--stroke)] bg-[color:var(--card)] p-6 shadow-[0_24px_60px_rgba(18,18,18,0.12)] backdrop-blur">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h2 className="text-[1.4rem] font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
+              Best matches
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Strongest shared windows across the current participants.
+            </p>
+          </div>
+          {result ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <span className="rounded-full bg-white/80 px-3 py-1">
+                {result.summary.participantCount} participants
+              </span>
+              <span className="rounded-full bg-white/80 px-3 py-1">
+                {result.summary.slotCount} slots
+              </span>
+            </div>
+          ) : null}
         </div>
 
-        {error ? (
-          <div className="rounded-3xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>
-        ) : null}
-
         {result ? (
-          <>
-            <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
-              <div className="rounded-3xl border border-slate-200/80 bg-white/80 p-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Participants</p>
-                <p className="mt-2 text-2xl font-semibold text-slate-900">{result.summary.participantCount}</p>
-              </div>
-              <div className="rounded-3xl border border-slate-200/80 bg-white/80 p-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Slots</p>
-                <p className="mt-2 text-2xl font-semibold text-slate-900">{result.summary.slotCount}</p>
-              </div>
-              <div className="rounded-3xl border border-slate-200/80 bg-white/80 p-4">
-                <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Top score</p>
-                <p className="mt-2 text-2xl font-semibold text-slate-900">{result.summary.topScore}</p>
-              </div>
-            </div>
-
+          <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
             <div className="space-y-3">
-              {result.bestSlots.map((slot, index) => (
-                <div key={slot.id} className="rounded-3xl border border-slate-200/80 bg-white/80 p-4">
+              <h3 className="text-[1.1rem] font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
+                Top ranked slots
+              </h3>
+              {result.bestSlots.map((slot) => (
+                <div
+                  key={slot.id}
+                  className="rounded-[16px] border border-[color:var(--stroke)] bg-white/75 p-4"
+                >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Option {index + 1}</p>
-                      <h3 className="mt-1 text-base font-semibold text-slate-900">{slot.label || slot.date}</h3>
-                      <p className="text-sm text-slate-600">
-                        {slot.date} · {slot.startTime}-{slot.endTime} · {result.timezone}
-                      </p>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{formatSlot(slot)}</p>
+                      {slot.label ? <p className="mt-1 text-xs text-slate-500">{slot.label}</p> : null}
                     </div>
-                    <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
-                      score {slot.score}
+                    <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+                      Score {slot.score}
                     </span>
                   </div>
-                  <div className="mt-3 grid gap-2">
-                    <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-                      <strong>{slot.availableCount}</strong> available
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {slot.availableParticipantIds.map((participantId) => (
-                        <span
-                          key={participantId}
-                          className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs text-slate-700"
-                        >
-                          {participantLookup[participantId] || result.participantDirectory[participantId]?.name || participantId}
-                        </span>
-                      ))}
-                    </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
+                    <span className="rounded-full bg-slate-100 px-3 py-1">
+                      {slot.availableCount} available
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-3 py-1">
+                      {slot.unavailableCount} unavailable
+                    </span>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="rounded-3xl border border-slate-200/80 bg-white/80 p-4">
-              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Next wiring step</p>
-              <ul className="mt-3 space-y-2 text-sm text-slate-600">
-                <li>Use this page as the base UI for template `Start` scheduling.</li>
-                <li>Connect `Participants` selection to real users and dataspaces.</li>
-                <li>Persist sessions and availability in Prisma once the workflow is approved.</li>
-              </ul>
+            <div className="space-y-3">
+              <h3 className="text-[1.1rem] font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
+                Full matrix
+              </h3>
+              <div className="overflow-hidden rounded-[18px] border border-[color:var(--stroke)] bg-white/80">
+                <div className="grid grid-cols-[minmax(0,1fr)_120px_120px] border-b border-slate-200 bg-slate-50/80 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  <div>Slot</div>
+                  <div>Available</div>
+                  <div>People</div>
+                </div>
+                <div className="divide-y divide-slate-200">
+                  {result.slots.map((slot) => (
+                    <div
+                      key={slot.id}
+                      className="grid grid-cols-[minmax(0,1fr)_120px_120px] gap-3 px-4 py-3 text-sm text-slate-700"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-slate-900">{formatSlot(slot)}</p>
+                        {slot.label ? <p className="truncate text-xs text-slate-500">{slot.label}</p> : null}
+                      </div>
+                      <div>{slot.availableCount}</div>
+                      <div className="truncate text-xs text-slate-500">
+                        {slot.availableParticipantIds
+                          .map((participantId) => participantLookup[participantId] || "Unknown")
+                          .join(", ")}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          </>
-        ) : (
-          <div className="rounded-3xl border border-slate-200/80 bg-white/80 px-4 py-3 text-sm text-slate-600">
-            No match result yet.
           </div>
+        ) : (
+          <p className="mt-4 text-sm text-slate-500">Run matching to see best shared slots.</p>
         )}
-      </aside>
+      </section>
     </div>
   );
 }

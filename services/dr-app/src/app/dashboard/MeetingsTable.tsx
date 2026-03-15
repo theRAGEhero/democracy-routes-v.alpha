@@ -52,13 +52,14 @@ type TextRow = {
 
 type Props = {
   initialMeetings: MeetingRow[];
-  dataspaceOptions: Array<{ key: string; label: string; color?: string | null }>;
+  dataspaceOptions: Array<{ key: string; label: string; color?: string | null; imageUrl?: string | null }>;
   flows: PlanRow[];
   texts: TextRow[];
   showCreatedBy?: boolean;
   showFlagFilters?: boolean;
   initialMode?: "MEETINGS" | "PLANS" | "TEXTS";
   showModeTabs?: boolean;
+  hideDataspaceFilter?: boolean;
 };
 
 export function MeetingsTable({
@@ -69,7 +70,8 @@ export function MeetingsTable({
   showCreatedBy = false,
   showFlagFilters = false,
   initialMode = "MEETINGS",
-  showModeTabs = true
+  showModeTabs = true,
+  hideDataspaceFilter = false
 }: Props) {
   const [meetings, setMeetings] = useState(initialMeetings);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -259,27 +261,29 @@ export function MeetingsTable({
               </button>
             </div>
           ) : null}
-          <select
-            value={dataspaceFilter}
-            onChange={(event) => {
-              const value = event.target.value;
-              setDataspaceFilter(value);
-              if (mode === "MEETINGS") {
-                applyFilters(query, value, meetingFlagFilter);
-              }
-            }}
-            className="dr-input w-full rounded px-3 py-2 text-sm sm:w-44"
-          >
-            <option value="all">All dataspaces</option>
-            <option value="none">No dataspace</option>
-            {availableDataspaces.map((option) =>
-              option.key !== "none" ? (
-                <option key={option.key} value={option.key}>
-                  {option.label}
-                </option>
-              ) : null
-            )}
-          </select>
+          {!hideDataspaceFilter ? (
+            <select
+              value={dataspaceFilter}
+              onChange={(event) => {
+                const value = event.target.value;
+                setDataspaceFilter(value);
+                if (mode === "MEETINGS") {
+                  applyFilters(query, value, meetingFlagFilter);
+                }
+              }}
+              className="dr-input w-full rounded px-3 py-2 text-sm sm:w-44"
+            >
+              <option value="all">All dataspaces</option>
+              <option value="none">No dataspace</option>
+              {availableDataspaces.map((option) =>
+                option.key !== "none" ? (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ) : null
+              )}
+            </select>
+          ) : null}
           {showFlagFilters && mode === "MEETINGS" ? (
             <select
               value={meetingFlagFilter}
@@ -347,67 +351,108 @@ export function MeetingsTable({
         </div>
       </div>
       {mode === "MEETINGS" ? (
-        <div className="overflow-x-auto">
-          <div className={`${showCreatedBy ? "min-w-[860px]" : "min-w-[760px]"}`}>
-          <div
-            className={`grid ${showCreatedBy ? "grid-cols-8" : "grid-cols-7"} gap-3 border-b border-slate-200 px-3 py-2 text-[11px] font-semibold uppercase text-slate-500`}
-          >
-            <span className="col-span-2">Title</span>
-            <span>Status</span>
-            <span>Expires</span>
-            <span>Language</span>
-            <span>Transcriber</span>
-            <span>Dataspace</span>
-            <span>Actions</span>
-            {showCreatedBy ? <span>Created by</span> : null}
-          </div>
-          <div className="divide-y divide-slate-200">
+        <div className="px-2 pb-2 sm:px-3">
+          <div className="grid gap-2">
             {filtered.length === 0 ? (
-              <div className="px-4 py-6 text-sm text-slate-500">No meetings yet.</div>
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 px-4 py-6 text-sm text-slate-500">
+                No meetings yet.
+              </div>
             ) : (
               filtered.map((meeting) => (
                 <div
                   key={meeting.id}
-                  className={`grid ${showCreatedBy ? "grid-cols-8" : "grid-cols-7"} gap-3 px-3 py-3 text-sm`}
+                  className="grid gap-3 rounded-2xl border border-slate-200 bg-white/90 px-3 py-3 shadow-[0_10px_28px_rgba(15,23,42,0.04)] md:grid-cols-[minmax(0,1fr),auto]"
                 >
-                  <div className="col-span-2">
-                    <p className="font-medium leading-tight text-slate-900">{meeting.title}</p>
-                  </div>
-                  <div className={`text-xs font-semibold ${meeting.statusLabel === "Active" ? "text-emerald-600" : "text-slate-400"}`}>
-                    {meeting.statusLabel}
-                  </div>
-                  <div className="text-xs text-slate-500">{meeting.expiresLabel}</div>
-                  <div className="text-xs text-slate-700">{meeting.language}</div>
-                  <div className="text-xs text-slate-700">{meeting.providerLabel}</div>
-                  <div className="flex items-center gap-2 text-xs text-slate-600">
-                    {meeting.dataspaceColor ? (
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-start gap-2">
+                      <p className="min-w-0 flex-1 truncate text-sm font-semibold leading-tight text-slate-900 sm:text-[15px]">
+                        {meeting.title}
+                      </p>
                       <span
-                        className="h-2.5 w-2.5 rounded-full border border-white/70 shadow-sm"
-                        style={{ backgroundColor: meeting.dataspaceColor }}
-                      />
-                    ) : null}
-                    <span>{meeting.dataspaceLabel}</span>
+                        className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                          meeting.statusLabel === "Active"
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-slate-100 text-slate-500"
+                        }`}
+                      >
+                        {meeting.statusLabel}
+                      </span>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-600">
+                        {meeting.providerLabel}
+                      </span>
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-600">
+                        {meeting.language}
+                      </span>
+                      <span
+                        className={`rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+                          meeting.isPublic
+                            ? "border-sky-200 bg-sky-50 text-sky-700"
+                            : "border-slate-200 bg-slate-50 text-slate-600"
+                        }`}
+                      >
+                        {meeting.isPublic ? "Public" : "Private"}
+                      </span>
+                      {meeting.isHidden ? (
+                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700">
+                          Hidden round
+                        </span>
+                      ) : null}
+                      {meeting.joinStatus === "JOINED" ? (
+                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-700">
+                          Joined
+                        </span>
+                      ) : meeting.joinStatus === "PENDING" ? (
+                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700">
+                          Invite pending
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className={`mt-2 grid gap-2 text-[11px] text-slate-600 ${showCreatedBy ? "sm:grid-cols-2 xl:grid-cols-4" : "sm:grid-cols-2 xl:grid-cols-3"}`}>
+                      <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Expires</div>
+                        <div className="mt-1 text-xs font-medium text-slate-700">{meeting.expiresLabel}</div>
+                      </div>
+                      <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Dataspace</div>
+                        <div className="mt-1 flex items-center gap-2 text-xs font-medium text-slate-700">
+                          {meeting.dataspaceColor ? (
+                            <span
+                              className="h-2.5 w-2.5 rounded-full border border-white/70 shadow-sm"
+                              style={{ backgroundColor: meeting.dataspaceColor }}
+                            />
+                          ) : null}
+                          <span className="truncate">{meeting.dataspaceLabel}</span>
+                        </div>
+                      </div>
+                      <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Meeting ID</div>
+                        <div className="mt-1 truncate font-mono text-[11px] text-slate-600">{meeting.id}</div>
+                      </div>
+                      {showCreatedBy ? (
+                        <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Created by</div>
+                          <div className="mt-1 truncate text-xs font-medium text-slate-700">{meeting.createdByEmail ?? "-"}</div>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
-                    <div className="text-right">
-                      <div className="flex flex-wrap items-center justify-end gap-2">
-                        {meeting.isPublic ? (
-                          <JoinButton
-                            resourceType="meeting"
-                            resourceId={meeting.id}
-                            initialStatus={meeting.joinStatus}
-                            canJoin={meeting.canJoin}
-                          />
-                        ) : null}
-                        <Link
-                          href={`/meetings/${meeting.id}`}
-                          className="rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-900 hover:bg-slate-50"
-                        >
-                          Open
+
+                  <div className="flex min-w-[132px] flex-col justify-between gap-2 border-t border-slate-200 pt-3 md:border-l md:border-t-0 md:pl-3 md:pt-0">
+                    <div className="grid gap-1.5">
+                      <Link
+                        href={`/meetings/${meeting.id}`}
+                        className="rounded-full border border-slate-200 px-3 py-1.5 text-center text-xs font-semibold text-slate-900 hover:bg-slate-50"
+                      >
+                        Open
                       </Link>
                       {meeting.canEdit ? (
                         <Link
                           href={`/meetings/${meeting.id}/edit`}
-                          className="rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                          className="rounded-full border border-slate-200 px-3 py-1.5 text-center text-xs font-semibold text-slate-600 hover:bg-slate-50"
                         >
                           Edit
                         </Link>
@@ -416,21 +461,27 @@ export function MeetingsTable({
                         <button
                           type="button"
                           onClick={() => handleDelete(meeting.id)}
-                          className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                          className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
                           disabled={deletingId === meeting.id}
                         >
                           {deletingId === meeting.id ? "Deleting..." : "Delete"}
                         </button>
                       ) : null}
                     </div>
+                    {meeting.isPublic ? (
+                      <div className="pt-1">
+                        <JoinButton
+                          resourceType="meeting"
+                          resourceId={meeting.id}
+                          initialStatus={meeting.joinStatus}
+                          canJoin={meeting.canJoin}
+                        />
+                      </div>
+                    ) : null}
                   </div>
-                  {showCreatedBy ? (
-                    <div className="text-slate-600">{meeting.createdByEmail ?? "-"}</div>
-                  ) : null}
                 </div>
               ))
             )}
-          </div>
           </div>
         </div>
       ) : mode === "PLANS" ? (

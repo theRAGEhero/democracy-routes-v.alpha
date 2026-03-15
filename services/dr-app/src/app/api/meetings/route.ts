@@ -98,10 +98,12 @@ export async function POST(request: Request) {
     dataspaceId,
     isPublic,
     requiresApproval,
-    capacity
+    capacity,
+    aiAgentIds
   } = parsed.data;
   const fallbackTitle = `${pickRandom(GOVERNANCE_TITLE_ADJECTIVES)} ${pickRandom(GOVERNANCE_TITLE_NOUNS)}`;
   const title = String(rawTitle || "").trim() || fallbackTitle;
+  const effectiveAiAgentIds = transcriptionProvider === "DEEPGRAMLIVE" ? aiAgentIds ?? [] : [];
   const providerLabel =
     transcriptionProvider === "VOSK"
       ? "Vosk"
@@ -215,6 +217,25 @@ export async function POST(request: Request) {
       }
     }
   });
+
+  if (effectiveAiAgentIds.length > 0) {
+    const enabledAgents = await prisma.aiAgent.findMany({
+      where: {
+        id: { in: effectiveAiAgentIds },
+        enabled: true
+      },
+      select: { id: true }
+    });
+    if (enabledAgents.length > 0) {
+      await prisma.meetingAiAgent.createMany({
+        data: enabledAgents.map((agent) => ({
+          meetingId: meeting.id,
+          agentId: agent.id
+        })),
+        skipDuplicates: true
+      });
+    }
+  }
 
   const registeredInvites = invitedUsers.filter((user) => !user.isGuest);
   const guestEmails = Array.from(

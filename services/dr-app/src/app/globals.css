@@ -230,6 +230,18 @@ iframe {
   border-color: rgba(15, 23, 42, 0.08);
 }
 
+.modular-canvas,
+.modular-canvas .drawflow {
+  background:
+    radial-gradient(circle at 1px 1px, rgba(148, 163, 184, 0.2) 1px, transparent 0),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(248, 250, 252, 0.98) 100%);
+  background-size: 24px 24px, 100% 100%;
+}
+
+.modular-canvas .drawflow {
+  border-radius: 18px;
+}
+
 .drawflow .drawflow-node {
   background: transparent !important;
   border: 0 !important;
@@ -257,11 +269,57 @@ iframe {
   background: transparent !important;
 }
 
+.drawflow .drawflow-node .input,
+.drawflow .drawflow-node .output {
+  width: 14px !important;
+  height: 14px !important;
+  margin-top: 20px !important;
+  border: 2px solid rgba(255, 255, 255, 0.92) !important;
+  border-radius: 999px !important;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.82) 0%, rgba(51, 65, 85, 0.9) 100%) !important;
+  box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.12), 0 8px 16px rgba(15, 23, 42, 0.15) !important;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease !important;
+}
+
+.drawflow .drawflow-node .input:hover,
+.drawflow .drawflow-node .output:hover {
+  transform: scale(1.08);
+  box-shadow: 0 0 0 5px rgba(16, 185, 129, 0.16), 0 10px 20px rgba(15, 23, 42, 0.18) !important;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.92) 0%, rgba(15, 118, 110, 0.92) 100%) !important;
+}
+
 .drawflow .drawflow-node .title-box,
 .drawflow .drawflow-node .box {
   background: transparent !important;
   border: 0 !important;
   box-shadow: none !important;
+}
+
+.drawflow svg {
+  overflow: visible;
+}
+
+.drawflow .connection .main-path {
+  stroke: rgba(15, 23, 42, 0.26) !important;
+  stroke-width: 3px !important;
+  fill: none !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+  filter: drop-shadow(0 4px 10px rgba(15, 23, 42, 0.08));
+  transition: stroke 0.18s ease, stroke-width 0.18s ease, filter 0.18s ease !important;
+}
+
+.drawflow .connection:hover .main-path,
+.drawflow .connection.selected .main-path {
+  stroke: rgba(16, 185, 129, 0.88) !important;
+  stroke-width: 4px !important;
+  filter: drop-shadow(0 6px 14px rgba(16, 185, 129, 0.22));
+}
+
+.drawflow .connection .point {
+  fill: rgba(16, 185, 129, 0.95) !important;
+  stroke: rgba(255, 255, 255, 0.95) !important;
+  stroke-width: 2px !important;
 }
 
 .drawflow .drawflow-node.selected {
@@ -281,6 +339,11 @@ iframe {
 }
 
 @media (max-width: 640px) {
+  .modular-canvas,
+  .modular-canvas .drawflow {
+    background-size: 20px 20px, 100% 100%;
+  }
+
   .dr-node-card {
     width: 224px;
     min-width: 224px;
@@ -298,6 +361,10 @@ iframe {
     width: 30px;
     height: 30px;
     font-size: 17px;
+  }
+
+  .drawflow .connection .main-path {
+    stroke-width: 3.5px !important;
   }
 }
 

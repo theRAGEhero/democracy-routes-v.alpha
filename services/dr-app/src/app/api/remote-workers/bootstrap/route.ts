@@ -27,7 +27,7 @@ export async function GET(request: Request) {
     },
     capabilities: {
       workerMode: "browser",
-      realJobsEnabled: false
+      realJobsEnabled: true
     }
   });
 }

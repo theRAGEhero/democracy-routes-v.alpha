@@ -102,7 +102,7 @@ export default async function Home() {
               </p>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <a
-                  href="/resources/democracy-routes-whitepaper-2.0.pdf"
+                  href="/api/resources/download/whitepaper"
                   target="_blank"
                   rel="noreferrer noopener"
                   download
@@ -111,7 +111,7 @@ export default async function Home() {
                   Whitepaper
                 </a>
                 <a
-                  href="/resources/proof-of-political-power-2.pdf"
+                  href="/api/resources/download/popp"
                   target="_blank"
                   rel="noreferrer noopener"
                   download

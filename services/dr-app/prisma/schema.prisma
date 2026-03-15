@@ -66,6 +66,7 @@ model User {
   matchingRuns       MatchingRun[]    @relation("MatchingRunCreator")
   remoteWorkers      RemoteWorker[]
   templateAiConversations TemplateAiConversation[]
+  aiAgentsCreated    AiAgent[]       @relation("AiAgentCreator")
 
   @@index([role])
   @@index([emailVerificationToken])
@@ -165,7 +166,10 @@ model Meeting {
   guestInvites MeetingGuestInvite[]
   planPairs   PlanPair[]
   transcript  MeetingTranscript?
+  aiSummary   MeetingAiSummary?
   transcriptionJobs TranscriptionJob[]
+  aiAgents    MeetingAiAgent[]
+  aiAgentRuns MeetingAiAgentRun[]
 
   @@index([createdById])
   @@index([isActive])
@@ -187,6 +191,92 @@ model MeetingTranscript {
   @@index([meetingId])
   @@index([provider])
   @@index([updatedAt])
+}
+
+model MeetingAiSummary {
+  id                  String   @id @default(cuid())
+  meetingId           String   @unique
+  status              String   @default("PENDING")
+  providerModel       String?
+  summaryMarkdown     String?
+  summaryJson         String?
+  generatedTitle      String?
+  generatedDescription String?
+  sourceTranscriptHash String?
+  error               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  meeting             Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId])
+  @@index([status])
+  @@index([updatedAt])
+}
+
+model AiAgent {
+  id                String   @id @default(cuid())
+  name              String
+  slug              String   @unique
+  username          String
+  description       String?
+  color             String   @default("#0ea5e9")
+  systemPrompt      String
+  instructionPrompt String?
+  model             String   @default("gemini-2.5-flash")
+  enabled           Boolean  @default(true)
+  createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  creator           User?    @relation("AiAgentCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  meetings          MeetingAiAgent[]
+  runs              MeetingAiAgentRun[]
+
+  @@index([enabled])
+  @@index([createdAt])
+}
+
+model MeetingAiAgent {
+  id                   String   @id @default(cuid())
+  meetingId            String
+  agentId              String
+  enabled              Boolean  @default(true)
+  intervalSeconds      Int      @default(60)
+  cooldownSeconds      Int      @default(120)
+  maxReplies           Int      @default(5)
+  minTranscriptChars   Int      @default(240)
+  customPromptOverride String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  meeting              Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  agent                AiAgent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, agentId])
+  @@index([meetingId])
+  @@index([agentId])
+  @@index([enabled])
+}
+
+model MeetingAiAgentRun {
+  id                   String   @id @default(cuid())
+  meetingId            String
+  agentId              String
+  status               String   @default("PENDING")
+  reasonSkipped        String?
+  error                String?
+  transcriptWindowHash String?
+  transcriptChars      Int?
+  responseText         String?
+  model                String?
+  evaluatedAt          DateTime @default(now())
+  respondedAt          DateTime?
+  createdAt            DateTime @default(now())
+  meeting              Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  agent                AiAgent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId])
+  @@index([agentId])
+  @@index([status])
+  @@index([evaluatedAt])
 }
 
 model MeetingGuestInvite {

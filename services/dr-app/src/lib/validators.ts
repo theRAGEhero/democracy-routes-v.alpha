@@ -23,7 +23,8 @@ export const createMeetingSchema = z.object({
   dataspaceId: z.string().optional().nullable(),
   isPublic: z.boolean().optional().default(false),
   requiresApproval: z.boolean().optional().default(false),
-  capacity: z.number().int().positive().optional().nullable()
+  capacity: z.number().int().positive().optional().nullable(),
+  aiAgentIds: z.array(z.string().min(1).max(64)).optional()
 });
 
 export const inviteMemberSchema = z.object({
@@ -100,6 +101,12 @@ export const createPlanSchema = z.object({
         participantQuery: z.string().trim().max(500).optional().nullable(),
         participantNote: z.string().trim().max(500).optional().nullable(),
         roundMaxParticipants: z.number().int().min(2).max(12).optional().nullable(),
+        aiAgentsEnabled: z.boolean().optional().nullable(),
+        aiAgentIds: z.array(z.string().min(1).max(64)).optional().nullable(),
+        aiAgentIntervalSeconds: z.number().int().min(15).max(3600).optional().nullable(),
+        aiAgentCooldownSeconds: z.number().int().min(15).max(7200).optional().nullable(),
+        aiAgentMaxReplies: z.number().int().min(1).max(100).optional().nullable(),
+        aiAgentPromptOverride: z.string().trim().max(2000).optional().nullable(),
         formQuestion: z.string().trim().max(240).optional().nullable(),
         formChoices: z
           .array(
@@ -111,6 +118,8 @@ export const createPlanSchema = z.object({
           .optional()
           .nullable(),
         posterId: z.string().optional().nullable(),
+        posterTitle: z.string().trim().max(120).optional().nullable(),
+        posterContent: z.string().trim().max(4000).optional().nullable(),
         embedUrl: z.string().trim().max(500).optional().nullable(),
         harmonicaUrl: z.string().trim().max(500).optional().nullable(),
         matchingMode: z.enum(["polar", "anti"]).optional().nullable(),

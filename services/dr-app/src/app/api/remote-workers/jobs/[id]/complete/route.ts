@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { postEventHubEvent } from "@/lib/eventHub";
 import { extractRemoteWorkerToken, verifyRemoteWorkerToken } from "@/lib/remoteWorkerToken";
 import { ingestMeetingTranscriptToHub } from "@/lib/transcriptionHubIngest";
+import { ensureMeetingAiSummary } from "@/lib/meetingAiSummary";
 
 function safeStringify(value: unknown) {
   try {
@@ -24,6 +25,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
   const body = await request.json().catch(() => null);
   const workerId = typeof body?.workerId === "string" ? body.workerId : "";
+  const transcriptText =
+    typeof body?.transcriptText === "string" ? body.transcriptText.trim() : null;
   if (!workerId) {
     return NextResponse.json({ error: "workerId is required" }, { status: 400 });
   }
@@ -65,7 +68,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       data: {
         jobId: params.id,
         workerId,
-        transcriptText: typeof body?.transcriptText === "string" ? body.transcriptText.slice(0, 12000) : null,
+        transcriptText,
         transcriptJson: safeStringify(body?.transcriptJson),
         confidence: typeof body?.confidence === "number" ? body.confidence : null,
         durationMs: typeof body?.durationMs === "number" ? Math.max(0, Math.floor(body.durationMs)) : null
@@ -84,18 +87,18 @@ export async function POST(request: Request, { params }: { params: { id: string 
       });
     }
 
-    if (job.sourceType === "MEETING_RECORDING" && job.sourceId && typeof body?.transcriptText === "string") {
+    if (job.sourceType === "MEETING_RECORDING" && job.sourceId && transcriptText) {
       await tx.meetingTranscript.upsert({
         where: { meetingId: job.sourceId },
         update: {
-          provider: "REMOTE_WORKER",
-          transcriptText: body.transcriptText.slice(0, 12000),
+          provider: job.provider || "REMOTE_WORKER",
+          transcriptText,
           transcriptJson: safeStringify(body?.transcriptJson)
         },
         create: {
           meetingId: job.sourceId,
-          provider: "REMOTE_WORKER",
-          transcriptText: body.transcriptText.slice(0, 12000),
+          provider: job.provider || "REMOTE_WORKER",
+          transcriptText,
           transcriptJson: safeStringify(body?.transcriptJson)
         }
       });
@@ -119,8 +122,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   if (
     result.sourceId &&
     result.meeting &&
-    typeof body?.transcriptText === "string" &&
-    body.transcriptText.trim()
+    transcriptText
   ) {
     let sessionId = params.id;
     let recordingUpdatedAt: string | null = null;
@@ -130,13 +132,16 @@ export async function POST(request: Request, { params }: { params: { id: string 
       recordingUpdatedAt = typeof parsed?.updatedAt === "string" ? parsed.updatedAt : null;
     } catch {}
 
+    const transcriptProvider =
+      result.job.provider === "AUTOREMOTE" ? "AUTOREMOTE" : result.job.provider || "WHISPERREMOTE";
+
     const hubResult = await ingestMeetingTranscriptToHub({
       meetingId: result.meeting.id,
       roomId: result.meeting.roomId,
       sessionId,
-      provider: "WHISPERREMOTE",
+      provider: transcriptProvider,
       language: result.meeting.language || null,
-      transcriptText: body.transcriptText,
+      transcriptText,
       transcriptJson: body?.transcriptJson,
       startedAt: recordingUpdatedAt,
       endedAt: new Date().toISOString(),
@@ -181,6 +186,10 @@ export async function POST(request: Request, { params }: { params: { id: string 
       jobId: params.id
     }
   });
+
+  if (result.sourceId && result.meeting && transcriptText) {
+    await ensureMeetingAiSummary(result.meeting.id).catch(() => null);
+  }
 
   return NextResponse.json({ ok: true, job: result.job, result: result.result });
 }

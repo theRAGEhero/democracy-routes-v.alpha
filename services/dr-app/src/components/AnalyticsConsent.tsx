@@ -8,6 +8,7 @@ type Props = {
 };
 
 const CONSENT_COOKIE = "dr_analytics_consent";
+const CONSENT_STORAGE_KEY = "dr_analytics_consent";
 const MAX_AGE = 60 * 60 * 24 * 180;
 
 function getCookie(name: string): string | null {
@@ -19,6 +20,22 @@ function getCookie(name: string): string | null {
 function setCookie(name: string, value: string) {
   if (typeof document === "undefined") return;
   document.cookie = `${name}=${encodeURIComponent(value)}; Max-Age=${MAX_AGE}; Path=/; SameSite=Lax`;
+}
+
+function getStoredConsent() {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = window.localStorage.getItem(CONSENT_STORAGE_KEY);
+    if (stored === "1" || stored === "0") return stored;
+  } catch {}
+  return null;
+}
+
+function setStoredConsent(value: "1" | "0") {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(CONSENT_STORAGE_KEY, value);
+  } catch {}
 }
 
 function injectSnippet(snippet: string) {
@@ -71,11 +88,17 @@ function injectSnippet(snippet: string) {
 }
 
 export function AnalyticsConsent({ enabled, snippet }: Props) {
+  const [mounted, setMounted] = useState(false);
   const [consent, setConsent] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!enabled) return;
-    const value = getCookie(CONSENT_COOKIE);
+    setMounted(true);
+    if (!enabled) {
+      setConsent(null);
+      return;
+    }
+
+    const value = getCookie(CONSENT_COOKIE) ?? getStoredConsent();
     setConsent(value);
     if (value === "1") {
       injectSnippet(snippet);
@@ -83,23 +106,39 @@ export function AnalyticsConsent({ enabled, snippet }: Props) {
   }, [enabled, snippet]);
 
   if (!enabled) return null;
+  if (!mounted) return null;
   if (consent === "1" || consent === "0") return null;
 
   return (
-    <div className="fixed bottom-3 left-3 right-3 z-50 mx-auto max-w-xl rounded-2xl border border-slate-200 bg-white/95 p-3 text-xs text-slate-700 shadow-[0_14px_40px_rgba(15,23,42,0.18)]">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <span>
-          We use analytics cookies to understand usage. Read our{" "}
-          <a href="/privacy" className="font-semibold underline">privacy policy</a>{" "}
-          and{" "}
-          <a href="/cookies" className="font-semibold underline">cookie policy</a>.
-        </span>
-        <div className="flex items-center gap-2">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[100000] px-3 pb-3 sm:px-4 sm:pb-4">
+      <div
+        className="pointer-events-auto mx-auto flex w-full max-w-2xl flex-col gap-3 rounded-[24px] border border-slate-200/90 bg-white/98 p-4 text-sm text-slate-700 shadow-[0_24px_60px_rgba(15,23,42,0.2)]"
+        role="dialog"
+        aria-label="Analytics consent"
+      >
+        <div className="space-y-1">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+            Analytics cookies
+          </p>
+          <p>
+            We use analytics cookies to understand usage. Read our{" "}
+            <a href="/privacy" className="font-semibold underline">
+              privacy policy
+            </a>{" "}
+            and{" "}
+            <a href="/cookies" className="font-semibold underline">
+              cookie policy
+            </a>
+            .
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
-            className="dr-button-outline px-3 py-1 text-xs"
+            className="dr-button-outline px-4 py-2 text-xs"
             onClick={() => {
               setCookie(CONSENT_COOKIE, "0");
+              setStoredConsent("0");
               setConsent("0");
             }}
           >
@@ -107,9 +146,10 @@ export function AnalyticsConsent({ enabled, snippet }: Props) {
           </button>
           <button
             type="button"
-            className="dr-button px-3 py-1 text-xs"
+            className="dr-button px-4 py-2 text-xs"
             onClick={() => {
               setCookie(CONSENT_COOKIE, "1");
+              setStoredConsent("1");
               setConsent("1");
               injectSnippet(snippet);
             }}

@@ -64,12 +64,12 @@ export default async function TemplateWorkspacePage({ searchParams }: PageProps)
   });
 
   const initialMode =
-    searchParams?.mode === "ai" || searchParams?.mode === "structured" || searchParams?.mode === "modular"
-      ? searchParams.mode
-      : "ai";
+    searchParams?.mode === "structured"
+      ? "structured"
+      : "modular";
 
   return (
-    <div className="relative left-1/2 right-1/2 h-[calc(100dvh-24px)] w-screen -mx-[50vw] -mb-6 -mt-6 overflow-hidden px-1 sm:px-2">
+    <div className="mx-auto h-[calc(100dvh-64px)] w-full max-w-[1440px] overflow-hidden px-2 pb-3 pt-2 sm:px-3">
       <TemplateWorkspaceClient
         templates={parsedTemplates}
         dataspaces={dataspaces}

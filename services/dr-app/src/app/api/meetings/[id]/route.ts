@@ -10,6 +10,55 @@ function generateToken() {
   return crypto.randomBytes(24).toString("base64url");
 }
 
+function getDrVideoBase() {
+  return String(process.env.DR_VIDEO_INTERNAL_URL || "http://dr-video:3020").replace(/\/$/, "");
+}
+
+function normalizeRoomId(value: string) {
+  return String(value || "").trim().toLowerCase();
+}
+
+async function deleteDrVideoMeetingRecordings(roomId: string) {
+  const adminKey = String(process.env.DR_VIDEO_ADMIN_API_KEY || process.env.DR_VIDEO_ACCESS_SECRET || "").trim();
+  const recordingsResponse = await fetch(`${getDrVideoBase()}/api/recordings`, {
+    cache: "no-store",
+    headers: adminKey ? { "x-api-key": adminKey } : {}
+  });
+
+  const recordingsPayload = await recordingsResponse.json().catch(() => null);
+  if (!recordingsResponse.ok) {
+    throw new Error(recordingsPayload?.error ?? "Unable to load dr-video recordings");
+  }
+
+  const normalizedRoomId = normalizeRoomId(roomId);
+  const items = Array.isArray(recordingsPayload?.items) ? recordingsPayload.items : [];
+  const matchingItems = items
+    .filter((item: { roomId?: string; sessionId?: string }) => normalizeRoomId(item?.roomId || "") === normalizedRoomId)
+    .map((item: { roomId?: string; sessionId?: string }) => ({
+      roomId: String(item.roomId || ""),
+      sessionId: String(item.sessionId || "")
+    }))
+    .filter((item: { roomId: string; sessionId: string }) => item.roomId && item.sessionId);
+
+  if (matchingItems.length === 0) {
+    return;
+  }
+
+  const deleteResponse = await fetch(`${getDrVideoBase()}/api/recordings`, {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      ...(adminKey ? { "x-api-key": adminKey } : {})
+    },
+    body: JSON.stringify({ items: matchingItems })
+  });
+
+  const deletePayload = await deleteResponse.json().catch(() => null);
+  if (!deleteResponse.ok) {
+    throw new Error(deletePayload?.error ?? "Unable to delete dr-video recordings");
+  }
+}
+
 export async function DELETE(
   request: Request,
   { params }: { params: { id: string } }
@@ -53,6 +102,20 @@ export async function DELETE(
 
   if (!isAdmin && !isHost && !isCreator) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  try {
+    await deleteDrVideoMeetingRecordings(meeting.roomId);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to delete associated dr-video recordings"
+      },
+      { status: 502 }
+    );
   }
 
   await prisma.meeting.delete({
@@ -117,8 +180,10 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     dataspaceId,
     isPublic,
     requiresApproval,
-    capacity
+    capacity,
+    aiAgentIds
   } = parsed.data;
+  const effectiveAiAgentIds = transcriptionProvider === "DEEPGRAMLIVE" ? aiAgentIds ?? [] : [];
 
   if (startTime && !date && !startAtRaw) {
     return NextResponse.json({ error: "Select a date for the start/end time." }, { status: 400 });
@@ -204,6 +269,30 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       capacity: capacity ?? null
     }
   });
+
+  const enabledAgents = effectiveAiAgentIds.length
+    ? await prisma.aiAgent.findMany({
+        where: {
+          id: { in: effectiveAiAgentIds },
+          enabled: true
+        },
+        select: { id: true }
+      })
+    : [];
+
+  await prisma.meetingAiAgent.deleteMany({
+    where: { meetingId: meeting.id }
+  });
+
+  if (enabledAgents.length > 0) {
+    await prisma.meetingAiAgent.createMany({
+      data: enabledAgents.map((agent) => ({
+        meetingId: meeting.id,
+        agentId: agent.id
+      })),
+      skipDuplicates: true
+    });
+  }
 
   const registeredInvites = invitedUsers.filter((user) => !user.isGuest);
   const guestEmails = Array.from(

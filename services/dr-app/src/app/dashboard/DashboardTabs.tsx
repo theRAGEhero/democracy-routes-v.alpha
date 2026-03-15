@@ -84,78 +84,147 @@ export function DashboardTabs({
   }
 
   return (
-    <div className="flex h-full flex-col gap-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
-            Dashboard
-          </h1>
-          <p className="text-sm text-slate-500">Everything you run or participate in, in one place.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2" />
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        {TABS.map((key) => {
-          const isInvites = key === "Invites";
-          const hasInvites = upcomingInvites.length > 0;
-          const isActive = tab === key;
-          const baseClass =
-            "rounded-full px-4 py-1 text-sm font-semibold transition";
-          const activeClass = "bg-slate-900 text-white";
-          const idleClass = hasInvites && isInvites
-            ? "border border-rose-200 bg-rose-50 text-rose-700 hover:text-rose-900"
-            : "border border-slate-200 bg-white/70 text-slate-600 hover:text-slate-900";
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setTab(key)}
-              className={`${baseClass} ${isActive ? activeClass : idleClass}`}
-            >
-              {key}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setSelectedDataspaces([])}
-          className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-            selectedDataspaces.length === 0
-              ? "border-slate-900 bg-slate-900 text-white"
-              : "border-slate-200 bg-white/70 text-slate-600 hover:text-slate-900"
-          }`}
-        >
-          All dataspaces
-        </button>
-        {dataspaceOptions.map((option) => (
-          <button
-            key={option.key}
-            type="button"
-            onClick={() => toggleDataspace(option.key)}
-            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${
-              selectedDataspaces.includes(option.key)
-                ? "border-slate-900 bg-slate-900 text-white"
-                : "border-slate-200 bg-white/70 text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            {option.color ? (
-              <span
-                className={`h-2.5 w-2.5 rounded-full border shadow-sm ${
-                  selectedDataspaces.includes(option.key) ? "border-white/70" : "border-slate-200"
+    <div className="flex h-full min-h-0 flex-col gap-4 lg:flex-row">
+      <aside className="order-2 lg:order-1 lg:sticky lg:top-3 lg:h-[calc(100dvh-1.5rem)] lg:w-20 lg:flex-shrink-0 lg:self-start">
+        <div className="dr-card flex h-full min-h-0 flex-col p-1.5">
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="mb-2 px-1">
+              <p className="text-center text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+                Dataspaces
+              </p>
+            </div>
+            <div className="flex flex-1 gap-1.5 overflow-x-auto px-0.5 lg:flex-col lg:items-center lg:overflow-y-auto lg:overflow-x-hidden">
+              <button
+                type="button"
+                onClick={() => setSelectedDataspaces([])}
+                className={`group flex min-w-fit flex-col items-center gap-1 rounded-2xl px-1 py-1.5 text-center transition ${
+                  selectedDataspaces.length === 0
+                    ? "bg-slate-900/6 text-slate-950 ring-1 ring-slate-200"
+                    : "text-slate-500 hover:text-slate-900"
                 }`}
-                style={{ backgroundColor: option.color }}
-              />
-            ) : null}
-            {option.label}
-          </button>
-        ))}
-      </div>
+                title="All dataspaces"
+              >
+                <span
+                  className={`relative flex h-9 w-9 items-center justify-center rounded-full border text-[10px] font-semibold shadow-[0_0_0_1px_rgba(255,255,255,0.35)] transition ${
+                    selectedDataspaces.length === 0
+                      ? "border-slate-900 bg-slate-900 text-white shadow-[0_0_12px_rgba(15,23,42,0.28)]"
+                      : "border-slate-200 bg-white text-slate-600 group-hover:border-slate-300"
+                  }`}
+                >
+                  <span className="absolute inset-0 rounded-full ring-2 ring-inset ring-white/40" />
+                  All
+                </span>
+                <span className="max-w-[52px] text-[8px] font-semibold leading-tight">
+                  All
+                </span>
+              </button>
+              {dataspaceOptions.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => toggleDataspace(option.key)}
+                  className={`group flex min-w-fit flex-col items-center gap-1 rounded-2xl px-1 py-1.5 text-center transition ${
+                    selectedDataspaces.includes(option.key)
+                      ? "bg-white/90 text-slate-950 ring-1 ring-slate-200 shadow-[0_10px_22px_rgba(15,23,42,0.08)]"
+                      : "text-slate-500 hover:text-slate-900"
+                  }`}
+                  title={option.label}
+                >
+                  <span
+                    className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border bg-white transition ${
+                      selectedDataspaces.includes(option.key)
+                        ? "border-white/70 shadow-[0_0_0_1px_rgba(255,255,255,0.45),0_0_14px_var(--glow-color)]"
+                        : "border-slate-200 group-hover:border-slate-300"
+                    }`}
+                    style={
+                      {
+                        ["--glow-color" as any]: option.color
+                          ? `${option.color}cc`
+                          : "rgba(15,23,42,0.35)"
+                      } as any
+                    }
+                  >
+                    {option.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={option.imageUrl}
+                        alt={option.label}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : option.color ? (
+                      <span
+                        className="h-full w-full"
+                        style={{
+                          background:
+                            `radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), ${option.color})`
+                        }}
+                      />
+                    ) : (
+                      <span className="text-xs font-semibold text-slate-600">
+                        {option.label.slice(0, 2).toUpperCase()}
+                      </span>
+                    )}
+                    <span
+                      className="pointer-events-none absolute inset-0 rounded-full"
+                      style={{
+                        boxShadow: option.color
+                          ? `inset 0 0 0 2px rgba(255,255,255,0.45), 0 0 16px ${option.color}99`
+                          : "inset 0 0 0 2px rgba(255,255,255,0.35)"
+                      }}
+                    />
+                  </span>
+                  <span className="max-w-[52px] text-[8px] font-semibold leading-tight">
+                    {option.label}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedDataspaces([])}
+              className="mt-2 text-center text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500 hover:text-slate-900"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+      </aside>
 
-      <div className="flex-1 overflow-hidden">
+      <div className="order-1 flex min-h-0 flex-1 flex-col lg:order-2 lg:min-w-0">
+        <div className="dr-card mb-4 overflow-x-auto px-2 py-2">
+          <div className="flex min-w-max items-center gap-2">
+            {TABS.map((key) => {
+              const isInvites = key === "Invites";
+              const hasInvites = upcomingInvites.length > 0;
+              const isActive = tab === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setTab(key)}
+                  className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    isActive
+                      ? "bg-slate-900 text-white shadow-sm"
+                      : hasInvites && isInvites
+                        ? "border border-rose-200 bg-rose-50 text-rose-700 hover:text-rose-900"
+                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  }`}
+                >
+                  <span>{key}</span>
+                  {hasInvites && isInvites ? (
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        isActive ? "bg-white/15 text-white" : "bg-rose-100 text-rose-700"
+                      }`}
+                    >
+                      {upcomingInvites.length}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         {tab === "Overview" ? (
           <div className="h-full overflow-auto">
             <div className="grid gap-6 lg:grid-cols-2">
@@ -242,6 +311,7 @@ export function DashboardTabs({
               showFlagFilters={true}
               initialMode="MEETINGS"
               showModeTabs={false}
+              hideDataspaceFilter={true}
             />
           </div>
         ) : null}
@@ -257,6 +327,7 @@ export function DashboardTabs({
               showFlagFilters={true}
               initialMode="PLANS"
               showModeTabs={false}
+              hideDataspaceFilter={true}
             />
           </div>
         ) : null}

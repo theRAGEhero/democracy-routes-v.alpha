@@ -47,14 +47,21 @@ export function MeetingDetailClient({
   postCallTranscriptEnabled,
   initialRoundId
 }: Props) {
-  const [transcriptVisible, setTranscriptVisible] = useState(true);
+  const [liveTranscriptVisible, setLiveTranscriptVisible] = useState(true);
   const [transcriptRefreshKey, setTranscriptRefreshKey] = useState(0);
+  const [postCallPanelAvailable, setPostCallPanelAvailable] = useState(false);
+  const [postCallPanelExpanded, setPostCallPanelExpanded] = useState(false);
   const router = useRouter();
-  const transcriptPanelOpen = transcriptVisible && (liveTranscriptionEnabled || postCallTranscriptEnabled);
+  const sidePanelVisible = liveTranscriptionEnabled ? liveTranscriptVisible : postCallPanelExpanded;
+  const transcriptPanelOpen =
+    liveTranscriptionEnabled
+      ? liveTranscriptVisible
+      : postCallTranscriptEnabled && postCallPanelAvailable && postCallPanelExpanded;
+  const sidePanelLabel = liveTranscriptionEnabled ? "transcript" : "post-call transcription";
 
   useEffect(() => {
     if (typeof window !== "undefined" && window.innerWidth < 1024) {
-      setTranscriptVisible(false);
+      setLiveTranscriptVisible(false);
     }
     const header = document.querySelector("header");
     const headerHeight = header ? header.getBoundingClientRect().height : 0;
@@ -104,6 +111,47 @@ export function MeetingDetailClient({
     return () => window.removeEventListener("message", handleMessage);
   }, [meetingId, router]);
 
+  useEffect(() => {
+    if (!postCallTranscriptEnabled || liveTranscriptionEnabled || postCallPanelAvailable) return;
+
+    let cancelled = false;
+
+    async function checkPostCallState() {
+      try {
+        const response = await fetch(`/api/meetings/${meetingId}/transcription?auto=1`, {
+          cache: "no-store"
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || cancelled) return;
+        const stage = payload?.status?.stage;
+        if (stage && stage !== "waiting_for_call_end" && stage !== "idle") {
+          setPostCallPanelAvailable(true);
+        }
+      } catch {
+        // ignore transient polling errors
+      }
+    }
+
+    checkPostCallState().catch(() => null);
+    const interval = window.setInterval(() => {
+      checkPostCallState().catch(() => null);
+    }, 10000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [meetingId, postCallPanelAvailable, postCallTranscriptEnabled, liveTranscriptionEnabled]);
+
+  function handleToggleSidePanel() {
+    if (liveTranscriptionEnabled) {
+      setLiveTranscriptVisible((prev) => !prev);
+      return;
+    }
+    if (!postCallPanelAvailable) return;
+    setPostCallPanelExpanded((prev) => !prev);
+  }
+
   return (
     <div className="flex h-full flex-1 min-h-0 flex-col gap-4 overflow-hidden">
       <div
@@ -132,8 +180,9 @@ export function MeetingDetailClient({
           meetingId={meetingId}
           canManage={canManage}
           canInvite={canInvite}
-          transcriptVisible={transcriptVisible}
-          onToggleTranscript={() => setTranscriptVisible((prev) => !prev)}
+          sidePanelVisible={sidePanelVisible}
+          sidePanelLabel={sidePanelLabel}
+          onToggleSidePanel={handleToggleSidePanel}
         />
         </div>
 
@@ -144,7 +193,7 @@ export function MeetingDetailClient({
                 <LiveTranscriptPanel
                   meetingId={meetingId}
                   enabled={liveTranscriptionEnabled}
-                  visible={transcriptVisible}
+                  visible={liveTranscriptVisible}
                   className="h-full"
                 />
               ) : (
@@ -157,6 +206,7 @@ export function MeetingDetailClient({
                   autoRefresh
                   title="Post-call transcription"
                   subtitle={`${providerLabel} · After call`}
+                  onActivityChange={setPostCallPanelAvailable}
                 />
               )}
             </div>
@@ -165,7 +215,7 @@ export function MeetingDetailClient({
                 <LiveTranscriptPanel
                   meetingId={meetingId}
                   enabled={liveTranscriptionEnabled}
-                  visible={transcriptVisible}
+                  visible={liveTranscriptVisible}
                   className="max-h-[36dvh]"
                 />
               ) : (
@@ -179,6 +229,7 @@ export function MeetingDetailClient({
                   title="Post-call transcription"
                   subtitle={`${providerLabel} · After call`}
                   className="max-h-[36dvh]"
+                  onActivityChange={setPostCallPanelAvailable}
                 />
               )}
             </div>

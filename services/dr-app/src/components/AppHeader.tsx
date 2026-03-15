@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SignOutButton } from "@/components/SignOutButton";
 import { DEFAULT_DATASPACE_COLOR } from "@/lib/dataspaceColor";
 
@@ -28,7 +28,7 @@ export function AppHeader() {
   const dataspaceMenuCloseTimeout = useRef<number | null>(null);
   const templatesMenuCloseTimeout = useRef<number | null>(null);
   const meetingMenuCloseTimeout = useRef<number | null>(null);
-  const MENU_CLOSE_DELAY = 300;
+  const MENU_CLOSE_DELAY = 140;
 
   const dataspaceIdFromPath = useMemo(() => {
     const match = pathname?.match(/^\/dataspace\/([^/]+)$/);
@@ -146,6 +146,11 @@ export function AppHeader() {
     scheduleMenuClose(meetingMenuCloseTimeout, () => setShowMeetingMenu(false));
   }
 
+  useEffect(() => {
+    if (!session?.user || recentDataspaces.length > 0 || loadingRecent) return;
+    void loadRecentDataspaces();
+  }, [session?.user, recentDataspaces.length, loadingRecent]);
+
   if (status === "loading") {
     return null;
   }
@@ -224,115 +229,157 @@ export function AppHeader() {
     (pathname === "/flows/new" && searchParams?.get("mode") === "template") ||
     (pathname?.startsWith("/flows/") && pathname?.endsWith("/edit")) ||
     (pathname === "/templates/ai" && searchParams?.get("embedded") === "workspace");
+  const isMeetingWorkspace =
+    pathname?.startsWith("/meetings/") &&
+    pathname !== "/meetings/new" &&
+    !pathname?.endsWith("/edit");
 
-  if (isTemplateWorkspace) {
+  if (isTemplateWorkspace || isMeetingWorkspace) {
+    const isTemplateShell = isTemplateWorkspace;
     return (
-      <header className="sticky top-2 z-20">
-        <div className="relative mx-auto flex w-full max-w-[1400px] items-center justify-between gap-3 px-1 py-1 sm:px-2">
-          <a
-            href="https://democracyroutes.com"
-            className="flex items-center"
-            aria-label="Democracy Routes home"
+      <header className="pointer-events-none fixed inset-x-0 top-0 z-[120]">
+        <div className="flex w-full items-center justify-end px-2 py-2 sm:px-3 sm:py-3">
+          <button
+            type="button"
+            onClick={() => setShowMobileMenu((prev) => !prev)}
+            className="pointer-events-auto inline-flex h-11 items-center gap-2 rounded-full border border-emerald-200/80 bg-white/90 px-3 text-[13px] font-semibold text-slate-700 shadow-[0_12px_28px_rgba(15,23,42,0.14)] backdrop-blur hover:bg-white hover:text-slate-900"
+            aria-label={isTemplateShell ? "Toggle template workspace navigation" : "Toggle meeting navigation"}
+            aria-expanded={showMobileMenu}
           >
-            <span className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl border border-emerald-200/80 bg-white/88 shadow-[0_10px_24px_rgba(16,185,129,0.16)]">
+            <span className="relative flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-emerald-200/80 bg-white shadow-[0_4px_12px_rgba(16,185,129,0.18)]">
               <img
                 src="/logo-120.png"
                 alt="Democracy Routes logo"
                 className="h-full w-full object-contain"
               />
             </span>
-          </a>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowMobileMenu((prev) => !prev)}
-              className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-200/80 bg-white/88 px-3 py-2 text-[11px] font-semibold text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
-              aria-label="Toggle modular workspace navigation"
-              aria-expanded={showMobileMenu}
-            >
-              <span className="text-base leading-none">{showMobileMenu ? "×" : "☰"}</span>
-              <span className="sr-only">{showMobileMenu ? "Close menu" : "Open menu"}</span>
-            </button>
-          </div>
+            <span className="leading-none text-slate-500">{showMobileMenu ? "×" : "☰"}</span>
+          </button>
         </div>
 
         {showMobileMenu ? (
-          <div className="absolute left-0 right-0 top-full z-40 mx-auto mt-2 w-full max-w-[1400px] px-1 sm:px-2">
-            <div className="grid max-h-[calc(100dvh-6rem)] gap-3 overflow-y-auto rounded-[24px] border border-slate-200/70 bg-white/95 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.12)] backdrop-blur md:grid-cols-[1.2fr,1fr,1fr]">
-              <div className="space-y-2">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                  Workspace
-                </div>
-                <Link
-                  href="/flows"
-                  onClick={() => setShowMobileMenu(false)}
-                  className="block rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-white"
-                >
-                  All templates
-                </Link>
-                <Link
-                  href="/templates/workspace?mode=modular"
-                  onClick={() => setShowMobileMenu(false)}
-                  className="block rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-white"
-                >
-                  Template Builder
-                </Link>
-              </div>
-
-              <div className="space-y-2">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                  Navigation
-                </div>
-                <Link
-                  href="/dashboard"
-                  onClick={() => setShowMobileMenu(false)}
-                  className="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  Dashboard
-                </Link>
-                <Link
-                  href="/dataspace"
-                  onClick={() => setShowMobileMenu(false)}
-                  className="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  Dataspaces
-                </Link>
-                <Link
-                  href="/remote-worker"
-                  onClick={() => setShowMobileMenu(false)}
-                  className="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  Remote worker
-                </Link>
-              </div>
-
-              <div className="space-y-2">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                  Account
-                </div>
-                <Link
-                  href="/account"
-                  onClick={() => setShowMobileMenu(false)}
-                  className="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  Profile settings
-                </Link>
-                {session.user.role === "ADMIN" ? (
+          <>
+            <button
+              type="button"
+              aria-label="Close template workspace menu"
+              onClick={() => setShowMobileMenu(false)}
+              className="pointer-events-auto absolute inset-0 top-0 z-[125] h-dvh w-full bg-slate-950/22 backdrop-blur-[1px]"
+            />
+            <div className="pointer-events-auto absolute right-0 top-full z-[130] mt-1 w-full px-2 sm:px-3">
+              <div className="ml-auto grid max-h-[calc(100dvh-5rem)] w-full max-w-[920px] gap-3 overflow-y-auto rounded-[24px] border border-slate-300 bg-white p-4 shadow-[0_34px_110px_rgba(15,23,42,0.34)] md:grid-cols-[1.2fr,1fr,1fr]">
+                <div className="space-y-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                    {isTemplateShell ? "Workspace" : "Meetings"}
+                  </div>
                   <Link
-                    href="/admin"
+                    href={isTemplateShell ? "/flows" : "/dashboard"}
+                    onClick={() => setShowMobileMenu(false)}
+                    className="block rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-white"
+                  >
+                    {isTemplateShell ? "All templates" : "Dashboard"}
+                  </Link>
+                  <Link
+                    href={isTemplateShell ? "/templates/workspace?mode=modular" : "/meetings/new"}
+                    onClick={() => setShowMobileMenu(false)}
+                    className="block rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-white"
+                  >
+                    {isTemplateShell ? "Template Builder" : "New meeting"}
+                  </Link>
+                  {isTemplateShell ? (
+                    <Link
+                      href={dataspaceMeetingLink}
+                      onClick={() => setShowMobileMenu(false)}
+                      className="block rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-white"
+                    >
+                      New meeting
+                    </Link>
+                  ) : null}
+                  {isTemplateShell && session.user.role === "ADMIN" ? (
+                    <Link
+                      href="/templates/workspace/modules"
+                      onClick={() => setShowMobileMenu(false)}
+                      className="block rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-white"
+                    >
+                      Module descriptions
+                    </Link>
+                  ) : null}
+                </div>
+
+                <div className="space-y-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                    Navigation
+                  </div>
+                  <Link
+                    href="/dashboard"
                     onClick={() => setShowMobileMenu(false)}
                     className="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
                   >
-                    Admin
+                    Dashboard
                   </Link>
-                ) : null}
-                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-2">
-                  <SignOutButton />
+                  <Link
+                    href="/dataspace"
+                    onClick={() => setShowMobileMenu(false)}
+                    className="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    Dataspaces
+                  </Link>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                    Account
+                  </div>
+                  <Link
+                    href="/account"
+                    onClick={() => setShowMobileMenu(false)}
+                    className="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    Profile settings
+                  </Link>
+                  <Link
+                    href="/remote-worker"
+                    onClick={() => setShowMobileMenu(false)}
+                    className="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    Remote worker
+                  </Link>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                      Policies
+                    </div>
+                    <div className="mt-2 flex flex-col gap-2">
+                      <Link
+                        href="/privacy"
+                        onClick={() => setShowMobileMenu(false)}
+                        className="text-sm text-slate-700 hover:text-slate-900"
+                      >
+                        Privacy Policy
+                      </Link>
+                      <Link
+                        href="/cookies"
+                        onClick={() => setShowMobileMenu(false)}
+                        className="text-sm text-slate-700 hover:text-slate-900"
+                      >
+                        Cookie Policy
+                      </Link>
+                    </div>
+                  </div>
+                  {session.user.role === "ADMIN" ? (
+                    <Link
+                      href="/admin"
+                      onClick={() => setShowMobileMenu(false)}
+                      className="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      Admin
+                    </Link>
+                  ) : null}
+                  <div className="rounded-2xl border border-slate-200 bg-white px-4 py-2">
+                    <SignOutButton onBeforeSignOut={() => setShowMobileMenu(false)} />
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          </>
         ) : null}
       </header>
     );
@@ -390,7 +437,7 @@ export function AppHeader() {
               </button>
               {showDataspaceMenu ? (
                 <div
-                  className="absolute left-0 mt-2 w-60 rounded-xl border border-slate-200 bg-white/95 p-2 text-xs shadow-[0_16px_40px_rgba(15,23,42,0.12)]"
+                  className="absolute left-0 mt-2 w-60 rounded-xl border border-slate-200 bg-white/96 p-2 text-xs shadow-[0_12px_28px_rgba(15,23,42,0.1)]"
                   onMouseEnter={openDataspaceMenu}
                   onMouseLeave={scheduleCloseDataspaceMenu}
                 >
@@ -445,7 +492,7 @@ export function AppHeader() {
               </button>
               {showNewMenu ? (
                 <div
-                  className="absolute left-0 mt-2 w-48 rounded-xl border border-slate-200 bg-white/95 p-2 text-xs shadow-[0_16px_40px_rgba(15,23,42,0.12)]"
+                  className="absolute left-0 mt-2 w-48 rounded-xl border border-slate-200 bg-white/96 p-2 text-xs shadow-[0_12px_28px_rgba(15,23,42,0.1)]"
                   onMouseEnter={openTemplatesMenu}
                   onMouseLeave={scheduleCloseTemplatesMenu}
                 >
@@ -482,7 +529,7 @@ export function AppHeader() {
               </button>
               {showMeetingMenu ? (
                 <div
-                  className="absolute right-0 mt-2 w-52 rounded-xl border border-slate-200 bg-white/95 p-2 text-xs shadow-[0_16px_40px_rgba(15,23,42,0.12)]"
+                  className="absolute right-0 mt-2 w-52 rounded-xl border border-slate-200 bg-white/96 p-2 text-xs shadow-[0_12px_28px_rgba(15,23,42,0.1)]"
                   onMouseEnter={openMeetingMenu}
                   onMouseLeave={scheduleCloseMeetingMenu}
                 >
@@ -542,7 +589,7 @@ export function AppHeader() {
               </button>
               {showUserMenu ? (
                 <div
-                  className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-slate-200 bg-white/95 p-2 text-xs shadow-[0_16px_40px_rgba(15,23,42,0.12)]"
+                  className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-slate-200 bg-white/96 p-2 text-xs shadow-[0_12px_28px_rgba(15,23,42,0.1)]"
                   onMouseEnter={openUserMenu}
                   onMouseLeave={scheduleCloseUserMenu}
                 >
@@ -559,6 +606,20 @@ export function AppHeader() {
                     className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
                   >
                     Profile settings
+                  </Link>
+                  <Link
+                    href="/privacy"
+                    onClick={() => setShowUserMenu(false)}
+                    className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
+                  >
+                    Privacy Policy
+                  </Link>
+                  <Link
+                    href="/cookies"
+                    onClick={() => setShowUserMenu(false)}
+                    className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
+                  >
+                    Cookie Policy
                   </Link>
                   {session.user.role === "ADMIN" ? (
                     <>
@@ -605,7 +666,7 @@ export function AppHeader() {
         </div>
 
         {showMobileMenu ? (
-          <div className="absolute left-0 right-0 top-full z-40 mt-3 flex max-h-[calc(100dvh-6rem)] flex-col gap-4 overflow-y-auto rounded-2xl border border-slate-200/70 bg-white/95 p-4 text-sm text-slate-700 shadow-[0_18px_45px_rgba(15,23,42,0.12)] lg:hidden">
+          <div className="absolute left-0 right-0 top-full z-40 mt-3 flex max-h-[calc(100dvh-6rem)] flex-col gap-4 overflow-y-auto rounded-2xl border border-slate-300 bg-white p-4 text-sm text-slate-700 shadow-[0_22px_56px_rgba(15,23,42,0.2)] lg:hidden">
             <div className="space-y-2">
               <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">
                 Primary
@@ -638,9 +699,6 @@ export function AppHeader() {
                 <Link href="/dataspace" onClick={() => setShowMobileMenu(false)} className="font-medium">
                   Dataspaces
                 </Link>
-                <Link href="/remote-worker" onClick={() => setShowMobileMenu(false)} className="font-medium">
-                  Remote worker
-                </Link>
                 <div className="rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
                     Templates
@@ -651,6 +709,9 @@ export function AppHeader() {
                     </Link>
                     <Link href="/templates/workspace?mode=modular" onClick={() => setShowMobileMenu(false)}>
                       Template Builder
+                    </Link>
+                    <Link href={dataspaceMeetingLink} onClick={() => setShowMobileMenu(false)}>
+                      New meeting
                     </Link>
                   </div>
                 </div>
@@ -663,6 +724,22 @@ export function AppHeader() {
                 <Link href="/account" onClick={() => setShowMobileMenu(false)}>
                   Profile settings
                 </Link>
+                <Link href="/remote-worker" onClick={() => setShowMobileMenu(false)}>
+                  Remote worker
+                </Link>
+                <div className="rounded-xl border border-slate-200/70 bg-slate-50 px-3 py-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                    Policies
+                  </div>
+                  <div className="mt-2 flex flex-col gap-2">
+                    <Link href="/privacy" onClick={() => setShowMobileMenu(false)}>
+                      Privacy Policy
+                    </Link>
+                    <Link href="/cookies" onClick={() => setShowMobileMenu(false)}>
+                      Cookie Policy
+                    </Link>
+                  </div>
+                </div>
                 {session.user.role === "ADMIN" ? (
                   <>
                     <Link href="/admin" onClick={() => setShowMobileMenu(false)}>

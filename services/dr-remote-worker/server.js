@@ -43,7 +43,7 @@ function renderHtml() {
       overflow: hidden;
     }
     body { padding: 12px; }
-    .shell { height: calc(100dvh - 24px); max-width: 1180px; margin: 0 auto; display: grid; gap: 12px; grid-template-rows: auto minmax(0,1fr); }
+    .shell { height: calc(100dvh - 24px); max-width: 1180px; margin: 0 auto; display: grid; gap: 10px; grid-template-rows: auto minmax(0,1fr); }
     .hero, .card {
       border: 1px solid var(--stroke);
       background: var(--card);
@@ -51,42 +51,42 @@ function renderHtml() {
       border-radius: 26px;
       box-shadow: 0 20px 50px rgba(15,23,42,0.08);
     }
-    .hero { padding: 16px 18px; display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+    .hero { padding: 12px 14px; display: flex; justify-content: space-between; gap: 12px; align-items: center; }
     .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: .24em; color: #64748b; font-weight: 700; }
-    h1 { margin: 6px 0 4px; font-size: 28px; line-height: 1.05; font-family: Georgia, "Times New Roman", serif; }
-    .sub { color: var(--muted); max-width: 760px; font-size: 13px; }
+    h1 { margin: 4px 0 2px; font-size: 22px; line-height: 1.05; font-family: Georgia, "Times New Roman", serif; }
+    .sub { color: var(--muted); max-width: 760px; font-size: 12px; line-height: 1.45; }
     .grid { min-height: 0; display: grid; gap: 12px; grid-template-columns: 1fr; }
-    .card { padding: 16px; min-height: 0; display: flex; flex-direction: column; }
-    .card h2 { margin: 0; font-size: 16px; }
-    .muted { color: var(--muted); font-size: 13px; }
-    .pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--accent-soft); color: var(--accent); }
+    .card { padding: 14px; min-height: 0; display: flex; flex-direction: column; }
+    .card h2 { margin: 0; font-size: 15px; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .pill { display: inline-flex; align-items: center; gap: 8px; padding: 7px 11px; border-radius: 999px; font-size: 11px; font-weight: 700; background: var(--accent-soft); color: var(--accent); }
     .pill.idle { background: rgba(148,163,184,0.14); color: #475569; }
     .pill.error { background: rgba(239,68,68,0.12); color: var(--error); }
-    .stats { display: grid; gap: 10px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 14px; }
-    .stat { border: 1px solid rgba(148,163,184,0.22); border-radius: 18px; padding: 12px; background: rgba(255,255,255,0.72); min-width: 0; }
-    .stat .label { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: #64748b; font-weight: 700; }
-    .stat .value { font-size: 24px; font-weight: 700; margin-top: 8px; }
-    .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+    .meta { display: grid; gap: 8px; grid-template-columns: 1.35fr repeat(3, minmax(0, .75fr)); margin-top: 10px; }
+    .stat { border: 1px solid rgba(148,163,184,0.18); border-radius: 16px; padding: 9px 11px; background: rgba(255,255,255,0.72); min-width: 0; }
+    .stat .label { font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: #64748b; font-weight: 700; }
+    .stat .value { font-size: 15px; font-weight: 700; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
     button {
-      appearance: none; border: 0; border-radius: 999px; padding: 11px 16px;
-      font-size: 13px; font-weight: 700; cursor: pointer;
+      appearance: none; border: 0; border-radius: 999px; padding: 9px 14px;
+      font-size: 12px; font-weight: 700; cursor: pointer;
     }
     button.primary { background: linear-gradient(135deg, #0f766e, #0d9488); color: white; }
     button.secondary { background: white; color: #0f172a; border: 1px solid rgba(148,163,184,0.26); }
     button:disabled { opacity: .55; cursor: not-allowed; }
     .log {
-      margin-top: 14px; min-height: 0; flex: 1; overflow: auto;
-      border-radius: 18px; border: 1px solid rgba(148,163,184,0.22);
-      background: rgba(15,23,42,0.94); color: #e2e8f0; padding: 14px;
+      margin-top: 10px; min-height: 0; flex: 1; overflow: auto;
+      border-radius: 16px; border: 1px solid rgba(148,163,184,0.22);
+      background: rgba(15,23,42,0.94); color: #e2e8f0; padding: 12px;
       font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
     @media (max-width: 900px) {
       body { padding: 10px; }
       .shell { height: calc(100dvh - 20px); gap: 10px; }
-      .hero { padding: 14px; }
-      h1 { font-size: 24px; }
+      .hero { padding: 12px; align-items: flex-start; }
+      h1 { font-size: 20px; }
       .grid { grid-template-columns: 1fr; }
-      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
   </style>
 </head>
@@ -107,7 +107,7 @@ function renderHtml() {
       <div class="card">
         <h2>Worker console</h2>
         <p class="muted">Keep this page open when you want the browser to act as a volunteer worker.</p>
-        <div class="stats">
+        <div class="meta">
           <div class="stat"><div class="label">Worker user</div><div id="worker-user" class="value">-</div></div>
           <div class="stat"><div class="label">WebGPU</div><div id="worker-webgpu" class="value">-</div></div>
           <div class="stat"><div class="label">CPU cores</div><div id="worker-cores" class="value">-</div></div>
@@ -189,17 +189,80 @@ function renderHtml() {
       return payload;
     }
 
-    async function fetchAudioBuffer(audioUrl) {
-      const response = await fetch(audioUrl, {
-        headers: {
-          "Authorization": "Bearer " + token
-        }
-      });
-      if (!response.ok) {
-        const text = await response.text().catch(() => "");
-        throw new Error(text || "Unable to download job audio");
+    function sleep(ms) {
+      return new Promise((resolve) => window.setTimeout(resolve, ms));
+    }
+
+    function summarizeTransportError(status, text) {
+      const normalized = String(text || "").trim();
+      if (!normalized) {
+        return "HTTP " + status + " while downloading job audio";
       }
-      return response.arrayBuffer();
+      const compact = normalized.replace(/\s+/g, " ").slice(0, 220);
+      if (compact.startsWith("<!DOCTYPE html") || compact.includes("<html")) {
+        return "HTTP " + status + " bad gateway while downloading job audio";
+      }
+      return compact;
+    }
+
+    async function fetchAudioBuffer(audioUrl) {
+      const attempts = [0, 1500, 3500];
+      let lastError = "Unable to download job audio";
+
+      for (let attemptIndex = 0; attemptIndex < attempts.length; attemptIndex += 1) {
+        if (attemptIndex > 0) {
+          const waitMs = attempts[attemptIndex];
+          log("Retrying audio download in " + Math.round(waitMs / 1000) + "s...");
+          await sleep(waitMs);
+        }
+
+        const response = await fetch(audioUrl, {
+          headers: {
+            "Authorization": "Bearer " + token
+          }
+        });
+
+        if (response.ok) {
+          return response.arrayBuffer();
+        }
+
+        const text = await response.text().catch(() => "");
+        lastError = summarizeTransportError(response.status, text);
+
+        const retryable = response.status === 502 || response.status === 503 || response.status === 504;
+        log("Audio download failed (" + response.status + "): " + lastError);
+        await postWorkerEvent(
+          "worker_audio_download_failed",
+          "Audio download failed",
+          {
+            status: response.status,
+            retryable,
+            attempt: attemptIndex + 1,
+            error: lastError
+          },
+          retryable ? "warn" : "error"
+        );
+
+        if (!retryable) {
+          break;
+        }
+      }
+
+      throw new Error(lastError);
+    }
+
+    async function postWorkerEvent(type, message, payload = {}, severity = "info") {
+      try {
+        const finalMessage = currentJobId ? message + " [job:" + currentJobId + "]" : message;
+        await api("/api/remote-workers/events", "POST", {
+          workerId,
+          jobId: currentJobId,
+          type,
+          message: finalMessage,
+          severity,
+          payload
+        });
+      } catch {}
     }
 
     async function loadTranscriber() {
@@ -208,6 +271,10 @@ function renderHtml() {
 
       transcriberLoading = (async () => {
         log("Loading browser transcription runtime...");
+        await postWorkerEvent("worker_model_load_started", "Loading browser transcription runtime", {
+          provider: currentJobProvider,
+          model: "Xenova/whisper-tiny.en"
+        });
         const { pipeline, env } = await import("https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2");
         env.allowLocalModels = false;
         env.useBrowserCache = true;
@@ -224,6 +291,10 @@ function renderHtml() {
           }
         );
         log("Browser transcriber ready: whisper-tiny.en");
+        await postWorkerEvent("worker_model_load_completed", "Browser transcription runtime ready", {
+          provider: currentJobProvider,
+          model: "Xenova/whisper-tiny.en"
+        });
         transcriber = instance;
         return instance;
       })().catch((error) => {
@@ -241,6 +312,9 @@ function renderHtml() {
       }
       const audioContext = new AudioContextClass({ sampleRate: 16000 });
       try {
+        await postWorkerEvent("worker_audio_decode_started", "Decoding meeting audio", {
+          bytes: arrayBuffer.byteLength
+        });
         const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
         const { numberOfChannels, length } = audioBuffer;
         const mono = new Float32Array(length);
@@ -250,6 +324,10 @@ function renderHtml() {
             mono[i] += channelData[i] / numberOfChannels;
           }
         }
+        await postWorkerEvent("worker_audio_decode_completed", "Meeting audio decoded", {
+          channels: numberOfChannels,
+          samples: length
+        });
         return mono;
       } finally {
         try {
@@ -266,6 +344,13 @@ function renderHtml() {
         chunkEndSec,
         transcriptText,
         transcriptSegments
+      });
+      await postWorkerEvent("worker_checkpoint_uploaded", "Checkpoint uploaded", {
+        chunkIndex,
+        chunkStartSec,
+        chunkEndSec,
+        chars: transcriptText.length,
+        segments: Array.isArray(transcriptSegments) ? transcriptSegments.length : 0
       });
     }
 
@@ -337,6 +422,10 @@ function renderHtml() {
       if (!transcriptText) {
         throw new Error("No transcript text returned by the browser model");
       }
+      await postWorkerEvent("worker_completion_sending", "Sending completed transcript", {
+        chars: transcriptText.length,
+        segments: mergedSegments.length
+      });
       await api("/api/remote-workers/jobs/" + job.id + "/complete", "POST", {
         workerId,
         transcriptText,
@@ -345,9 +434,14 @@ function renderHtml() {
           chunks: mergedSegments
         },
         confidence: null,
+          durationMs: Math.max(0, Math.round(performance.now() - startedAt))
+        });
+      log("Completed meeting recording job " + job.id);
+      await postWorkerEvent("worker_completion_sent", "Completed transcript sent", {
+        chars: transcriptText.length,
+        segments: mergedSegments.length,
         durationMs: Math.max(0, Math.round(performance.now() - startedAt))
       });
-      log("Completed meeting recording job " + job.id);
     }
 
     async function failJob(jobId, message) {

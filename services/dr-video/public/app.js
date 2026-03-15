@@ -615,6 +615,13 @@ function initializeJoinFields() {
     url.searchParams.get("transcriptionLanguage") ||
     url.searchParams.get("transcriptionLang") ||
     "";
+  const transcriptOpenFromQuery = String(
+    url.searchParams.get("transcriptOpen") ||
+    url.searchParams.get("showTranscript") ||
+    ""
+  )
+    .trim()
+    .toLowerCase();
   const drAppBaseFromQuery = String(url.searchParams.get("drAppBase") || "").trim();
 
   const initialRoom = roomFromPath || roomFromQuery || sanitizeRoomId(roomEl.value);
@@ -688,7 +695,11 @@ function initializeJoinFields() {
   if (transcriptionLanguage) {
     log("Live transcription enabled (" + transcriptionLanguage.toUpperCase() + ")");
     if (EMBED_MODE) {
-      setTranscriptPanelVisible(true);
+      if (["1", "true", "yes", "on"].includes(transcriptOpenFromQuery)) {
+        setTranscriptPanelVisible(true);
+      } else {
+        setTranscriptPanelVisible(false);
+      }
     }
   }
 

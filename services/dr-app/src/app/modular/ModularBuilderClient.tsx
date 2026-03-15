@@ -1,9 +1,12 @@
 "use client";
 
+import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Script from "next/script";
 import { MEDITATION_ANIMATIONS } from "@/lib/meditation";
 import { buildDefaultTemplateDraft, type TemplateBlock, type TemplateBlockType, type TemplateDraft } from "@/lib/templateDraft";
+import { postClientLog } from "@/lib/clientLogs";
 
 type TemplateSummary = {
   id: string;
@@ -30,6 +33,18 @@ type Poster = {
   id: string;
   title: string;
   content: string;
+};
+
+type AudioFileItem = {
+  name: string;
+  url: string;
+};
+
+type AiAgentOption = {
+  id: string;
+  name: string;
+  username: string;
+  color: string;
 };
 
 type Props = {
@@ -74,6 +89,12 @@ type NodeData = {
   participantQuery?: string | null;
   participantNote?: string | null;
   roundMaxParticipants?: number | null;
+  aiAgentsEnabled?: boolean | null;
+  aiAgentIds?: string[] | null;
+  aiAgentIntervalSeconds?: number | null;
+  aiAgentCooldownSeconds?: number | null;
+  aiAgentMaxReplies?: number | null;
+  aiAgentPromptOverride?: string | null;
   posterId?: string | null;
   embedUrl?: string | null;
   harmonicaUrl?: string | null;
@@ -82,6 +103,8 @@ type NodeData = {
   formChoices?: Array<{ key: string; label: string }>;
   meditationAnimationId?: string | null;
   meditationAudioUrl?: string | null;
+  posterTitle?: string | null;
+  posterContent?: string | null;
 };
 
 const MODULES: Array<{ type: BlockType; label: string; description: string; color: string; icon: string }> = [
@@ -101,7 +124,7 @@ const MODULES: Array<{ type: BlockType; label: string; description: string; colo
   },
   {
     type: "PAIRING",
-    label: "Pairing",
+    label: "Discussion",
     description: "Split people into small-group calls or rounds for timed discussion.",
     color: "bg-amber-100 text-amber-900",
     icon: "M4 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm12 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-10 2a4 4 0 0 0-4 4v2h6v-2a4 4 0 0 0-2-4Zm8 0a4 4 0 0 0-2 4v2h6v-2a4 4 0 0 0-4-4Z"
@@ -287,6 +310,7 @@ function buildNodeHtml(
   options: {
     posters: Poster[];
     audioFiles: Array<{ name: string; url: string }>;
+    aiAgents: AiAgentOption[];
   }
 ) {
   const module = MODULES.find((item) => item.type === type);
@@ -317,6 +341,26 @@ function buildNodeHtml(
   const startMode = data.startMode ?? "specific_datetime";
   const agreementRequired = data.agreementRequired ? "checked" : "";
   const allowStartBeforeFull = data.allowStartBeforeFull ? "checked" : "";
+  const aiAgentsEnabled = Boolean(data.aiAgentsEnabled);
+  const selectedAiAgentIds = data.aiAgentIds ?? [];
+  const aiAgentsMarkup =
+    options.aiAgents.length === 0
+      ? `<div class="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-3 py-2 text-[11px] text-slate-500">No AI agents available yet.</div>`
+      : options.aiAgents
+          .map((agent) => {
+            const checked = selectedAiAgentIds.includes(agent.id) ? "checked" : "";
+            return `<label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/80 px-2.5 py-2 text-[11px] text-slate-700">
+              <span class="min-w-0">
+                <span class="inline-flex items-center gap-1.5 font-semibold">
+                  <span class="inline-block h-2.5 w-2.5 rounded-full" style="background:${escapeHtml(agent.color || "#0f172a")}"></span>
+                  <span>${escapeHtml(agent.name)}</span>
+                </span>
+                <span class="block truncate text-[10px] text-slate-500">@${escapeHtml(agent.username)}</span>
+              </span>
+              <input type="checkbox" data-field="aiAgentIds" value="${escapeHtml(agent.id)}" ${checked} />
+            </label>`;
+          })
+          .join("");
 
   return `
     <div class="dr-node-card" data-type="${escapeHtml(type)}">
@@ -485,17 +529,60 @@ function buildNodeHtml(
             ? `<label class="dr-node-label">
                 Max participants
                 <input class="dr-input dr-node-input" type="number" min="2" data-field="roundMaxParticipants" value="${data.roundMaxParticipants ?? ""}" />
-              </label>`
+              </label>
+              <label class="dr-node-label dr-node-checkbox">
+                <input type="checkbox" data-field="aiAgentsEnabled" ${aiAgentsEnabled ? "checked" : ""} />
+                <span>Enable AI participants</span>
+              </label>
+              ${
+                aiAgentsEnabled
+                  ? `<div class="dr-node-label">
+                      <span>Assigned AI agents</span>
+                      <div class="mt-2 space-y-2">${aiAgentsMarkup}</div>
+                    </div>
+                    <label class="dr-node-label">
+                      Agent interval (seconds)
+                      <input class="dr-input dr-node-input" type="number" min="15" data-field="aiAgentIntervalSeconds" value="${data.aiAgentIntervalSeconds ?? 60}" />
+                    </label>
+                    <label class="dr-node-label">
+                      Cooldown (seconds)
+                      <input class="dr-input dr-node-input" type="number" min="15" data-field="aiAgentCooldownSeconds" value="${data.aiAgentCooldownSeconds ?? 120}" />
+                    </label>
+                    <label class="dr-node-label">
+                      Max replies
+                      <input class="dr-input dr-node-input" type="number" min="1" data-field="aiAgentMaxReplies" value="${data.aiAgentMaxReplies ?? 5}" />
+                    </label>
+                    <label class="dr-node-label">
+                      Round override prompt
+                      <textarea class="dr-input dr-node-textarea" data-field="aiAgentPromptOverride" placeholder="Optional round-specific instruction for selected AI agents">${escapeHtml(data.aiAgentPromptOverride ?? "")}</textarea>
+                    </label>`
+                  : ""
+              }`
             : ""
         }
         ${
           type === "PROMPT"
             ? `<label class="dr-node-label">
-                Prompt
+                Prompt source
                 <select class="dr-input dr-node-input" data-field="posterId">
-                  <option value="">Select a prompt</option>
+                  <option value="">Write prompt directly</option>
                   ${posterOptions}
                 </select>
+              </label>
+              <label class="dr-node-label">
+                Prompt title
+                <input class="dr-input dr-node-input" type="text" data-field="posterTitle" value="${escapeHtml(data.posterTitle ?? "")}" placeholder="Context setting" />
+              </label>
+              <label class="dr-node-label">
+                Prompt text
+                <textarea class="dr-input dr-node-textarea" data-field="posterContent" placeholder="Write the prompt shown to participants">${escapeHtml(data.posterContent ?? data.note ?? "")}</textarea>
+                <button
+                  type="button"
+                  class="mt-2 inline-flex rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-800 hover:bg-sky-100"
+                  data-action="open-prompt-modal"
+                >
+                  Create or edit prompt
+                </button>
               </label>`
             : ""
         }
@@ -547,6 +634,13 @@ function buildNodeHtml(
                   <option value="">No audio</option>
                   ${audioOptions}
                 </select>
+                <button
+                  type="button"
+                  class="mt-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-100"
+                  data-action="upload-pause-audio"
+                >
+                  Upload audio
+                </button>
               </label>`
             : ""
         }
@@ -578,12 +672,20 @@ function nodeDataFromBlock(block: any): NodeData {
     participantQuery: block.participantQuery ?? null,
     participantNote: block.participantNote ?? null,
     roundMaxParticipants: block.roundMaxParticipants ?? null,
+    aiAgentsEnabled: block.aiAgentsEnabled ?? null,
+    aiAgentIds: block.aiAgentIds ?? [],
+    aiAgentIntervalSeconds: block.aiAgentIntervalSeconds ?? null,
+    aiAgentCooldownSeconds: block.aiAgentCooldownSeconds ?? null,
+    aiAgentMaxReplies: block.aiAgentMaxReplies ?? null,
+    aiAgentPromptOverride: block.aiAgentPromptOverride ?? null,
     posterId: block.posterId ?? null,
     embedUrl: block.embedUrl ?? null,
     harmonicaUrl: block.harmonicaUrl ?? null,
     matchingMode: block.matchingMode ?? "polar",
     formQuestion: block.formQuestion ?? null,
     formChoices: block.formChoices ?? [],
+    posterTitle: block.posterTitle ?? null,
+    posterContent: block.posterContent ?? block.note ?? null,
     meditationAnimationId: block.meditationAnimationId ?? null,
     meditationAudioUrl: block.meditationAudioUrl ?? null
   };
@@ -618,12 +720,20 @@ function buildBlockFromNode(type: BlockType, data: NodeData) {
     participantQuery: data.participantQuery ?? null,
     participantNote: data.participantNote ?? null,
     roundMaxParticipants,
+    aiAgentsEnabled: type === "PAIRING" ? Boolean(data.aiAgentsEnabled) : null,
+    aiAgentIds: type === "PAIRING" && data.aiAgentsEnabled ? data.aiAgentIds ?? [] : [],
+    aiAgentIntervalSeconds: type === "PAIRING" && data.aiAgentsEnabled ? data.aiAgentIntervalSeconds ?? 60 : null,
+    aiAgentCooldownSeconds: type === "PAIRING" && data.aiAgentsEnabled ? data.aiAgentCooldownSeconds ?? 120 : null,
+    aiAgentMaxReplies: type === "PAIRING" && data.aiAgentsEnabled ? data.aiAgentMaxReplies ?? 5 : null,
+    aiAgentPromptOverride: type === "PAIRING" && data.aiAgentsEnabled ? data.aiAgentPromptOverride ?? null : null,
     posterId: data.posterId ?? null,
     embedUrl: data.embedUrl ?? null,
     harmonicaUrl: data.harmonicaUrl ?? null,
     matchingMode: data.matchingMode ?? (type === "MATCHING" ? "polar" : null),
     formQuestion: data.formQuestion ?? null,
     formChoices: data.formChoices ?? [],
+    posterTitle: data.posterTitle ?? null,
+    posterContent: data.posterContent ?? data.note ?? null,
     meditationAnimationId: data.meditationAnimationId ?? null,
     meditationAudioUrl: data.meditationAudioUrl ?? null
   };
@@ -639,6 +749,33 @@ function buildDefaultData(type: BlockType): NodeData {
   };
 }
 
+function getAutoLayoutPositions(
+  count: number,
+  canvasWidth: number,
+  options?: { startX?: number; startY?: number; cardWidth?: number; gapX?: number; gapY?: number }
+) {
+  const startX = options?.startX ?? 72;
+  const startY = options?.startY ?? 72;
+  const cardWidth = options?.cardWidth ?? 248;
+  const gapX = options?.gapX ?? 64;
+  const gapY = options?.gapY ?? 168;
+  const availableWidth = Math.max(canvasWidth - startX * 2, cardWidth);
+  const maxColumns = Math.max(1, Math.floor((availableWidth + gapX) / (cardWidth + gapX)));
+  const columns = Math.min(Math.max(1, maxColumns), Math.max(1, Math.ceil(Math.sqrt(count || 1))));
+
+  return Array.from({ length: count }, (_, index) => {
+    const row = Math.floor(index / columns);
+    const column = index % columns;
+    const rowLength = Math.min(columns, count - row * columns);
+    const rowWidth = rowLength * cardWidth + Math.max(0, rowLength - 1) * gapX;
+    const rowOffset = Math.max(startX, Math.round((canvasWidth - rowWidth) / 2));
+    return {
+      x: rowOffset + column * (cardWidth + gapX),
+      y: startY + row * gapY
+    };
+  });
+}
+
 export function ModularBuilderClient({
   templates = [],
   dataspaces,
@@ -647,14 +784,23 @@ export function ModularBuilderClient({
   onDraftChange,
   workspaceMode = false
 }: Props) {
+  const { data: session } = useSession();
   const editorRef = useRef<any>(null);
   const drawflowRef = useRef<HTMLDivElement | null>(null);
   const externalDraftSignatureRef = useRef<string>("");
+  const appliedExternalDraftSignatureRef = useRef<string>("");
   const emittedDraftSignatureRef = useRef<string>("");
+  const fallbackLoggedSignatureRef = useRef<string>("");
   const [drawflowReady, setDrawflowReady] = useState(false);
   const [editorReady, setEditorReady] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [modulesCollapsed, setModulesCollapsed] = useState(false);
+  const [hoveredModuleTooltip, setHoveredModuleTooltip] = useState<{
+    label: string;
+    description: string;
+    top: number;
+    left: number;
+  } | null>(null);
   const [templatesCollapsed, setTemplatesCollapsed] = useState(true);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [currentTemplateId, setCurrentTemplateId] = useState<string | null>(
@@ -686,7 +832,15 @@ export function ModularBuilderClient({
   const [aiRequestId, setAiRequestId] = useState<string | null>(null);
   const [pendingAiDraft, setPendingAiDraft] = useState<TemplateDraft | null>(null);
   const [posters, setPosters] = useState<Poster[]>([]);
-  const [audioFiles, setAudioFiles] = useState<Array<{ name: string; url: string }>>([]);
+  const [audioFiles, setAudioFiles] = useState<Array<AudioFileItem>>([]);
+  const [aiAgents, setAiAgents] = useState<AiAgentOption[]>([]);
+  const [pauseAudioUploadNodeId, setPauseAudioUploadNodeId] = useState<number | null>(null);
+  const [pauseAudioUploadFile, setPauseAudioUploadFile] = useState<File | null>(null);
+  const [pauseAudioUploading, setPauseAudioUploading] = useState(false);
+  const [pauseAudioUploadError, setPauseAudioUploadError] = useState<string | null>(null);
+  const [promptModalNodeId, setPromptModalNodeId] = useState<number | null>(null);
+  const [promptModalTitle, setPromptModalTitle] = useState("");
+  const [promptModalContent, setPromptModalContent] = useState("");
   const [templatesState, setTemplatesState] = useState<TemplateSummary[]>(templates);
   const [editorVersion, setEditorVersion] = useState(0);
   const resolvedTimezone =
@@ -703,6 +857,41 @@ export function ModularBuilderClient({
     return `/templates/workspace?${params.toString()}`;
   }, [currentTemplateId]);
 
+  function showModuleTooltip(
+    event: any,
+    module: { label: string; description: string }
+  ) {
+    if (isMobile) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    setHoveredModuleTooltip({
+      label: module.label,
+      description: module.description,
+      top: rect.top + rect.height / 2,
+      left: rect.right + 12
+    });
+  }
+
+  function hideModuleTooltip() {
+    setHoveredModuleTooltip(null);
+  }
+
+
+  useEffect(() => {
+    let active = true;
+    async function loadAiAgents() {
+      try {
+        const response = await fetch("/api/ai-agents", { credentials: "include" });
+        if (!response.ok) return;
+        const payload = await response.json().catch(() => null);
+        if (!active) return;
+        setAiAgents(Array.isArray(payload?.agents) ? payload.agents : []);
+      } catch {}
+    }
+    loadAiAgents().finally(() => refreshAllNodeHtml());
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!initialTemplateId) return;
@@ -719,6 +908,17 @@ export function ModularBuilderClient({
     if (!drawflowReady || !editorReady || !editorRef.current) return;
     if (externalDraftSignatureRef.current === externalDraftSignature) return;
     externalDraftSignatureRef.current = externalDraftSignature;
+    appliedExternalDraftSignatureRef.current = externalDraftSignature;
+    emittedDraftSignatureRef.current = externalDraftSignature;
+    void postClientLog({
+      scope: "template_modular_builder",
+      message: "template_modular_external_draft_applied",
+      meta: {
+        templateId: draft.id ?? null,
+        blockCount: draft.blocks.length,
+        workspaceMode
+      }
+    });
     applyDraftToBuilder(draft);
   }, [workspaceMode, draft, drawflowReady, editorReady, externalDraftSignature]);
 
@@ -766,7 +966,7 @@ export function ModularBuilderClient({
     }
     async function loadAudio() {
       try {
-        const response = await fetch("/api/integrations/workflow/meditation/audio");
+        const response = await fetch("/api/meditation/audio");
         if (!response.ok) return;
         const payload = await response.json().catch(() => null);
         setAudioFiles(payload?.files ?? []);
@@ -779,11 +979,21 @@ export function ModularBuilderClient({
   useEffect(() => {
     if (!workspaceMode || !onDraftChange) return;
     if (!drawflowReady || !editorReady || !editorRef.current) return;
+    if (appliedExternalDraftSignatureRef.current !== externalDraftSignature) return;
     const nextDraft = buildWorkspaceDraft();
     if (!nextDraft) return;
     const serialized = JSON.stringify(nextDraft);
     if (serialized === emittedDraftSignatureRef.current) return;
     emittedDraftSignatureRef.current = serialized;
+    void postClientLog({
+      scope: "template_modular_builder",
+      message: "template_modular_draft_emitted",
+      meta: {
+        templateId: nextDraft.id ?? null,
+        blockCount: nextDraft.blocks.length,
+        workspaceMode
+      }
+    });
     onDraftChange(nextDraft);
   }, [
     workspaceMode,
@@ -830,7 +1040,7 @@ export function ModularBuilderClient({
 
   function updateNodeHtml(id: number, type: BlockType, data: NodeData) {
     if (!editorRef.current) return;
-    const html = buildNodeHtml(type, data, { posters, audioFiles });
+    const html = buildNodeHtml(type, data, { posters, audioFiles, aiAgents });
     const nodeEl = document.getElementById(`node-${id}`);
     if (nodeEl) {
       const content = nodeEl.querySelector(".drawflow_content_node");
@@ -845,6 +1055,16 @@ export function ModularBuilderClient({
     if (typeof current === "number" && Number.isFinite(current)) {
       setZoomLevel(current);
     }
+  }
+
+  function applyEditorTransform(nextX: number, nextY: number, nextZoom: number) {
+    const editor = editorRef.current;
+    if (!editor?.precanvas) return;
+    editor.canvas_x = nextX;
+    editor.canvas_y = nextY;
+    editor.zoom = nextZoom;
+    editor.precanvas.style.transform = `translate(${nextX}px, ${nextY}px) scale(${nextZoom})`;
+    setZoomLevel(nextZoom);
   }
 
   function zoomIn() {
@@ -877,6 +1097,77 @@ export function ModularBuilderClient({
     setZoomLevel(next);
   }
 
+  function resetView() {
+    applyEditorTransform(0, 0, 1);
+  }
+
+  function fitView() {
+    const editor = editorRef.current;
+    const container = drawflowRef.current;
+    if (!editor || !container) return;
+    const exported = editor.export();
+    const data = exported?.drawflow?.Home?.data ?? {};
+    const nodes = Object.values(data) as Array<{ pos_x?: number; pos_y?: number }>;
+    if (nodes.length === 0) {
+      resetView();
+      return;
+    }
+
+    const cardWidth = isMobile ? 224 : 248;
+    const cardHeight = 176;
+    const padding = 96;
+    const minX = Math.min(...nodes.map((node) => Number(node.pos_x ?? 0)));
+    const minY = Math.min(...nodes.map((node) => Number(node.pos_y ?? 0)));
+    const maxX = Math.max(...nodes.map((node) => Number(node.pos_x ?? 0) + cardWidth));
+    const maxY = Math.max(...nodes.map((node) => Number(node.pos_y ?? 0) + cardHeight));
+    const boundsWidth = Math.max(1, maxX - minX);
+    const boundsHeight = Math.max(1, maxY - minY);
+    const scaleX = (container.clientWidth - padding) / boundsWidth;
+    const scaleY = (container.clientHeight - padding) / boundsHeight;
+    const nextZoom = Math.max(0.5, Math.min(1.2, Math.min(scaleX, scaleY)));
+    const nextX = (container.clientWidth - boundsWidth * nextZoom) / 2 - minX * nextZoom;
+    const nextY = (container.clientHeight - boundsHeight * nextZoom) / 2 - minY * nextZoom;
+    applyEditorTransform(nextX, nextY, nextZoom);
+  }
+
+  useEffect(() => {
+    const container = drawflowRef.current;
+    if (!container || !editorReady) return;
+    const currentContainer = container;
+
+    function handleWheel(event: WheelEvent) {
+      if (!editorRef.current) return;
+      event.preventDefault();
+
+      const editor = editorRef.current;
+      const currentZoom = typeof editor.zoom === "number" ? editor.zoom : zoomLevel;
+      const currentX = typeof editor.canvas_x === "number" ? editor.canvas_x : 0;
+      const currentY = typeof editor.canvas_y === "number" ? editor.canvas_y : 0;
+
+      if (event.ctrlKey || event.metaKey) {
+        const rect = currentContainer.getBoundingClientRect();
+        const pointerX = event.clientX - rect.left;
+        const pointerY = event.clientY - rect.top;
+        const delta = event.deltaY > 0 ? -0.08 : 0.08;
+        const nextZoom = Math.max(0.5, Math.min(2, currentZoom + delta));
+        if (nextZoom === currentZoom) return;
+        const worldX = (pointerX - currentX) / currentZoom;
+        const worldY = (pointerY - currentY) / currentZoom;
+        const nextX = pointerX - worldX * nextZoom;
+        const nextY = pointerY - worldY * nextZoom;
+        applyEditorTransform(nextX, nextY, nextZoom);
+        return;
+      }
+
+      applyEditorTransform(currentX - event.deltaX, currentY - event.deltaY, currentZoom);
+    }
+
+    currentContainer.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      currentContainer.removeEventListener("wheel", handleWheel);
+    };
+  }, [editorReady, zoomLevel]);
+
   function refreshAllNodeHtml() {
     if (!editorRef.current) return;
     const exported = editorRef.current.export();
@@ -893,7 +1184,7 @@ export function ModularBuilderClient({
     const posX = clientX - rect.left;
     const posY = clientY - rect.top;
     const data = buildDefaultData(type);
-    const html = buildNodeHtml(type, data, { posters, audioFiles });
+    const html = buildNodeHtml(type, data, { posters, audioFiles, aiAgents });
     const nodeId = editor.addNode(type, 1, 1, posX, posY, type, data, html);
     setTimeout(() => updateNodeHtml(nodeId, type, data), 0);
     setEditorVersion((prev) => prev + 1);
@@ -977,12 +1268,47 @@ export function ModularBuilderClient({
     return { chain };
   }
 
-  function buildBlocksFromEditor() {
+  function buildBlocksFromEditor(options?: {
+    strictChain?: boolean;
+    requireCompleteFields?: boolean;
+  }) {
+    const strictChain = options?.strictChain ?? true;
+    const requireCompleteFields = options?.requireCompleteFields ?? true;
     if (!editorRef.current) return { error: "Editor not ready" };
     const exported = editorRef.current.export();
     const chainResult = buildChainFromExport(exported);
-    if (chainResult.error) return { error: chainResult.error };
-    const chain = chainResult.chain ?? [];
+    const exportedNodes = Object.values(exported?.drawflow?.Home?.data ?? {}) as any[];
+    if (strictChain && chainResult.error) return { error: chainResult.error };
+    const chain =
+      !chainResult.error && (chainResult.chain?.length ?? 0) > 0
+        ? chainResult.chain ?? []
+        : [...exportedNodes].sort((a, b) => {
+            const posY = Number(a?.pos_y ?? 0) - Number(b?.pos_y ?? 0);
+            if (Math.abs(posY) > 24) return posY;
+            return Number(a?.pos_x ?? 0) - Number(b?.pos_x ?? 0);
+          });
+    if (!strictChain && chainResult.error) {
+      const fallbackSignature = JSON.stringify({
+        currentTemplateId,
+        editorVersion,
+        error: chainResult.error,
+        count: exportedNodes.length
+      });
+      if (fallbackLoggedSignatureRef.current !== fallbackSignature) {
+        fallbackLoggedSignatureRef.current = fallbackSignature;
+        void postClientLog({
+          level: "warn",
+          scope: "template_modular_builder",
+          message: "template_modular_fallback_order_used",
+          meta: {
+            templateId: currentTemplateId,
+            editorVersion,
+            reason: chainResult.error,
+            nodeCount: exportedNodes.length
+          }
+        });
+      }
+    }
     if (chain.length === 0) {
       return { error: "Template must contain at least one block." };
     }
@@ -992,9 +1318,14 @@ export function ModularBuilderClient({
       return buildBlockFromNode(type, data);
     });
 
-    for (const block of blocks) {
-      if (block.type === "PROMPT" && !block.posterId) {
-        return { error: "Prompt blocks need a selected prompt." };
+    if (requireCompleteFields) {
+      for (const block of blocks) {
+      if (
+        block.type === "PROMPT" &&
+        !block.posterId &&
+        !(block.posterTitle?.trim() && block.posterContent?.trim())
+      ) {
+        return { error: "Prompt blocks need a selected prompt or direct prompt text." };
       }
       if (block.type === "FORM" && (!block.formQuestion || block.formChoices?.length === 0)) {
         return { error: "Form blocks need a question and at least one option." };
@@ -1004,6 +1335,7 @@ export function ModularBuilderClient({
       }
       if (block.type === "HARMONICA" && !block.harmonicaUrl) {
         return { error: "Harmonica blocks need a URL." };
+      }
       }
     }
 
@@ -1021,6 +1353,13 @@ export function ModularBuilderClient({
           .filter((choice) => choice.label.length > 0);
         return { ...block, formQuestion: question || null, formChoices: choices };
       }
+      if (block.type === "PROMPT") {
+        return {
+          ...block,
+          posterTitle: block.posterTitle?.trim() || null,
+          posterContent: block.posterContent?.trim() || null
+        };
+      }
       return block;
     });
 
@@ -1028,7 +1367,10 @@ export function ModularBuilderClient({
   }
 
   function buildWorkspaceDraft(): TemplateDraft | null {
-    const build = buildBlocksFromEditor();
+    const build = buildBlocksFromEditor({
+      strictChain: false,
+      requireCompleteFields: false
+    });
     if ("error" in build || !build.blocks) {
       return null;
     }
@@ -1131,14 +1473,15 @@ export function ModularBuilderClient({
     );
     if (!editorRef.current) return;
     resetEditor();
+    const rect = drawflowRef.current?.getBoundingClientRect();
+    const positions = getAutoLayoutPositions(nextDraft.blocks.length, rect?.width ?? 960);
     let prevId: number | null = null;
     nextDraft.blocks.forEach((block, index) => {
       const type = block.type as BlockType;
       const data = nodeDataFromBlock(block);
-      const x = 80 + (index % 2) * 260;
-      const y = 60 + index * 140;
-      const html = buildNodeHtml(type, data, { posters, audioFiles });
-      const id = editorRef.current.addNode(type, 1, 1, x, y, type, data, html);
+      const position = positions[index] ?? { x: 80, y: 60 + index * 168 };
+      const html = buildNodeHtml(type, data, { posters, audioFiles, aiAgents });
+      const id = editorRef.current.addNode(type, 1, 1, position.x, position.y, type, data, html);
       if (prevId) {
         editorRef.current.addConnection(prevId, id, "output_1", "input_1");
       }
@@ -1162,12 +1505,13 @@ export function ModularBuilderClient({
       const lastNode = nodes.reduce((acc, node) => (Number(node.pos_y ?? 0) > Number(acc.pos_y ?? 0) ? node : acc), nodes[0]);
       prevId = Number(lastNode.id);
     }
+    const rect = drawflowRef.current?.getBoundingClientRect();
+    const positions = getAutoLayoutPositions(count, rect?.width ?? 960, { startY });
     for (let index = 0; index < count; index += 1) {
-      const x = 120 + (index % 2) * 240;
-      const y = startY + index * 140;
+      const position = positions[index] ?? { x: 120, y: startY + index * 168 };
       const data = { durationSeconds, matchingMode: undefined };
-      const html = buildNodeHtml("PAIRING", data, { posters, audioFiles });
-      const id = editorRef.current.addNode("PAIRING", 1, 1, x, y, "PAIRING", data, html);
+      const html = buildNodeHtml("PAIRING", data, { posters, audioFiles, aiAgents });
+      const id = editorRef.current.addNode("PAIRING", 1, 1, position.x, position.y, "PAIRING", data, html);
       if (prevId) {
         editorRef.current.addConnection(prevId, id, "output_1", "input_1");
       }
@@ -1189,6 +1533,15 @@ export function ModularBuilderClient({
     const build = buildBlocksFromEditor();
     if ("error" in build) {
       setSaveError(build.error ?? "Unable to save template.");
+      void postClientLog({
+        level: "warn",
+        scope: "template_modular_builder",
+        message: "template_modular_strict_save_blocked",
+        meta: {
+          templateId: currentTemplateId,
+          error: build.error ?? "Unable to save template."
+        }
+      });
       return;
     }
     const blocks = build.blocks;
@@ -1278,12 +1631,13 @@ export function ModularBuilderClient({
       const data = nodeDataFromBlock(block);
       return { type, data, index };
     });
+    const rect = drawflowRef.current?.getBoundingClientRect();
+    const positions = getAutoLayoutPositions(nodes.length, rect?.width ?? 960);
     let prevId: number | null = null;
     nodes.forEach((node, index) => {
-      const x = 80 + (index % 2) * 260;
-      const y = 60 + index * 140;
-      const html = buildNodeHtml(node.type, node.data, { posters, audioFiles });
-      const id = editorRef.current.addNode(node.type, 1, 1, x, y, node.type, node.data, html);
+      const position = positions[index] ?? { x: 80, y: 60 + index * 168 };
+      const html = buildNodeHtml(node.type, node.data, { posters, audioFiles, aiAgents });
+      const id = editorRef.current.addNode(node.type, 1, 1, position.x, position.y, node.type, node.data, html);
       if (prevId) {
         editorRef.current.addConnection(prevId, id, "output_1", "input_1");
       }
@@ -1361,6 +1715,30 @@ export function ModularBuilderClient({
   function handleInlineClick(event: React.MouseEvent<HTMLDivElement>) {
     const target = event.target as HTMLElement | null;
     if (!target) return;
+    const promptActionEl = target.closest?.("[data-action='open-prompt-modal']") as HTMLElement | null;
+    if (promptActionEl) {
+      event.preventDefault();
+      event.stopPropagation();
+      const nodeId = getNodeIdFromEventTarget(promptActionEl);
+      if (!nodeId || !editorRef.current) return;
+      const existing = editorRef.current.getNodeFromId(nodeId);
+      const data = (existing?.data || {}) as NodeData;
+      setPromptModalNodeId(nodeId);
+      setPromptModalTitle(String(data.posterTitle || ""));
+      setPromptModalContent(String(data.posterContent || data.note || ""));
+      return;
+    }
+    const uploadActionEl = target.closest?.("[data-action='upload-pause-audio']") as HTMLElement | null;
+    if (uploadActionEl) {
+      event.preventDefault();
+      event.stopPropagation();
+      const nodeId = getNodeIdFromEventTarget(uploadActionEl);
+      if (!nodeId) return;
+      setPauseAudioUploadNodeId(nodeId);
+      setPauseAudioUploadFile(null);
+      setPauseAudioUploadError(null);
+      return;
+    }
     const actionEl = target.closest?.("[data-action='delete-node']") as HTMLElement | null;
     if (!actionEl) return;
     event.preventDefault();
@@ -1396,6 +1774,15 @@ export function ModularBuilderClient({
     } else if (field === "roundMaxParticipants") {
       const raw = (target as HTMLInputElement).value;
       updateNodeDataById(nodeId, { roundMaxParticipants: raw ? Number(raw) : null });
+    } else if (field === "aiAgentIntervalSeconds") {
+      const raw = (target as HTMLInputElement).value;
+      updateNodeDataById(nodeId, { aiAgentIntervalSeconds: raw ? Number(raw) : 60 });
+    } else if (field === "aiAgentCooldownSeconds") {
+      const raw = (target as HTMLInputElement).value;
+      updateNodeDataById(nodeId, { aiAgentCooldownSeconds: raw ? Number(raw) : 120 });
+    } else if (field === "aiAgentMaxReplies") {
+      const raw = (target as HTMLInputElement).value;
+      updateNodeDataById(nodeId, { aiAgentMaxReplies: raw ? Number(raw) : 5 });
     } else if (field === "embedUrl") {
       updateNodeDataById(nodeId, { embedUrl: (target as HTMLInputElement).value });
     } else if (field === "harmonicaUrl") {
@@ -1425,8 +1812,14 @@ export function ModularBuilderClient({
       updateNodeDataById(nodeId, { selectedParticipants: raw ? Number(raw) : null });
     } else if (field === "formQuestion") {
       updateNodeDataById(nodeId, { formQuestion: (target as HTMLInputElement).value });
+    } else if (field === "posterTitle") {
+      updateNodeDataById(nodeId, { posterTitle: (target as HTMLInputElement).value });
     } else if (field === "note") {
       updateNodeDataById(nodeId, { note: (target as HTMLTextAreaElement).value });
+    } else if (field === "posterContent") {
+      updateNodeDataById(nodeId, { posterContent: (target as HTMLTextAreaElement).value });
+    } else if (field === "aiAgentPromptOverride") {
+      updateNodeDataById(nodeId, { aiAgentPromptOverride: (target as HTMLTextAreaElement).value });
     } else if (field === "participantUserIds") {
       const raw = (target as HTMLTextAreaElement).value;
       const values = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
@@ -1474,6 +1867,26 @@ export function ModularBuilderClient({
       updateNodeDataById(nodeId, { agreementRequired: (target as HTMLInputElement).checked });
     } else if (field === "allowStartBeforeFull") {
       updateNodeDataById(nodeId, { allowStartBeforeFull: (target as HTMLInputElement).checked });
+    } else if (field === "aiAgentsEnabled") {
+      const checked = (target as HTMLInputElement).checked;
+      updateNodeDataById(nodeId, {
+        aiAgentsEnabled: checked,
+        aiAgentIds: checked ? [] : [],
+        aiAgentIntervalSeconds: checked ? 60 : null,
+        aiAgentCooldownSeconds: checked ? 120 : null,
+        aiAgentMaxReplies: checked ? 5 : null,
+        aiAgentPromptOverride: checked ? "" : null
+      });
+    } else if (field === "aiAgentIds") {
+      const checkbox = target as HTMLInputElement;
+      const existing = editorRef.current?.getNodeFromId(nodeId);
+      const current = new Set<string>(((existing?.data || {}) as NodeData).aiAgentIds ?? []);
+      if (checkbox.checked) {
+        current.add(checkbox.value);
+      } else {
+        current.delete(checkbox.value);
+      }
+      updateNodeDataById(nodeId, { aiAgentIds: Array.from(current) });
     } else if (field === "matchingMode") {
       const value = (target as HTMLSelectElement).value === "anti" ? "anti" : "polar";
       updateNodeDataById(nodeId, { matchingMode: value });
@@ -1496,6 +1909,54 @@ export function ModularBuilderClient({
       (target as HTMLInputElement).value = normalized;
     }
     updateNodeDataById(nodeId, field === "harmonicaUrl" ? { harmonicaUrl: normalized } : { embedUrl: normalized });
+  }
+
+  async function handlePauseAudioUpload() {
+    if (!pauseAudioUploadNodeId || !pauseAudioUploadFile || pauseAudioUploading) return;
+    setPauseAudioUploading(true);
+    setPauseAudioUploadError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", pauseAudioUploadFile);
+      const response = await fetch("/api/meditation/audio", {
+        method: "POST",
+        body: formData
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Unable to upload audio.");
+      }
+      const nextFile: AudioFileItem = {
+        name: String(payload?.name || pauseAudioUploadFile.name),
+        url: String(payload?.url || "")
+      };
+      if (!nextFile.url) {
+        throw new Error("Uploaded audio URL missing.");
+      }
+      setAudioFiles((current) => {
+        const withoutDuplicate = current.filter((item) => item.url !== nextFile.url);
+        return [...withoutDuplicate, nextFile].sort((a, b) => a.name.localeCompare(b.name));
+      });
+      updateNodeDataById(pauseAudioUploadNodeId, { meditationAudioUrl: nextFile.url });
+      setPauseAudioUploadNodeId(null);
+      setPauseAudioUploadFile(null);
+    } catch (error) {
+      setPauseAudioUploadError(error instanceof Error ? error.message : "Unable to upload audio.");
+    } finally {
+      setPauseAudioUploading(false);
+    }
+  }
+
+  function applyPromptModal() {
+    if (!promptModalNodeId) return;
+    updateNodeDataById(promptModalNodeId, {
+      posterId: null,
+      posterTitle: promptModalTitle.trim() || null,
+      posterContent: promptModalContent.trim() || null
+    });
+    setPromptModalNodeId(null);
+    setPromptModalTitle("");
+    setPromptModalContent("");
   }
 
   return (
@@ -1615,25 +2076,21 @@ export function ModularBuilderClient({
                         draggable={!isMobile}
                         onDragStart={(event) => handleDragStart(event, module.type)}
                         onClick={() => (isMobile ? addNodeAtCenter(module.type) : undefined)}
-                        title={`${module.label}: ${module.description}`}
+                        onMouseEnter={(event) => showModuleTooltip(event, module)}
+                        onMouseLeave={hideModuleTooltip}
                         className={`group relative flex cursor-pointer items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold ${module.color}`}
                       >
                         <svg viewBox="0 0 24 24" className="mr-2 h-4 w-4" fill="currentColor" aria-hidden="true">
                           <path d={module.icon} />
                         </svg>
                         {module.label}
-                        {!isMobile ? (
-                          <span className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-20 hidden w-56 -translate-y-1/2 rounded-2xl border border-slate-200 bg-slate-950 px-3 py-2 text-left text-[11px] font-medium leading-4 text-white shadow-xl group-hover:block">
-                            {module.description}
-                          </span>
-                        ) : null}
                       </button>
                     ))}
                   </div>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-2">
                   <div className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                    Partner modules
+                    Participation platforms
                   </div>
                   <div className={`${isMobile ? "flex flex-wrap gap-2" : "space-y-2"}`}>
                     {PARTNER_MODULES.map((module) => (
@@ -1643,22 +2100,26 @@ export function ModularBuilderClient({
                         draggable={!isMobile}
                         onDragStart={(event) => handleDragStart(event, module.type)}
                         onClick={() => (isMobile ? addNodeAtCenter(module.type) : undefined)}
-                        title={`${module.label}: ${module.description}`}
+                        onMouseEnter={(event) => showModuleTooltip(event, module)}
+                        onMouseLeave={hideModuleTooltip}
                         className={`group relative flex cursor-pointer items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold ${module.color}`}
                       >
                         <svg viewBox="0 0 24 24" className="mr-2 h-4 w-4" fill="currentColor" aria-hidden="true">
                           <path d={module.icon} />
                         </svg>
                         {module.label}
-                        {!isMobile ? (
-                          <span className="pointer-events-none absolute left-[calc(100%+10px)] top-1/2 z-20 hidden w-56 -translate-y-1/2 rounded-2xl border border-slate-200 bg-slate-950 px-3 py-2 text-left text-[11px] font-medium leading-4 text-white shadow-xl group-hover:block">
-                            {module.description}
-                          </span>
-                        ) : null}
                       </button>
                     ))}
                   </div>
                 </div>
+                {session?.user?.role === "ADMIN" ? (
+                  <Link
+                    href="/templates/workspace/modules"
+                    className="block rounded-2xl border border-dashed border-emerald-300 bg-emerald-50/80 px-3 py-2 text-sm font-semibold text-emerald-900 transition hover:bg-emerald-100"
+                  >
+                    Edit module descriptions
+                  </Link>
+                ) : null}
               </div>
               <p className="mt-auto text-[11px] text-slate-500">
                 {isMobile ? "Tap a module to add it to the canvas." : "Drag a module into the canvas to add it to your template."}
@@ -1688,18 +2149,37 @@ export function ModularBuilderClient({
               >
                 −
               </button>
+              <button
+                type="button"
+                onClick={fitView}
+                className="rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                Fit
+              </button>
+              <button
+                type="button"
+                onClick={resetView}
+                className="rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                Reset
+              </button>
             </div>
           </div>
-          <div
-            ref={drawflowRef}
-            className={`h-full w-full rounded-2xl ${isMobile ? "min-h-[360px]" : "min-h-[520px]"}`}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={handleDrop}
-            onClick={handleInlineClick}
-            onInput={handleInlineInput}
-            onChange={handleInlineChange}
-            onBlur={handleInlineBlur}
-          />
+          <div className="flex h-full min-h-0 flex-col">
+            <div
+              ref={drawflowRef}
+              className={`modular-canvas min-h-0 flex-1 w-full rounded-t-2xl ${isMobile ? "min-h-[360px]" : "min-h-[520px]"}`}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={handleDrop}
+              onClick={handleInlineClick}
+              onInput={handleInlineInput}
+              onChange={handleInlineChange}
+              onBlur={handleInlineBlur}
+            />
+            <div className="border-t border-slate-200 bg-white/75 px-4 py-2 text-[11px] font-medium text-slate-500">
+              Scroll to pan · Ctrl/Cmd + scroll to zoom
+            </div>
+          </div>
           {!drawflowReady ? (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500">
               Loading builder…
@@ -1899,6 +2379,160 @@ export function ModularBuilderClient({
           </div>
         ) : null}
       </div>
+      {hoveredModuleTooltip ? (
+        <div
+          className="pointer-events-none fixed z-[120] w-56 -translate-y-1/2 rounded-2xl border border-slate-200 bg-slate-950 px-3 py-2 text-left text-[11px] font-medium leading-4 text-white shadow-2xl"
+          style={{
+            top: hoveredModuleTooltip.top,
+            left: hoveredModuleTooltip.left
+          }}
+        >
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-300">
+            {hoveredModuleTooltip.label}
+          </p>
+          <p className="mt-1">{hoveredModuleTooltip.description}</p>
+        </div>
+      ) : null}
+      {pauseAudioUploadNodeId ? (
+        <div className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/40 px-4">
+          <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_30px_80px_rgba(15,23,42,0.28)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Pause audio
+                </p>
+                <h3 className="mt-1 text-lg font-semibold text-slate-900">Upload meditation audio</h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  Add a new audio file and assign it to this Pause module immediately.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (pauseAudioUploading) return;
+                  setPauseAudioUploadNodeId(null);
+                  setPauseAudioUploadFile(null);
+                  setPauseAudioUploadError(null);
+                }}
+                className="rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+            <div className="mt-4 space-y-3">
+              <input
+                type="file"
+                accept=".mp3,.wav,.m4a,.webm,audio/*"
+                onChange={(event) => setPauseAudioUploadFile(event.target.files?.[0] ?? null)}
+                className="block w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700"
+              />
+              {pauseAudioUploadFile ? (
+                <p className="text-xs text-slate-500">
+                  Selected: <span className="font-semibold text-slate-700">{pauseAudioUploadFile.name}</span>
+                </p>
+              ) : null}
+              {pauseAudioUploadError ? (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                  {pauseAudioUploadError}
+                </div>
+              ) : null}
+            </div>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (pauseAudioUploading) return;
+                  setPauseAudioUploadNodeId(null);
+                  setPauseAudioUploadFile(null);
+                  setPauseAudioUploadError(null);
+                }}
+                className="dr-button-outline px-4 py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handlePauseAudioUpload}
+                disabled={!pauseAudioUploadFile || pauseAudioUploading}
+                className="dr-button px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {pauseAudioUploading ? "Uploading..." : "Upload and use"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {promptModalNodeId ? (
+        <div className="fixed inset-0 z-[141] flex items-center justify-center bg-slate-950/40 px-4">
+          <div className="w-full max-w-2xl rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_30px_80px_rgba(15,23,42,0.28)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Prompt module
+                </p>
+                <h3 className="mt-1 text-lg font-semibold text-slate-900">Create or edit text prompt</h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  Write the prompt directly for this module without leaving the builder.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setPromptModalNodeId(null);
+                  setPromptModalTitle("");
+                  setPromptModalContent("");
+                }}
+                className="rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+            <div className="mt-4 grid gap-3">
+              <label className="text-sm font-medium text-slate-700">
+                Prompt title
+                <input
+                  type="text"
+                  value={promptModalTitle}
+                  onChange={(event) => setPromptModalTitle(event.target.value)}
+                  placeholder="Context setting"
+                  className="dr-input mt-1 w-full"
+                />
+              </label>
+              <label className="text-sm font-medium text-slate-700">
+                Prompt text
+                <textarea
+                  value={promptModalContent}
+                  onChange={(event) => setPromptModalContent(event.target.value)}
+                  rows={8}
+                  placeholder="Write the prompt shown to participants"
+                  className="dr-input mt-1 w-full"
+                />
+              </label>
+            </div>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setPromptModalNodeId(null);
+                  setPromptModalTitle("");
+                  setPromptModalContent("");
+                }}
+                className="dr-button-outline px-4 py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={applyPromptModal}
+                disabled={!promptModalTitle.trim() && !promptModalContent.trim()}
+                className="dr-button px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Apply prompt
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

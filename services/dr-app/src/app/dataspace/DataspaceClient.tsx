@@ -101,6 +101,8 @@ export function DataspaceClient({
     setDescription("");
     setColor(DEFAULT_DATASPACE_COLOR);
     setImageUrl("");
+    setImageFile(null);
+    setShowCreate(false);
   }
 
   async function handleImageUpload() {
@@ -324,7 +326,7 @@ export function DataspaceClient({
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1.1fr,0.9fr]">
+      <div className="grid gap-6">
         <div className="space-y-4">
           <div className="rounded-3xl border border-slate-200 bg-white/80 p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -533,9 +535,18 @@ export function DataspaceClient({
           </div>
         </div>
 
-        <div className="space-y-4">
-          <div className="rounded-3xl border border-slate-200 bg-white/80 p-5">
-            <div className="flex items-center justify-between">
+      </div>
+
+      {showCreate ? (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/45 px-4 py-6"
+          onClick={() => setShowCreate(false)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_34px_90px_rgba(15,23,42,0.22)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-lg font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
                   Create dataspace
@@ -544,90 +555,97 @@ export function DataspaceClient({
               </div>
               <button
                 type="button"
-                onClick={() => setShowCreate((prev) => !prev)}
-                className="text-xs font-semibold text-slate-600 hover:text-slate-900"
+                onClick={() => setShowCreate(false)}
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900"
               >
-                {showCreate ? "Hide" : "Show"}
+                Close
               </button>
             </div>
-            {showCreate ? (
-              <form onSubmit={handleCreate} className="mt-4 space-y-4">
-                <div>
-                  <label className="text-sm font-medium">Name</label>
+
+            <form onSubmit={handleCreate} className="mt-4 space-y-4">
+              <div>
+                <label className="text-sm font-medium">Name</label>
+                <input
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Description</label>
+                <textarea
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
+                  rows={3}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Profile image URL</label>
+                <input
+                  value={imageUrl}
+                  onChange={(event) => setImageUrl(event.target.value)}
+                  className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
+                  placeholder="https://example.com/dataspace.png"
+                />
+                <div className="mt-2 flex flex-wrap items-center gap-2">
                   <input
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
-                    required
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    onChange={(event) => setImageFile(event.target.files?.[0] ?? null)}
+                    className="text-xs text-slate-600"
                   />
+                  <button
+                    type="button"
+                    onClick={handleImageUpload}
+                    className="dr-button-outline px-3 py-1 text-xs"
+                    disabled={!imageFile || uploadingImage}
+                  >
+                    {uploadingImage ? "Uploading..." : "Upload"}
+                  </button>
                 </div>
-                <div>
-                  <label className="text-sm font-medium">Description</label>
-                  <textarea
-                    value={description}
-                    onChange={(event) => setDescription(event.target.value)}
-                    className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
-                    rows={3}
-                  />
-                </div>
-        <div>
-          <label className="text-sm font-medium">Profile image URL</label>
-          <input
-            value={imageUrl}
-            onChange={(event) => setImageUrl(event.target.value)}
-            className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
-            placeholder="https://example.com/dataspace.png"
-          />
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              onChange={(event) => setImageFile(event.target.files?.[0] ?? null)}
-              className="text-xs text-slate-600"
-            />
-            <button
-              type="button"
-              onClick={handleImageUpload}
-              className="dr-button-outline px-3 py-1 text-xs"
-              disabled={!imageFile || uploadingImage}
-            >
-              {uploadingImage ? "Uploading..." : "Upload"}
-            </button>
-          </div>
-          {error ? <p className="mt-2 text-xs text-red-600">{error}</p> : null}
-        </div>
-                <div>
-                  <label className="text-sm font-medium">Color</label>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    {DATASPACE_COLOR_OPTIONS.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setColor(option.value)}
-                        className={`h-8 w-8 rounded-full border ${color === option.value ? "border-slate-700" : "border-transparent"}`}
-                        style={{ backgroundColor: option.value }}
-                        aria-label={option.label}
-                        title={option.label}
-                      />
-                    ))}
-                    <input
-                      type="color"
-                      value={color}
-                      onChange={(event) => setColor(event.target.value)}
-                      className="h-9 w-12 cursor-pointer rounded border border-slate-200 bg-white/70 p-1"
-                      aria-label="Custom color"
+              </div>
+              <div>
+                <label className="text-sm font-medium">Color</label>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {DATASPACE_COLOR_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setColor(option.value)}
+                      className={`h-8 w-8 rounded-full border ${color === option.value ? "border-slate-700" : "border-transparent"}`}
+                      style={{ backgroundColor: option.value }}
+                      aria-label={option.label}
+                      title={option.label}
                     />
-                  </div>
+                  ))}
+                  <input
+                    type="color"
+                    value={color}
+                    onChange={(event) => setColor(event.target.value)}
+                    className="h-9 w-12 cursor-pointer rounded border border-slate-200 bg-white/70 p-1"
+                    aria-label="Custom color"
+                  />
                 </div>
-                {error ? <p className="text-sm text-red-700">{error}</p> : null}
+              </div>
+              {error ? <p className="text-sm text-red-700">{error}</p> : null}
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreate(false)}
+                  className="dr-button-outline px-4 py-2 text-sm"
+                >
+                  Cancel
+                </button>
                 <button type="submit" className="dr-button px-4 py-2 text-sm" disabled={loading}>
                   {loading ? "Creating..." : "Create dataspace"}
                 </button>
-              </form>
-            ) : null}
+              </div>
+            </form>
           </div>
         </div>
-      </div>
+      ) : null}
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
     </div>

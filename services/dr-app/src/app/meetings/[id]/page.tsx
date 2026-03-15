@@ -7,10 +7,12 @@ import { formatDateTime, isMeetingActive } from "@/lib/utils";
 import { MeetingActions } from "@/app/meetings/[id]/MeetingActions";
 import { MeetingInviteActions } from "@/app/meetings/[id]/MeetingInviteActions";
 import { MeetingParticipation } from "@/app/meetings/[id]/MeetingParticipation";
+import { MeetingSummaryPanel } from "@/app/meetings/[id]/MeetingSummaryPanel";
 import { buildCallJoinUrl, buildDisplayName, normalizeCallBaseUrl } from "@/lib/callUrl";
 import { buildVideoAccessToken } from "@/lib/videoAccess";
 import { MeetingDetailClient } from "@/app/meetings/[id]/MeetingDetailClient";
 import { DEFAULT_DATASPACE_COLOR, getDataspaceTheme } from "@/lib/dataspaceColor";
+import { chooseAutoRemoteAssignee, parseAutoRemoteAssignment } from "@/lib/autoRemoteAssignment";
 
 export default async function MeetingDetailPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -30,6 +32,19 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
       },
       dataspace: {
         include: { members: { select: { userId: true } } }
+      },
+      aiAgents: {
+        include: {
+          agent: {
+            select: {
+              id: true,
+              name: true,
+              username: true,
+              color: true,
+              enabled: true
+            }
+          }
+        }
       }
     }
   });
@@ -148,11 +163,36 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
         ? "Deepgram Live"
         : "Deepgram";
   const theme = getDataspaceTheme(meeting.dataspace?.color ?? DEFAULT_DATASPACE_COLOR);
+  const latestRemoteWorkerJob =
+    meeting.transcriptionProvider === "AUTOREMOTE"
+      ? await prisma.remoteWorkerJob.findFirst({
+          where: {
+            sourceType: "MEETING_RECORDING",
+            sourceId: meeting.id
+          },
+          orderBy: { updatedAt: "desc" },
+          select: {
+            payloadJson: true
+          }
+        })
+      : null;
+  const autoRemoteAssignment =
+    parseAutoRemoteAssignment(latestRemoteWorkerJob?.payloadJson) ??
+    (meeting.transcriptionProvider === "AUTOREMOTE"
+      ? chooseAutoRemoteAssignee(
+          meeting.members.map((member) => ({
+            userId: member.userId,
+            role: member.role,
+            createdAt: member.createdAt,
+            user: { email: member.user.email }
+          }))
+        )
+      : null);
 
   return (
     <div className="dataspace-theme dataspace-theme-tight" style={theme as CSSProperties}>
       <div className="relative left-1/2 right-1/2 w-screen -mx-[50vw] -my-6 h-[calc(100dvh-var(--app-header-h,0px))] overflow-hidden px-0">
-        <div className={`grid h-full min-h-0 ${active ? "grid-rows-[auto,minmax(0,1fr),auto]" : "grid-rows-[auto,minmax(0,1fr),auto,auto]"} gap-4 overflow-hidden px-4 pb-4 pt-2`}>
+        <div className="grid h-full min-h-0 grid-rows-[auto,minmax(0,1fr),auto,auto] gap-2 overflow-hidden px-4 pb-2 pt-1">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
@@ -165,13 +205,36 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
             <div className="mt-3 inline-flex max-w-2xl items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-sm text-amber-900">
               <span className="mt-0.5 text-base leading-none">AI</span>
               <span>
-                This meeting will be transcribed after the call by remote workers. The
-                recording is processed once the meeting has ended.
+                {meeting.transcriptionProvider === "AUTOREMOTE" && autoRemoteAssignment
+                  ? autoRemoteAssignment.assignedUserId === session.user.id
+                    ? "You are assigned to process this meeting after the call with Auto Remote. Keep the Remote Worker page open once the meeting has ended."
+                    : `This meeting will be transcribed after the call by ${autoRemoteAssignment.assignedUserEmail}. That participant must keep the Remote Worker page open once the meeting has ended.`
+                  : "This meeting will be transcribed after the call by remote workers. The recording is processed once the meeting has ended."}
               </span>
             </div>
           ) : null}
+          {meeting.aiAgents.length > 0 ? (
+            <div className="mt-3 flex max-w-3xl flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white/85 px-3 py-2 text-sm text-slate-700">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                AI participants
+              </span>
+              {meeting.aiAgents.map(({ agent }) => (
+                <span
+                  key={agent.id}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700"
+                >
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: agent.color || "#0f172a" }}
+                  />
+                  <span>{agent.name}</span>
+                  <span className="text-slate-500">@{agent.username}</span>
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 self-start pr-14 sm:pr-16">
           {canEdit ? (
             <Link
               href={`/meetings/${meeting.id}/edit`}
@@ -214,7 +277,12 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
         initialRoundId={meeting.transcriptionRoundId ?? null}
       />
 
-      <div className="max-h-[26dvh] overflow-auto">
+      <MeetingSummaryPanel
+        meetingId={meeting.id}
+        enabled={postCallTranscriptEnabled}
+      />
+
+      <div className="max-h-[18dvh] overflow-auto">
         <MeetingParticipation
           meetingId={meeting.id}
           isPublic={meeting.isPublic}

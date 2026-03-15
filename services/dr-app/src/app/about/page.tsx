@@ -117,7 +117,7 @@ export default async function AboutPage() {
         </p>
         <div className="mt-4 flex flex-wrap gap-3">
           <a
-            href="/resources/democracy-routes-whitepaper-2.0.pdf"
+            href="/api/resources/download/whitepaper"
             target="_blank"
             rel="noreferrer noopener"
             download
@@ -126,7 +126,7 @@ export default async function AboutPage() {
             Whitepaper
           </a>
           <a
-            href="/resources/proof-of-political-power-2.pdf"
+            href="/api/resources/download/popp"
             target="_blank"
             rel="noreferrer noopener"
             download

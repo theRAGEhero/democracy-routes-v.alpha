@@ -22,12 +22,20 @@ type InitialMeeting = {
   isPublic: boolean;
   requiresApproval: boolean;
   capacity: number | null;
+  aiAgentIds?: string[];
 };
 
 type Props = {
   dataspaces: DataspaceOption[];
   mode?: "create" | "edit";
   initialMeeting?: InitialMeeting | null;
+};
+
+type AiAgentOption = {
+  id: string;
+  name: string;
+  username: string;
+  color: string;
 };
 
 function normalizeFormError(payload: any, fallback: string) {
@@ -85,6 +93,8 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
   const [isPublic, setIsPublic] = useState(false);
   const [requiresApproval, setRequiresApproval] = useState(false);
   const [capacity, setCapacity] = useState<number | "">("");
+  const [aiAgents, setAiAgents] = useState<AiAgentOption[]>([]);
+  const [selectedAiAgentIds, setSelectedAiAgentIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [logId, setLogId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -132,7 +142,27 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
     setIsPublic(Boolean(initialMeeting.isPublic));
     setRequiresApproval(Boolean(initialMeeting.requiresApproval));
     setCapacity(initialMeeting.capacity ?? "");
+    setSelectedAiAgentIds(initialMeeting.aiAgentIds ?? []);
   }, [initialMeeting]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadAiAgents() {
+      try {
+        const response = await fetch("/api/ai-agents", { credentials: "include" });
+        if (!response.ok) return;
+        const payload = await response.json().catch(() => null);
+        if (!active) return;
+        setAiAgents(Array.isArray(payload?.agents) ? payload.agents : []);
+      } catch {
+        if (active) setAiAgents([]);
+      }
+    }
+    loadAiAgents();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (mode !== "create") return;
@@ -263,7 +293,8 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
         dataspaceId: dataspaceId || null,
         isPublic,
         requiresApproval,
-        capacity: capacity === "" ? null : Number(capacity)
+        capacity: capacity === "" ? null : Number(capacity),
+        aiAgentIds: selectedAiAgentIds
       })
     });
 
@@ -332,197 +363,261 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
     }
   }
 
+  const dateTimeEnabled = Boolean(date || startTime);
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      <div>
-        <label className="text-sm font-medium">Title (optional)</label>
-        <input
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
-        />
-      </div>
-      <div>
-        <label className="text-sm font-medium">Short description</label>
-        <textarea
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-          className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
-          rows={3}
-          maxLength={240}
-          placeholder="Optional context for participants."
-        />
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <div>
-          <label className="text-sm font-medium">Day (optional)</label>
-          <input
-            type="date"
-            value={date}
-            onChange={(event) => setDate(event.target.value)}
-            className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
-          />
-        </div>
-        <div>
-          <label className="text-sm font-medium">Start time (optional)</label>
-          <input
-            type="time"
-            value={startTime}
-            onChange={(event) => setStartTime(event.target.value)}
-            className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
-          />
-        </div>
-        <div>
-          <label className="text-sm font-medium">Duration (optional)</label>
-          <select
-            value={durationMinutes}
-            onChange={(event) => setDurationMinutes(Number(event.target.value))}
-            className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
-          >
-            <option value={15}>15m</option>
-            <option value={30}>30m</option>
-            <option value={45}>45m</option>
-            <option value={60}>1h</option>
-            <option value={90}>1h 30m</option>
-            <option value={120}>2h</option>
-            <option value={150}>2h 30m</option>
-          </select>
-        </div>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <div>
-          <label className="text-sm font-medium">Language</label>
-          <select
-            value={language}
-            onChange={(event) => setLanguage(event.target.value)}
-            className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
-          >
-            <option value="EN">English</option>
-            <option value="IT">Italian</option>
-          </select>
-        </div>
-        <div className="space-y-2">
-          <p className="text-sm font-medium">Transcription engine</p>
-          <div className="flex flex-wrap gap-4">
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="radio"
-                name="provider"
-                value="DEEPGRAM"
-                checked={provider === "DEEPGRAM"}
-                onChange={(event) => setProvider(event.target.value)}
-                className="h-4 w-4"
-              />
-              Deepgram (fast)
-            </label>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="radio"
-                name="provider"
-                value="DEEPGRAMLIVE"
-                checked={provider === "DEEPGRAMLIVE"}
-                onChange={(event) => setProvider(event.target.value)}
-                className="h-4 w-4"
-              />
-              Deepgram Live
-            </label>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="radio"
-                name="provider"
-                value="VOSK"
-                checked={provider === "VOSK"}
-                onChange={(event) => setProvider(event.target.value)}
-                className="h-4 w-4"
-              />
-              Vosk (slow, privacy friendly)
-            </label>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="radio"
-                name="provider"
-                value="WHISPERREMOTE"
-                checked={provider === "WHISPERREMOTE"}
-                onChange={(event) => setProvider(event.target.value)}
-                className="h-4 w-4"
-              />
-              Whisper Remote
-            </label>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="radio"
-                name="provider"
-                value="AUTOREMOTE"
-                checked={provider === "AUTOREMOTE"}
-                onChange={(event) => setProvider(event.target.value)}
-                className="h-4 w-4"
-              />
-              Auto Remote
-            </label>
-          </div>
-          <p className="text-xs text-slate-500">
-            Whisper Remote and Auto Remote record the meeting and send it to the browser-based remote worker after the call.
-          </p>
-        </div>
-      </div>
-
-      <div>
-        <label className="text-sm font-medium">Dataspace (optional)</label>
-        <select
-          value={dataspaceId}
-          onChange={(event) => setDataspaceId(event.target.value)}
-          className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
-        >
-          <option value="">No dataspace</option>
-          {dataspaces.map((space) => (
-            <option key={space.id} value={space.id}>
-              {space.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="space-y-2">
-        <label className="flex items-center gap-2 text-sm text-slate-700">
-          <input
-            type="checkbox"
-            checked={isPublic}
-            onChange={(event) => setIsPublic(event.target.checked)}
-            className="h-4 w-4"
-          />
-          Public listed (visible to dataspace members)
-        </label>
-        {isPublic ? (
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={requiresApproval}
-                onChange={(event) => setRequiresApproval(event.target.checked)}
-                className="h-4 w-4"
-              />
-              Requires approval
-            </label>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <section className="grid gap-4 lg:grid-cols-[1.4fr,1fr]">
+        <div className="space-y-3 rounded-[24px] border border-slate-200/80 bg-white/80 p-4">
+          <div className="grid gap-3 sm:grid-cols-[1.1fr,0.9fr]">
             <div>
-              <label className="text-sm font-medium">Capacity (optional)</label>
+              <label className="text-sm font-medium text-slate-800">Title (optional)</label>
               <input
-                type="number"
-                min={2}
-                value={capacity}
-                onChange={(event) => setCapacity(event.target.value === "" ? "" : Number(event.target.value))}
-                className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
-                placeholder="No limit"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                className="dr-input mt-1 w-full rounded-xl px-3 py-2 text-sm"
+                placeholder="Auto-generated if left empty"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-800">Dataspace</label>
+              <select
+                value={dataspaceId}
+                onChange={(event) => setDataspaceId(event.target.value)}
+                className="dr-input mt-1 w-full rounded-xl px-3 py-2 text-sm"
+              >
+                <option value="">No dataspace</option>
+                {dataspaces.map((space) => (
+                  <option key={space.id} value={space.id}>
+                    {space.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-800">Short description</label>
+            <textarea
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              className="dr-input mt-1 w-full rounded-xl px-3 py-2 text-sm"
+              rows={2}
+              maxLength={240}
+              placeholder="Optional context for participants."
+            />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-4">
+            <div className="sm:col-span-2">
+              <label className="text-sm font-medium text-slate-800">Day</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(event) => setDate(event.target.value)}
+                className="dr-input mt-1 w-full rounded-xl px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-800">Start time</label>
+              <input
+                type="time"
+                value={startTime}
+                onChange={(event) => setStartTime(event.target.value)}
+                className="dr-input mt-1 w-full rounded-xl px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-800">Duration</label>
+              <select
+                value={durationMinutes}
+                onChange={(event) => setDurationMinutes(Number(event.target.value))}
+                className="dr-input mt-1 w-full rounded-xl px-3 py-2 text-sm"
+              >
+                <option value={15}>15m</option>
+                <option value={30}>30m</option>
+                <option value={45}>45m</option>
+                <option value={60}>1h</option>
+                <option value={90}>1h 30m</option>
+                <option value={120}>2h</option>
+                <option value={150}>2h 30m</option>
+              </select>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-3 py-2 text-xs text-slate-600">
+            {dateTimeEnabled
+              ? "This meeting will be scheduled with the selected day, time, and duration."
+              : "Leave date and time empty to create an instant meeting link."}
+          </div>
+        </div>
+
+        <div className="space-y-3 rounded-[24px] border border-slate-200/80 bg-white/80 p-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="text-sm font-medium text-slate-800">Language</label>
+              <select
+                value={language}
+                onChange={(event) => setLanguage(event.target.value)}
+                className="dr-input mt-1 w-full rounded-xl px-3 py-2 text-sm"
+              >
+                <option value="EN">English</option>
+                <option value="IT">Italian</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-800">Timezone</label>
+              <input
+                value={timezone}
+                onChange={(event) => setTimezone(event.target.value)}
+                className="dr-input mt-1 w-full rounded-xl px-3 py-2 text-sm"
+                placeholder={resolvedTimezone}
               />
             </div>
           </div>
-        ) : null}
-      </div>
 
-      <div>
+          <div>
+            <p className="text-sm font-medium text-slate-800">Transcription engine</p>
+            <div className="mt-2 grid gap-2">
+              {[
+                ["DEEPGRAMLIVE", "Deepgram Live"],
+                ["DEEPGRAM", "Deepgram"],
+                ["VOSK", "Vosk"],
+                ["WHISPERREMOTE", "Whisper Remote"],
+                ["AUTOREMOTE", "Auto Remote"]
+              ].map(([value, label]) => (
+                <label
+                  key={value}
+                  className={`flex items-center justify-between gap-3 rounded-2xl border px-3 py-2 text-sm transition ${
+                    provider === value
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-200 bg-slate-50/70 text-slate-700 hover:bg-white"
+                  }`}
+                >
+                  <span className="font-medium">{label}</span>
+                  <input
+                    type="radio"
+                    name="provider"
+                    value={value}
+                    checked={provider === value}
+                    onChange={(event) => setProvider(event.target.value)}
+                    className="h-4 w-4"
+                  />
+                </label>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              Whisper Remote and Auto Remote record the meeting and process it after the call.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+            <label className="flex items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={isPublic}
+                onChange={(event) => setIsPublic(event.target.checked)}
+                className="h-4 w-4"
+              />
+              Public listed
+            </label>
+            <p className="mt-1 text-xs text-slate-500">
+              Visible to dataspace members when the meeting belongs to a dataspace.
+            </p>
+            {isPublic ? (
+              <div className="mt-3 grid gap-3 sm:grid-cols-[1fr,140px]">
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={requiresApproval}
+                    onChange={(event) => setRequiresApproval(event.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  Requires approval
+                </label>
+                <div>
+                  <label className="text-sm font-medium text-slate-800">Capacity</label>
+                  <input
+                    type="number"
+                    min={2}
+                    value={capacity}
+                    onChange={(event) =>
+                      setCapacity(event.target.value === "" ? "" : Number(event.target.value))
+                    }
+                    className="dr-input mt-1 w-full rounded-xl px-3 py-2 text-sm"
+                    placeholder="Open"
+                  />
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-[24px] border border-slate-200/80 bg-white/80 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <label className="text-sm font-medium text-slate-800">AI participants (optional)</label>
+          <span className="text-xs text-slate-500">
+            Invite AI agents as meeting participants.
+          </span>
+        </div>
+        {provider !== "DEEPGRAMLIVE" ? (
+          <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-900">
+            AI participants are currently active only for Deepgram Live meetings.
+          </div>
+        ) : null}
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {aiAgents.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 px-3 py-3 text-sm text-slate-500 sm:col-span-2">
+              No AI agents available yet.
+            </div>
+          ) : (
+            aiAgents.map((agent) => {
+              const checked = selectedAiAgentIds.includes(agent.id);
+              return (
+                <label
+                  key={agent.id}
+                  className={`flex items-center justify-between gap-3 rounded-2xl border px-3 py-3 text-sm transition ${
+                    checked
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-200 bg-slate-50/70 text-slate-700 hover:bg-white"
+                  }`}
+                >
+                  <span className="min-w-0">
+                    <span className="inline-flex items-center gap-2 font-medium">
+                      <span
+                        className="inline-block h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: agent.color || "#0f172a" }}
+                      />
+                      <span>{agent.name}</span>
+                    </span>
+                    <span className={`mt-1 block truncate text-xs ${checked ? "text-white/75" : "text-slate-500"}`}>
+                      @{agent.username}
+                    </span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={provider !== "DEEPGRAMLIVE"}
+                    onChange={(event) =>
+                      setSelectedAiAgentIds((current) =>
+                        event.target.checked
+                          ? Array.from(new Set([...current, agent.id]))
+                          : current.filter((id) => id !== agent.id)
+                      )
+                    }
+                    className="h-4 w-4"
+                  />
+                </label>
+              );
+            })
+          )}
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          This assigns AI agents to the meeting. Live response behavior will follow the meeting runtime configuration for Deepgram Live meetings.
+        </p>
+      </section>
+
+      <section className="rounded-[24px] border border-slate-200/80 bg-white/80 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <label className="text-sm font-medium">Invite users (optional)</label>
+          <label className="text-sm font-medium text-slate-800">Invite users (optional)</label>
           <label className="flex items-center gap-2 text-xs text-slate-600">
             <input
               type="checkbox"
@@ -537,8 +632,8 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
           <textarea
             value={inviteEmails}
             onChange={(event) => setInviteEmails(event.target.value)}
-            className="dr-input w-full rounded px-3 py-2 text-sm"
-            rows={3}
+            className="dr-input w-full rounded-xl px-3 py-2 text-sm"
+            rows={2}
             placeholder="email1@example.com, email2@example.com"
             onFocus={() => setShowInviteSuggestions(true)}
             onBlur={() => setTimeout(() => setShowInviteSuggestions(false), 150)}
@@ -559,7 +654,7 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
           ) : null}
         </div>
         <p className="mt-1 text-xs text-slate-500">Separate emails with commas or new lines.</p>
-      </div>
+      </section>
 
       {pendingGuestInvites.length > 0 ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 text-sm text-amber-900">
@@ -600,13 +695,24 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
         </div>
       ) : null}
 
-      <button
-        type="submit"
-        className="dr-button px-4 py-2 text-sm"
-        disabled={loading}
-      >
-        {loading ? (mode === "edit" ? "Saving..." : "Creating...") : mode === "edit" ? "Save changes" : "Create meeting"}
-      </button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-slate-500">
+          The call link is created immediately. Optional scheduling and invites are attached here.
+        </p>
+        <button
+          type="submit"
+          className="dr-button px-5 py-2.5 text-sm"
+          disabled={loading}
+        >
+          {loading
+            ? mode === "edit"
+              ? "Saving..."
+              : "Creating..."
+            : mode === "edit"
+              ? "Save changes"
+              : "Create meeting"}
+        </button>
+      </div>
     </form>
   );
 }

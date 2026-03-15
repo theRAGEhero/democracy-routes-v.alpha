@@ -10,6 +10,7 @@ import { DataspaceAnalysisPanel } from "@/app/dataspace/[id]/DataspaceAnalysisPa
 import { JoinButton } from "@/components/JoinButton";
 import { DataspaceSettingsModal } from "@/app/dataspace/[id]/DataspaceSettingsModal";
 import { DataspaceImportSources } from "@/app/dataspace/[id]/DataspaceImportSources";
+import { DataspaceMembersModal } from "@/app/dataspace/[id]/DataspaceMembersModal";
 import { DEFAULT_DATASPACE_COLOR, getDataspaceTheme } from "@/lib/dataspaceColor";
 import { UserProfileLink } from "@/components/UserProfileLink";
 
@@ -27,8 +28,27 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
       include: {
         createdBy: { select: { id: true, email: true } },
         members: { include: { user: { select: { id: true, email: true } } } },
-        meetings: { where: { isHidden: false }, orderBy: { createdAt: "desc" } },
-        plans: { orderBy: { startAt: "desc" } },
+        meetings: {
+          where: { isHidden: false },
+          orderBy: { createdAt: "desc" },
+          include: {
+            members: {
+              include: {
+                user: { select: { id: true, email: true } }
+              }
+            }
+          }
+        },
+        plans: {
+          orderBy: { startAt: "desc" },
+          include: {
+            participants: {
+              include: {
+                user: { select: { id: true, email: true } }
+              }
+            }
+          }
+        },
         texts: { orderBy: { updatedAt: "desc" } }
       }
     }),
@@ -67,6 +87,8 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
   if (!dataspace) {
     return <p className="text-sm text-slate-600">Dataspace not found.</p>;
   }
+
+  type DataspaceDetail = NonNullable<typeof dataspace>;
 
   const isMember = dataspace.members.some(
     (member: (typeof dataspace.members)[number]) =>
@@ -115,6 +137,47 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
   );
 
   const theme = getDataspaceTheme(dataspace.color ?? DEFAULT_DATASPACE_COLOR);
+
+  function renderParticipantSummary(meeting: DataspaceDetail["meetings"][number]) {
+    const participantEmails = Array.from(
+      new Set(
+        (meeting.members ?? [])
+          .map((member) => member.user?.email?.trim())
+          .filter((email): email is string => Boolean(email))
+      )
+    );
+
+    if (participantEmails.length === 0) {
+      return null;
+    }
+
+    if (participantEmails.length < 6) {
+      return participantEmails.join(", ");
+    }
+
+    return `+${participantEmails.length}`;
+  }
+
+  function renderPlanParticipantSummary(plan: DataspaceDetail["plans"][number]) {
+    const participantEmails = Array.from(
+      new Set(
+        (plan.participants ?? [])
+          .filter((participant) => participant.status === "APPROVED")
+          .map((participant) => participant.user?.email?.trim())
+          .filter((email): email is string => Boolean(email))
+      )
+    );
+
+    if (participantEmails.length === 0) {
+      return null;
+    }
+
+    if (participantEmails.length < 6) {
+      return participantEmails.join(", ");
+    }
+
+    return `+${participantEmails.length}`;
+  }
 
   return (
     <div className="dataspace-theme" style={theme as CSSProperties}>
@@ -258,6 +321,9 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
                     <div key={plan.id} className="flex items-center justify-between gap-3 rounded border border-slate-200 bg-white/70 px-3 py-2">
                       <div>
                         <p className="font-medium text-slate-900">{plan.title}</p>
+                        {renderPlanParticipantSummary(plan) ? (
+                          <p className="text-xs text-slate-500">{renderPlanParticipantSummary(plan)}</p>
+                        ) : null}
                         <p className="text-xs text-slate-500">
                           {formatDateTime(plan.startAt, plan.timezone)}
                         </p>
@@ -295,6 +361,9 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
                   <div key={meeting.id} className="flex items-center justify-between gap-3 rounded border border-slate-200 bg-white/70 px-3 py-2">
                     <div>
                       <p className="font-medium text-slate-900">{meeting.title}</p>
+                      {renderParticipantSummary(meeting) ? (
+                        <p className="text-xs text-slate-500">{renderParticipantSummary(meeting)}</p>
+                      ) : null}
                       <p className="text-xs text-slate-500">{formatDateTime(meeting.createdAt)}</p>
                     </div>
                     <div className="flex items-center gap-3">
@@ -323,42 +392,50 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
 
         <div className="space-y-4">
           <div className="dr-card p-6">
-            <h2 className="text-sm font-semibold uppercase text-slate-500">Members</h2>
-            <div className="mt-3 flex flex-wrap gap-2 text-sm text-slate-700">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold uppercase text-slate-500">Members</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  {dataspace.members.length} member{dataspace.members.length === 1 ? "" : "s"}
+                  {canInvite ? " · invite registered users by email" : ""}
+                </p>
+              </div>
+              <DataspaceMembersModal
+                dataspaceId={dataspace.id}
+                members={dataspace.members.map((member: (typeof dataspace.members)[number]) => ({
+                  id: member.id,
+                  user: {
+                    id: member.user.id,
+                    email: member.user.email
+                  }
+                }))}
+                canInvite={canInvite}
+              />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2 text-sm text-slate-700">
               {dataspace.members.length === 0 ? (
                 <span className="text-slate-500">No members yet.</span>
               ) : (
-                dataspace.members.map(
-                  (member: (typeof dataspace.members)[number]) => (
-                  <span key={member.id} className="rounded-full bg-white px-3 py-1">
+                dataspace.members.slice(0, 6).map((member: (typeof dataspace.members)[number]) => (
+                  <span
+                    key={member.id}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1 shadow-sm"
+                  >
                     <UserProfileLink
                       userId={member.user.id}
                       email={member.user.email}
                       className="text-slate-700 hover:text-slate-900 hover:underline"
                     />
                   </span>
-                  )
-                )
+                ))
               )}
+              {dataspace.members.length > 6 ? (
+                <span className="rounded-full border border-dashed border-slate-300 bg-white/70 px-3 py-1 text-xs font-semibold text-slate-500">
+                  +{dataspace.members.length - 6} more
+                </span>
+              ) : null}
             </div>
           </div>
-
-          {canInvite ? (
-            <div className="dr-card p-6">
-              <h2 className="text-sm font-semibold uppercase text-slate-500">Invite members</h2>
-              <p className="mt-1 text-xs text-slate-500">
-                Invite registered users by email.
-              </p>
-              <div className="mt-4">
-                <DataspaceInviteForm
-                  dataspaceId={dataspace.id}
-                  existingEmails={dataspace.members.map(
-                    (member: (typeof dataspace.members)[number]) => member.user.email
-                  )}
-                />
-              </div>
-            </div>
-          ) : null}
 
           <div className="dr-card p-6">
             <h2 className="text-sm font-semibold uppercase text-slate-500">Templates</h2>
@@ -379,6 +456,9 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
                     <div key={plan.id} className="flex items-center justify-between gap-3 rounded border border-slate-200 bg-white/70 px-3 py-2">
                       <div>
                         <p className="font-medium text-slate-900">{plan.title}</p>
+                        {renderPlanParticipantSummary(plan) ? (
+                          <p className="text-xs text-slate-500">{renderPlanParticipantSummary(plan)}</p>
+                        ) : null}
                         <p className="text-xs text-slate-500">
                           {formatDateTime(plan.startAt, plan.timezone)}
                         </p>

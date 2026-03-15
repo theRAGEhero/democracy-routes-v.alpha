@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { postEventHubEvent } from "@/lib/eventHub";
+import { chooseAutoRemoteAssignee } from "@/lib/autoRemoteAssignment";
 
 type RecordingItem = {
   roomId: string;
@@ -50,7 +51,13 @@ export async function POST() {
         id: true,
         title: true,
         roomId: true,
-        transcriptionProvider: true
+        transcriptionProvider: true,
+        members: {
+          include: {
+            user: { select: { email: true } }
+          },
+          orderBy: { createdAt: "asc" }
+        }
       }
     });
 
@@ -93,13 +100,17 @@ export async function POST() {
       if (!meeting) continue;
       const dedupeKey = `${meeting.id}:${item.sessionId}`;
       if (existingKeys.has(dedupeKey)) continue;
+      const assignment =
+        meeting.transcriptionProvider === "AUTOREMOTE"
+          ? chooseAutoRemoteAssignee(meeting.members)
+          : null;
 
       const job = await prisma.remoteWorkerJob.create({
         data: {
           sourceType: "MEETING_RECORDING",
           sourceId: meeting.id,
           status: "PENDING",
-          provider: "WHISPERREMOTE",
+          provider: meeting.transcriptionProvider === "AUTOREMOTE" ? "AUTOREMOTE" : "WHISPERREMOTE",
           model: "EN_REMOTE_WORKER",
           language: "en",
           payloadJson: JSON.stringify({
@@ -109,7 +120,8 @@ export async function POST() {
             sessionId: item.sessionId,
             bytes: item.bytes,
             updatedAt: item.updatedAt,
-            transcriptionProvider: meeting.transcriptionProvider
+            transcriptionProvider: meeting.transcriptionProvider,
+            ...(assignment ?? {})
           })
         },
         select: {

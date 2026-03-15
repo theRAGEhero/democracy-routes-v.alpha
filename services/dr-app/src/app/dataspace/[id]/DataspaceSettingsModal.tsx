@@ -82,7 +82,7 @@ export function DataspaceSettingsModal({
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div>
             <p className="text-xs font-semibold uppercase text-slate-500">Dataspace settings</p>
-            <p className="text-sm text-slate-700">Manage notifications, RSS, and profile details.</p>
+            <p className="text-sm text-slate-700">Manage profile, notifications, and sharing channels.</p>
           </div>
           <button
             type="button"

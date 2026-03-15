@@ -23,11 +23,30 @@ function formatSpeaker(speaker?: number | string) {
   return `Speaker ${speaker}`;
 }
 
+function normalizeSpeakerKey(speaker?: number | string) {
+  if (speaker === undefined || speaker === null || speaker === "") return "__unknown__";
+  return String(speaker);
+}
+
 export function LiveTranscriptPanel({ meetingId, enabled, visible, className = "" }: Props) {
   const [lines, setLines] = useState<LiveLine[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const mergedLines = useMemo(() => lines.slice(-200), [lines]);
+  const renderedLines = useMemo(
+    () =>
+      mergedLines.map((line, index) => {
+        const previous = index > 0 ? mergedLines[index - 1] : null;
+        const speakerChanged =
+          !previous ||
+          normalizeSpeakerKey(previous.speaker) !== normalizeSpeakerKey(line.speaker);
+        return {
+          ...line,
+          showSpeaker: speakerChanged
+        };
+      }),
+    [mergedLines]
+  );
 
   useEffect(() => {
     if (!enabled) return;
@@ -86,18 +105,22 @@ export function LiveTranscriptPanel({ meetingId, enabled, visible, className = "
       </div>
       <div className="min-h-0 flex-1 overflow-auto px-4 py-3 text-xs text-slate-800">
         {error ? <p className="text-xs text-amber-700">{error}</p> : null}
-        {mergedLines.length === 0 && !error ? (
+        {renderedLines.length === 0 && !error ? (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-xs text-slate-500">
             Waiting for live transcription…
           </div>
         ) : (
           <div className="space-y-2.5">
-            {mergedLines.map((line) => (
+            {renderedLines.map((line) => (
               <div key={line.id} className="rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  {formatSpeaker(line.speaker)}
+                {line.showSpeaker ? (
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    {formatSpeaker(line.speaker)}
+                  </p>
+                ) : null}
+                <p className={`${line.showSpeaker ? "mt-1" : ""} text-[13px] leading-5 text-slate-800`}>
+                  {line.text}
                 </p>
-                <p className="mt-1 text-[13px] leading-5 text-slate-800">{line.text}</p>
               </div>
             ))}
           </div>

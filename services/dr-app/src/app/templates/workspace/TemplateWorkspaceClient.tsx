@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { buildDefaultTemplateDraft, type TemplateBlock, type TemplateDraft } from "@/lib/templateDraft";
 import { ModularBuilderClient } from "@/app/modular/ModularBuilderClient";
 import { StructuredTemplateEditor } from "@/app/templates/workspace/StructuredTemplateEditor";
+import { postClientLog } from "@/lib/clientLogs";
 
-type WorkspaceMode = "ai" | "modular" | "structured";
+type WorkspaceMode = "modular" | "structured";
 type AiMessage = {
   id: string;
   role: "user" | "assistant" | "system";
@@ -94,22 +95,35 @@ function mapTemplateToDraft(template: TemplateSummary): TemplateDraft {
   };
 }
 
+const AI_INTRO_MESSAGE: AiMessage = {
+  id: "intro",
+  role: "system",
+  text: "Use AI to generate a first draft or modify the current template without leaving the workspace."
+};
+
+function serializeDraft(draft: TemplateDraft) {
+  return JSON.stringify(draft);
+}
+
 export function TemplateWorkspaceClient({
   templates,
   dataspaces,
   initialMode,
   initialTemplateId
 }: Props) {
+  const initialTemplate = initialTemplateId ? templates.find((item) => item.id === initialTemplateId) ?? null : null;
+  const initialDraft = initialTemplate ? mapTemplateToDraft(initialTemplate) : buildDefaultTemplateDraft();
+  const initialSavedSignature = serializeDraft(initialDraft);
   const router = useRouter();
   const searchParams = useSearchParams();
   const [templatesState, setTemplatesState] = useState<TemplateSummary[]>(templates);
   const [mode, setMode] = useState<WorkspaceMode>(initialMode);
-  const [draft, setDraft] = useState<TemplateDraft>(() => {
-    const existing = initialTemplateId ? templates.find((item) => item.id === initialTemplateId) : null;
-    return existing ? mapTemplateToDraft(existing) : buildDefaultTemplateDraft();
-  });
+  const [draft, setDraft] = useState<TemplateDraft>(initialDraft);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(initialTemplate?.updatedAt ?? null);
+  const [lastSavedSignature, setLastSavedSignature] = useState(initialSavedSignature);
   const [aiPrompt, setAiPrompt] = useState(
     "Design a 90-minute citizen assembly template to deliberate on a civic issue. Include context setting, small-group pairing, data capture, and a closing summary."
   );
@@ -126,13 +140,16 @@ export function TemplateWorkspaceClient({
   const [infoOpen, setInfoOpen] = useState(false);
   const [infoModalOpen, setInfoModalOpen] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
-  const [aiMessages, setAiMessages] = useState<AiMessage[]>([
-    {
-      id: "intro",
-      role: "system",
-      text: "Use AI to generate a first draft or modify the current template without leaving the workspace."
-    }
-  ]);
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileAiOpen, setMobileAiOpen] = useState(false);
+  const [aiMessages, setAiMessages] = useState<AiMessage[]>([AI_INTRO_MESSAGE]);
+  const lastLoadedRouteTemplateIdRef = useRef<string | null>(initialTemplateId ?? null);
+  const autosaveTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const queuedAutosaveRef = useRef(false);
+  const latestDraftRef = useRef(draft);
+  const latestAiMessagesRef = useRef(aiMessages);
+  const lastModeRef = useRef<WorkspaceMode>(initialMode);
+  const lastDirtyRef = useRef<boolean>(false);
 
   async function persistAiHistory(templateId: string, messages: AiMessage[]) {
     try {
@@ -149,6 +166,8 @@ export function TemplateWorkspaceClient({
   }
 
   const currentTemplateId = draft.id ?? null;
+  const draftSignature = useMemo(() => serializeDraft(draft), [draft]);
+  const isDirty = draftSignature !== lastSavedSignature;
   const templateCount = templatesState.length;
   const totalDuration = useMemo(
     () => Math.round(draft.blocks.reduce((sum, block) => sum + (block.durationSeconds || 0), 0) / 60),
@@ -156,18 +175,172 @@ export function TemplateWorkspaceClient({
   );
 
   useEffect(() => {
+    latestDraftRef.current = draft;
+  }, [draft]);
+
+  useEffect(() => {
+    latestAiMessagesRef.current = aiMessages;
+  }, [aiMessages]);
+
+  useEffect(() => {
+    void postClientLog({
+      scope: "template_workspace",
+      message: "template_workspace_loaded",
+      meta: {
+        templateId: currentTemplateId,
+        mode,
+        blockCount: draft.blocks.length,
+        savedTemplateCount: templatesState.length
+      }
+    });
+  // intentionally initial load only
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (lastModeRef.current === mode) return;
+    void postClientLog({
+      scope: "template_workspace",
+      message: "template_workspace_mode_changed",
+      meta: {
+        fromMode: lastModeRef.current,
+        toMode: mode,
+        templateId: currentTemplateId,
+        isDirty
+      }
+    });
+    lastModeRef.current = mode;
+  }, [mode, currentTemplateId, isDirty]);
+
+  useEffect(() => {
+    if (lastDirtyRef.current === isDirty) return;
+    void postClientLog({
+      scope: "template_workspace",
+      message: "template_workspace_dirty_state_changed",
+      meta: {
+        templateId: currentTemplateId,
+        mode,
+        isDirty,
+        blockCount: draft.blocks.length
+      }
+    });
+    lastDirtyRef.current = isDirty;
+  }, [isDirty, currentTemplateId, mode, draft.blocks.length]);
+
+  useEffect(() => {
+    if (!isDirty) {
+      if (autosaveTimerRef.current) {
+        window.clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+      return;
+    }
+    if (!currentTemplateId) {
+      return;
+    }
+    if (saving) {
+      queuedAutosaveRef.current = true;
+      return;
+    }
+    if (autosaveTimerRef.current) {
+      window.clearTimeout(autosaveTimerRef.current);
+    }
+    void postClientLog({
+      scope: "template_workspace",
+      message: "template_workspace_autosave_scheduled",
+      meta: {
+        templateId: currentTemplateId,
+        mode,
+        blockCount: draft.blocks.length
+      }
+    });
+    autosaveTimerRef.current = window.setTimeout(() => {
+      autosaveTimerRef.current = null;
+      void performSave("auto");
+    }, 1500);
+    return () => {
+      if (autosaveTimerRef.current) {
+        window.clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+    };
+  }, [currentTemplateId, draftSignature, isDirty, performSave, saving]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!isDirty && !saving) return;
+      void postClientLog({
+        level: "warn",
+        scope: "template_workspace",
+        message: "template_workspace_beforeunload_blocked",
+        meta: {
+          templateId: currentTemplateId,
+          mode,
+          isDirty,
+          saving
+        }
+      });
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty, saving]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 1023px)");
+    const sync = () => setIsMobile(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
     const nextMode = searchParams?.get("mode");
     if (nextMode === "ai" || nextMode === "modular" || nextMode === "structured") {
-      setMode(nextMode);
+      const normalizedMode: WorkspaceMode = nextMode === "structured" ? "structured" : "modular";
+      setMode(normalizedMode);
+      if (nextMode === "ai") {
+        setAiCollapsed(false);
+      }
+      if (isMobile && nextMode === "ai") {
+        setMobileAiOpen(true);
+      }
     }
-  }, [searchParams]);
+  }, [searchParams, isMobile]);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setMobileAiOpen(false);
+    }
+  }, [isMobile]);
+
+  useEffect(() => {
+    const routeTemplateId = searchParams?.get("templateId") || initialTemplateId || null;
+    if (!routeTemplateId) {
+      lastLoadedRouteTemplateIdRef.current = null;
+      return;
+    }
+    if (lastLoadedRouteTemplateIdRef.current === routeTemplateId) return;
+    const target = templatesState.find((item) => item.id === routeTemplateId);
+    if (!target) return;
+    lastLoadedRouteTemplateIdRef.current = routeTemplateId;
+    const nextDraft = mapTemplateToDraft(target);
+    setDraft(nextDraft);
+    setLastSavedSignature(serializeDraft(nextDraft));
+    setLastSavedAt(target.updatedAt);
+    setSaveError(null);
+    setSaveMessage(null);
+  }, [searchParams, initialTemplateId, templatesState]);
 
   useEffect(() => {
     async function loadAssets() {
       try {
         const [posterResponse, audioResponse] = await Promise.all([
           fetch("/api/posters"),
-          fetch("/api/integrations/workflow/meditation/audio")
+          fetch("/api/meditation/audio")
         ]);
         const posterPayload = await posterResponse.json().catch(() => null);
         const audioPayload = await audioResponse.json().catch(() => null);
@@ -190,13 +363,7 @@ export function TemplateWorkspaceClient({
     let cancelled = false;
     async function loadAiHistory() {
       if (!currentTemplateId) {
-        setAiMessages([
-          {
-            id: "intro",
-            role: "system",
-            text: "Use AI to generate a first draft or modify the current template without leaving the workspace."
-          }
-        ]);
+        setAiMessages([AI_INTRO_MESSAGE]);
         return;
       }
       try {
@@ -207,14 +374,7 @@ export function TemplateWorkspaceClient({
         const payload = await response.json().catch(() => null);
         if (!response.ok || cancelled) return;
         const persisted = Array.isArray(payload?.messages) ? payload.messages : [];
-        setAiMessages([
-          {
-            id: "intro",
-            role: "system",
-            text: "Use AI to generate a first draft or modify the current template without leaving the workspace."
-          },
-          ...persisted
-        ]);
+        setAiMessages([AI_INTRO_MESSAGE, ...persisted]);
       } catch {}
     }
     loadAiHistory();
@@ -231,29 +391,82 @@ export function TemplateWorkspaceClient({
     router.replace(`/templates/workspace?${params.toString()}`);
   }
 
+  function confirmDiscardChanges() {
+    if (!isDirty && !saving) return true;
+    const confirmed = window.confirm("You have unsaved template changes. Discard them and continue?");
+    void postClientLog({
+      scope: "template_workspace",
+      message: confirmed ? "template_workspace_discard_confirmed" : "template_workspace_discard_cancelled",
+      meta: {
+        templateId: currentTemplateId,
+        mode,
+        saving
+      }
+    });
+    return confirmed;
+  }
+
   function loadTemplateById(templateId: string) {
+    if (!confirmDiscardChanges()) return;
     const target = templatesState.find((item) => item.id === templateId);
     if (!target) return;
-    setDraft(mapTemplateToDraft(target));
+    lastLoadedRouteTemplateIdRef.current = templateId;
+    const nextDraft = mapTemplateToDraft(target);
+    setDraft(nextDraft);
+    setLastSavedSignature(serializeDraft(nextDraft));
+    setLastSavedAt(target.updatedAt);
+    setSaveError(null);
+    setSaveMessage(null);
+    void postClientLog({
+      scope: "template_workspace",
+      message: "template_workspace_template_loaded",
+      meta: {
+        templateId,
+        fromTemplateId: currentTemplateId,
+        mode
+      }
+    });
     const params = new URLSearchParams(searchParams?.toString() || "");
     params.set("templateId", target.id);
     params.set("mode", mode);
     router.replace(`/templates/workspace?${params.toString()}`);
   }
 
-  async function handleSave() {
+  const performSave = useCallback(async (trigger: "manual" | "auto") => {
+    const snapshot = latestDraftRef.current;
+    const snapshotSignature = serializeDraft(snapshot);
+    let savedSignature = snapshotSignature;
+    if (trigger === "auto" && !snapshot.id) {
+      return false;
+    }
+    if (saving) {
+      queuedAutosaveRef.current = true;
+      return false;
+    }
     setSaving(true);
-    setSaveMessage(null);
+    setSaveError(null);
+    if (trigger === "manual") {
+      setSaveMessage(null);
+    }
+    void postClientLog({
+      scope: "template_workspace",
+      message: trigger === "manual" ? "template_workspace_save_started" : "template_workspace_autosave_started",
+      meta: {
+        templateId: snapshot.id,
+        mode,
+        blockCount: snapshot.blocks.length
+      }
+    });
     try {
       const payload = {
-        name: draft.name?.trim() || "Untitled template",
-        description: draft.description || null,
-        isPublic: Boolean(draft.isPublic),
-        settings: draft.settings,
-        blocks: draft.blocks
+        name: snapshot.name?.trim() || "Untitled template",
+        description: snapshot.description || null,
+        isPublic: Boolean(snapshot.isPublic),
+        settings: snapshot.settings,
+        blocks: snapshot.blocks
       };
-      const response = currentTemplateId
-        ? await fetch(`/api/plan-templates/${currentTemplateId}`, {
+      const response = snapshot.id
+        ? await fetch(`/api/plan-templates/${snapshot.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
@@ -267,19 +480,21 @@ export function TemplateWorkspaceClient({
       if (!response.ok) {
         throw new Error(result?.error?.formErrors?.[0] ?? result?.error ?? "Unable to save template.");
       }
-      const nextId = currentTemplateId || result?.id || null;
-      if (nextId && nextId !== currentTemplateId) {
+      const nextId = snapshot.id || result?.id || null;
+      const savedAt = new Date().toISOString();
+      if (nextId && nextId !== snapshot.id) {
+        lastLoadedRouteTemplateIdRef.current = nextId;
         setDraft((prev) => ({ ...prev, id: nextId }));
         setTemplatesState((prev) => [
           {
             id: nextId,
-            name: draft.name?.trim() || "Untitled template",
-            description: draft.description || null,
-            isPublic: Boolean(draft.isPublic),
+            name: snapshot.name?.trim() || "Untitled template",
+            description: snapshot.description || null,
+            isPublic: Boolean(snapshot.isPublic),
             createdById: "self",
-            updatedAt: new Date().toISOString(),
-            settings: draft.settings,
-            blocks: draft.blocks
+            updatedAt: savedAt,
+            settings: snapshot.settings,
+            blocks: snapshot.blocks
           },
           ...prev
         ]);
@@ -287,31 +502,90 @@ export function TemplateWorkspaceClient({
         params.set("templateId", nextId);
         params.set("mode", mode);
         router.replace(`/templates/workspace?${params.toString()}`);
-        void persistAiHistory(nextId, aiMessages);
+        void persistAiHistory(nextId, latestAiMessagesRef.current);
       } else if (nextId) {
         setTemplatesState((prev) =>
           prev.map((template) =>
             template.id === nextId
               ? {
                   ...template,
-                  name: draft.name?.trim() || "Untitled template",
-                  description: draft.description || null,
-                  isPublic: Boolean(draft.isPublic),
-                  updatedAt: new Date().toISOString(),
-                  settings: draft.settings,
-                  blocks: draft.blocks
+                  name: snapshot.name?.trim() || "Untitled template",
+                  description: snapshot.description || null,
+                  isPublic: Boolean(snapshot.isPublic),
+                  updatedAt: savedAt,
+                  settings: snapshot.settings,
+                  blocks: snapshot.blocks
                 }
               : template
           )
         );
       }
-      setSaveMessage("Template saved.");
+      setLastSavedSignature(
+        nextId && nextId !== snapshot.id
+          ? serializeDraft({ ...snapshot, id: nextId })
+          : snapshotSignature
+      );
+      savedSignature = nextId && nextId !== snapshot.id ? serializeDraft({ ...snapshot, id: nextId }) : snapshotSignature;
+      setLastSavedAt(savedAt);
+      if (trigger === "manual") {
+        setSaveMessage("Template saved.");
+      } else {
+        setSaveMessage(null);
+      }
+      void postClientLog({
+        scope: "template_workspace",
+        message: trigger === "manual" ? "template_workspace_save_succeeded" : "template_workspace_autosave_succeeded",
+        meta: {
+          templateId: nextId,
+          mode,
+          blockCount: snapshot.blocks.length
+        }
+      });
+      return true;
     } catch (error) {
-      setSaveMessage(error instanceof Error ? error.message : "Unable to save template.");
+      const message = error instanceof Error ? error.message : "Unable to save template.";
+      setSaveError(message);
+      setSaveMessage(trigger === "manual" ? message : null);
+      void postClientLog({
+        level: "error",
+        scope: "template_workspace",
+        message: trigger === "manual" ? "template_workspace_save_failed" : "template_workspace_autosave_failed",
+        meta: {
+          templateId: snapshot.id,
+          mode,
+          blockCount: snapshot.blocks.length,
+          error: message
+        }
+      });
+      return false;
     } finally {
       setSaving(false);
+      if (queuedAutosaveRef.current) {
+        queuedAutosaveRef.current = false;
+        const latestSignature = serializeDraft(latestDraftRef.current);
+        if (latestSignature !== savedSignature) {
+          void performSave("auto");
+        }
+      }
     }
+  }, [mode, persistAiHistory, router, saving, searchParams]);
+
+  async function handleSave() {
+    await performSave("manual");
   }
+
+  const saveStatus = saving
+    ? { label: "Saving...", className: "border-amber-200 bg-amber-50 text-amber-700" }
+    : saveError
+      ? { label: "Autosave failed", className: "border-rose-200 bg-rose-50 text-rose-700" }
+      : isDirty
+        ? { label: "Unsaved changes", className: "border-slate-200 bg-slate-100 text-slate-600" }
+        : !currentTemplateId
+          ? { label: "Not saved yet", className: "border-slate-200 bg-slate-50 text-slate-500" }
+        : {
+            label: lastSavedAt ? `Saved ${new Date(lastSavedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Saved",
+            className: "border-emerald-200 bg-emerald-50 text-emerald-700"
+          };
 
   async function runAi(nextMode: "generate" | "modify") {
     setAiLoading(true);
@@ -418,13 +692,336 @@ export function TemplateWorkspaceClient({
     setPendingAiSummary(null);
   }
 
+  function renderAiPanel(options?: { mobile?: boolean }) {
+    const mobile = options?.mobile ?? false;
+    return (
+      <div
+        className={
+          mobile
+            ? "flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] bg-white"
+            : `dr-card flex min-h-0 flex-col p-3 ${aiCollapsed ? "xl:w-[56px]" : ""}`
+        }
+      >
+        <div className={`flex items-center justify-between gap-2 ${mobile ? "border-b border-slate-200 px-4 py-3" : ""}`}>
+          <div className={`${!mobile && aiCollapsed ? "sr-only" : ""}`}>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">AI assistant</p>
+            <h2 className="text-base font-semibold text-slate-900">Template AI chat</h2>
+          </div>
+          {mobile ? (
+            <button
+              type="button"
+              onClick={() => setMobileAiOpen(false)}
+              className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900"
+            >
+              Close
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAiCollapsed((prev) => !prev)}
+              className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 hover:text-slate-900"
+            >
+              {aiCollapsed ? "<" : ">"}
+            </button>
+          )}
+        </div>
+
+        {(!mobile && aiCollapsed) ? (
+          <div className="mt-2 text-center text-[10px] text-slate-500">
+            <div className="font-semibold uppercase tracking-[0.2em]">AI</div>
+          </div>
+        ) : (
+          <>
+            {!mobile ? (
+              <div className="mt-3 rounded-2xl border border-slate-200 bg-white/70 p-3">
+                <button
+                  type="button"
+                  onClick={() => setInfoOpen((prev) => !prev)}
+                  className="flex w-full items-center justify-between text-left"
+                >
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                    Template info
+                  </span>
+                  <span className="text-[11px] font-semibold text-slate-500">
+                    {infoOpen ? "Hide" : "Show"}
+                  </span>
+                </button>
+                {infoOpen ? (
+                  <div className="mt-3 grid gap-3">
+                    <label className="text-xs font-medium text-slate-700">
+                      Name
+                      <input
+                        value={draft.name}
+                        onChange={(event) => setDraft((prev) => ({ ...prev, name: event.target.value }))}
+                        className="dr-input mt-1 w-full"
+                      />
+                    </label>
+                    <label className="text-xs font-medium text-slate-700">
+                      Description
+                      <input
+                        value={draft.description ?? ""}
+                        onChange={(event) => setDraft((prev) => ({ ...prev, description: event.target.value }))}
+                        className="dr-input mt-1 w-full"
+                      />
+                    </label>
+                    <label className="text-xs font-medium text-slate-700">
+                      Dataspace
+                      <select
+                        value={draft.settings.dataspaceId ?? ""}
+                        onChange={(event) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            settings: { ...prev.settings, dataspaceId: event.target.value || null }
+                          }))
+                        }
+                        className="dr-input mt-1 w-full"
+                      >
+                        <option value="">No dataspace</option>
+                        {dataspaces.map((dataspace) => (
+                          <option key={dataspace.id} value={dataspace.id}>
+                            {dataspace.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs font-medium text-slate-700">
+                      Template source
+                      <select
+                        value={draft.id ?? ""}
+                        onChange={(event) => {
+                          if (!event.target.value) {
+                            if (!confirmDiscardChanges()) return;
+                            const nextDraft = buildDefaultTemplateDraft();
+                            setDraft(nextDraft);
+                            setLastSavedSignature(serializeDraft(nextDraft));
+                            setLastSavedAt(null);
+                            setSaveError(null);
+                            setSaveMessage(null);
+                            const params = new URLSearchParams(searchParams?.toString() || "");
+                            params.delete("templateId");
+                            params.set("mode", mode);
+                            router.replace(`/templates/workspace?${params.toString()}`);
+                            return;
+                          }
+                          loadTemplateById(event.target.value);
+                        }}
+                        className="dr-input mt-1 w-full"
+                      >
+                        <option value="">Unsaved draft</option>
+                        {templatesState.map((template) => (
+                          <option key={template.id} value={template.id}>
+                            {template.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs font-medium text-slate-700">
+                      Language
+                      <select
+                        value={draft.settings.language}
+                        onChange={(event) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            settings: { ...prev.settings, language: event.target.value }
+                          }))
+                        }
+                        className="dr-input mt-1 w-full"
+                      >
+                        <option value="EN">English</option>
+                        <option value="IT">Italian</option>
+                      </select>
+                    </label>
+                    <label className="text-xs font-medium text-slate-700">
+                      Transcription
+                      <select
+                        value={draft.settings.transcriptionProvider}
+                        onChange={(event) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            settings: { ...prev.settings, transcriptionProvider: event.target.value }
+                          }))
+                        }
+                        className="dr-input mt-1 w-full"
+                      >
+                        <option value="DEEPGRAM">Deepgram</option>
+                        <option value="DEEPGRAMLIVE">Deepgram Live</option>
+                        <option value="VOSK">Vosk</option>
+                        <option value="WHISPERREMOTE">Whisper Remote</option>
+                      </select>
+                    </label>
+                    <label className="text-xs font-medium text-slate-700">
+                      Room size
+                      <input
+                        type="number"
+                        min={2}
+                        max={12}
+                        value={draft.settings.maxParticipantsPerRoom}
+                        onChange={(event) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            settings: {
+                              ...prev.settings,
+                              maxParticipantsPerRoom: Math.max(2, Math.min(12, Number(event.target.value) || 2))
+                            }
+                          }))
+                        }
+                        className="dr-input mt-1 w-full"
+                      />
+                    </label>
+                    <label className="text-xs font-medium text-slate-700">
+                      Capacity
+                      <input
+                        type="number"
+                        min={1}
+                        value={draft.settings.capacity ?? ""}
+                        onChange={(event) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            settings: { ...prev.settings, capacity: event.target.value ? Number(event.target.value) : null }
+                          }))
+                        }
+                        className="dr-input mt-1 w-full"
+                      />
+                    </label>
+                    <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(draft.isPublic)}
+                        onChange={(event) => setDraft((prev) => ({ ...prev, isPublic: event.target.checked }))}
+                      />
+                      Public
+                    </label>
+                    <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={draft.settings.allowOddGroup}
+                        onChange={(event) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            settings: { ...prev.settings, allowOddGroup: event.target.checked }
+                          }))
+                        }
+                      />
+                      Allow odd group
+                    </label>
+                    <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={draft.settings.requiresApproval}
+                        onChange={(event) =>
+                          setDraft((prev) => ({
+                            ...prev,
+                            settings: { ...prev.settings, requiresApproval: event.target.checked }
+                          }))
+                        }
+                      />
+                      Requires approval
+                    </label>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className={`${mobile ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white/70"}`}>
+              <div className={`flex-1 space-y-3 overflow-y-auto ${mobile ? "px-4 py-3" : "p-3"}`}>
+                {aiMessages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={
+                      message.role === "user"
+                        ? "ml-6 rounded-2xl rounded-br-md bg-slate-900 px-3 py-2 text-sm text-white"
+                        : message.role === "assistant"
+                          ? "mr-6 rounded-2xl rounded-bl-md bg-emerald-50 px-3 py-2 text-sm text-emerald-950"
+                          : "rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600"
+                    }
+                  >
+                    {message.text}
+                  </div>
+                ))}
+
+                {pendingAiDraft ? (
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4">
+                    <p className="text-sm font-semibold text-emerald-900">AI draft ready</p>
+                    <p className="mt-1 text-sm text-emerald-800">{pendingAiSummary}</p>
+                    <div className="mt-3 text-sm text-emerald-900">
+                      <div className="font-semibold">{pendingAiDraft.name}</div>
+                      <div>{pendingAiDraft.blocks.length} blocks</div>
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <button type="button" className="dr-button px-3 py-1 text-xs" onClick={applyPendingAiDraft}>
+                        Apply changes
+                      </button>
+                      <button
+                        type="button"
+                        className="dr-button-outline px-3 py-1 text-xs"
+                        onClick={() => {
+                          setPendingAiDraft(null);
+                          setPendingAiSummary(null);
+                        }}
+                      >
+                        Discard
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-2.5 py-2">
+                  <button
+                    type="button"
+                    onClick={() => setRawOutputOpen((prev) => !prev)}
+                    className="flex w-full items-center justify-between text-left"
+                  >
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      Raw output
+                    </span>
+                    <span className="text-[10px] font-semibold text-slate-400">
+                      {rawOutputOpen ? "−" : "+"}
+                    </span>
+                  </button>
+                  {rawOutputOpen ? (
+                    <pre className="mt-1.5 max-h-[96px] overflow-auto whitespace-pre-wrap rounded-lg bg-white/70 px-2 py-1.5 text-[10px] leading-4 text-slate-500">
+                      {aiRaw || "No AI output yet."}
+                    </pre>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className={`border-t border-slate-200 bg-white/95 ${mobile ? "px-4 pb-[calc(env(safe-area-inset-bottom)+16px)] pt-3" : "sticky bottom-0 right-0 p-3"}`}>
+                <textarea
+                  value={aiPrompt}
+                  onChange={(event) => setAiPrompt(event.target.value)}
+                  className="dr-input min-h-[104px] w-full text-sm"
+                  placeholder="Ask AI to create or modify this template..."
+                />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" className="dr-button px-3 py-1 text-xs" onClick={() => runAi("generate")} disabled={aiLoading}>
+                    {aiLoading ? "Working..." : "Generate"}
+                  </button>
+                  <button
+                    type="button"
+                    className="dr-button-outline px-3 py-1 text-xs"
+                    onClick={() => runAi("modify")}
+                    disabled={aiLoading || draft.blocks.length === 0}
+                  >
+                    Modify
+                  </button>
+                </div>
+                {aiError ? <p className="mt-3 text-sm text-rose-600">{aiError}</p> : null}
+                {aiRequestId ? <p className="mt-2 text-[11px] text-slate-400">Request ID: {aiRequestId}</p> : null}
+                {saveMessage ? <p className="mt-2 text-xs text-slate-500">{saveMessage}</p> : null}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="flex min-h-[calc(100dvh-96px)] flex-col gap-3 overflow-y-auto lg:h-[calc(100dvh-96px)] lg:min-h-[620px] lg:overflow-hidden">
-      <div className="dr-card flex flex-wrap items-center justify-between gap-3 px-4 py-2">
-        <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
-          <p className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">
-            Template workspace
-          </p>
+    <div className={`flex min-h-[calc(100dvh-28px)] flex-col gap-3 ${isMobile ? "px-0 pb-24" : "overflow-y-auto lg:h-[calc(100dvh-96px)] lg:min-h-[620px] lg:overflow-hidden"}`}>
+      <div className={`sticky top-0 z-20 ${isMobile ? "border-b border-slate-200/80 bg-[#f7f7f3]/95 px-3 py-2 backdrop-blur" : ""}`}>
+        <div className={`dr-card flex flex-wrap items-center justify-between gap-3 ${isMobile ? "rounded-[24px] px-3 py-2 shadow-[0_18px_40px_rgba(15,23,42,0.08)]" : "px-4 py-2"}`}>
+          <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
           {editingTitle ? (
             <input
               value={draft.name}
@@ -454,45 +1051,85 @@ export function TemplateWorkspaceClient({
               {draft.name || "New template"}
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => setInfoModalOpen(true)}
-            className="hidden rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 lg:inline-flex"
-          >
-            Edit info
-          </button>
-          <p className="hidden shrink-0 truncate text-xs text-slate-600 md:block">
-            {draft.blocks.length} blocks · {totalDuration} min · {templateCount} templates available
-          </p>
-        </div>
+            {!isMobile ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setInfoModalOpen(true)}
+                  className="hidden rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900 lg:inline-flex"
+                >
+                  Edit info
+                </button>
+                <p className="hidden shrink-0 truncate text-xs text-slate-600 md:block">
+                  {draft.blocks.length} blocks · {totalDuration} min · {templateCount} templates available
+                </p>
+              </>
+            ) : (
+              <p className="truncate text-[11px] text-slate-500">
+                {draft.blocks.length} blocks · {totalDuration} min
+              </p>
+            )}
+          </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {(["ai", "modular", "structured"] as WorkspaceMode[]).map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => updateMode(item)}
-              className={
-                mode === item ? "dr-button px-3 py-1 text-xs" : "dr-button-outline px-3 py-1 text-xs"
-              }
-            >
-              {item === "ai" ? "AI Builder" : item === "modular" ? "Modular Builder" : "Structured Builder"}
-            </button>
-          ))}
-          <button type="button" className="dr-button px-3 py-1 text-xs" onClick={handleSave} disabled={saving}>
-            {saving ? "Saving..." : "Save template"}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${saveStatus.className}`}>
+              {saveStatus.label}
+            </span>
+            {isMobile ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setInfoModalOpen(true)}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600"
+                >
+                  Info
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobileAiOpen(true)}
+                  className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700"
+                >
+                  AI
+                </button>
+                <button type="button" className="dr-button px-3 py-1 text-xs" onClick={handleSave} disabled={saving}>
+                  {saving ? "Saving..." : "Save"}
+                </button>
+              </>
+            ) : (
+              <>
+                {(["modular", "structured"] as WorkspaceMode[]).map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => updateMode(item)}
+                    className={
+                      mode === item ? "dr-button px-3 py-1 text-xs" : "dr-button-outline px-3 py-1 text-xs"
+                    }
+                  >
+                    {item === "modular" ? "Modular Builder" : "Structured Builder"}
+                  </button>
+                ))}
+                <button type="button" className="dr-button px-3 py-1 text-xs" onClick={handleSave} disabled={saving}>
+                  {saving ? "Saving..." : "Save template"}
+                </button>
+              </>
+            )}
+          </div>
+          {!isMobile ? (
+            <>
+              <p className="w-full truncate text-xs text-slate-600 md:hidden">
+                {draft.blocks.length} blocks · {totalDuration} min · {templateCount} templates available
+              </p>
+              <button
+                type="button"
+                onClick={() => setInfoModalOpen(true)}
+                className="w-full text-left text-xs font-semibold text-slate-500 lg:hidden"
+              >
+                Edit info
+              </button>
+            </>
+          ) : null}
         </div>
-        <p className="w-full truncate text-xs text-slate-600 md:hidden">
-          {draft.blocks.length} blocks · {totalDuration} min · {templateCount} templates available
-        </p>
-        <button
-          type="button"
-          onClick={() => setInfoModalOpen(true)}
-          className="w-full text-left text-xs font-semibold text-slate-500 lg:hidden"
-        >
-          Edit info
-        </button>
       </div>
 
       {infoModalOpen ? (
@@ -557,7 +1194,13 @@ export function TemplateWorkspaceClient({
                   value={draft.id ?? ""}
                   onChange={(event) => {
                     if (!event.target.value) {
-                      setDraft(buildDefaultTemplateDraft());
+                      if (!confirmDiscardChanges()) return;
+                      const nextDraft = buildDefaultTemplateDraft();
+                      setDraft(nextDraft);
+                      setLastSavedSignature(serializeDraft(nextDraft));
+                      setLastSavedAt(null);
+                      setSaveError(null);
+                      setSaveMessage(null);
                       const params = new URLSearchParams(searchParams?.toString() || "");
                       params.delete("templateId");
                       params.set("mode", mode);
@@ -691,7 +1334,9 @@ export function TemplateWorkspaceClient({
         </div>
       ) : null}
 
-      <div className="grid flex-1 gap-3 min-h-0 xl:grid-cols-[1.55fr,minmax(56px,320px)]">
+      <div
+        className={`grid flex-1 min-h-0 gap-2 ${isMobile ? "grid-cols-1 px-2" : aiCollapsed ? "xl:grid-cols-[minmax(0,1fr),56px]" : "xl:grid-cols-[minmax(0,1fr),minmax(280px,320px)]"}`}
+      >
         <div className="flex min-h-0 flex-col gap-3">
           <div className="min-h-0 flex-1">
             {mode === "modular" ? (
@@ -702,351 +1347,49 @@ export function TemplateWorkspaceClient({
                 templates={templatesState}
                 dataspaces={dataspaces}
               />
-            ) : mode === "structured" ? (
+            ) : (
               <StructuredTemplateEditor
                 draft={draft}
                 posters={posters}
                 audioFiles={audioFiles}
                 onChange={setDraft}
               />
-            ) : (
-              <div className="dr-card flex h-full min-h-0 flex-col p-5">
-                <h2 className="text-lg font-semibold text-slate-900">AI-first view</h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  Use the AI panel to generate or modify the current template, then switch to Modular or Structured for direct editing.
-                </p>
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  <div className="rounded-2xl border border-slate-200 bg-white/80 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Current draft</p>
-                    <p className="mt-2 text-base font-semibold text-slate-900">{draft.name}</p>
-                    <p className="mt-1 text-sm text-slate-600">{draft.description || "No description"}</p>
-                  </div>
-                  <div className="rounded-2xl border border-slate-200 bg-white/80 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Settings</p>
-                    <div className="mt-2 space-y-1 text-sm text-slate-700">
-                      <div>Language: {draft.settings.language}</div>
-                      <div>Transcription: {draft.settings.transcriptionProvider}</div>
-                      <div>Room size: {draft.settings.maxParticipantsPerRoom}</div>
-                      <div>Capacity: {draft.settings.capacity ?? "Open"}</div>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-4 flex-1 overflow-auto rounded-2xl border border-slate-200 bg-white/70 p-4">
-                  <div className="space-y-2">
-                    {draft.blocks.length === 0 ? (
-                      <p className="text-sm text-slate-500">No blocks yet. Ask AI to generate a first draft.</p>
-                    ) : (
-                      draft.blocks.map((block, index) => (
-                        <div key={`${block.type}-${index}`} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
-                          <span className="font-semibold text-slate-800">{index + 1}. {block.type}</span>
-                          <span className="text-slate-500">{Math.round(block.durationSeconds / 60)} min</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
             )}
           </div>
         </div>
 
-        <div className={`dr-card flex min-h-0 flex-col p-3 ${aiCollapsed ? "xl:w-[56px]" : ""}`}>
-          <div className="flex items-center justify-between gap-2">
-            <div className={`${aiCollapsed ? "sr-only" : ""}`}>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">AI assistant</p>
-              <h2 className="text-base font-semibold text-slate-900">Template AI chat</h2>
+        {!isMobile ? renderAiPanel() : null}
+      </div>
+
+      {isMobile ? (
+        <>
+          <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-3 pb-[calc(env(safe-area-inset-bottom)+10px)]">
+            <div className="pointer-events-auto flex w-full max-w-md items-center justify-between gap-2 rounded-full border border-slate-200/90 bg-white/96 p-2 shadow-[0_22px_50px_rgba(15,23,42,0.18)] backdrop-blur">
+              {(["modular", "structured"] as WorkspaceMode[]).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => updateMode(item)}
+                  className={`flex-1 rounded-full px-3 py-2 text-[11px] font-semibold ${
+                    mode === item ? "bg-slate-900 text-white" : "text-slate-600"
+                  }`}
+                >
+                  {item === "modular" ? "Modular" : "Structured"}
+                </button>
+              ))}
             </div>
-            <button
-              type="button"
-              onClick={() => setAiCollapsed((prev) => !prev)}
-              className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 hover:text-slate-900"
-            >
-              {aiCollapsed ? "<" : ">"}
-            </button>
           </div>
 
-          {!aiCollapsed ? (
-            <>
-              <div className="mt-3 rounded-2xl border border-slate-200 bg-white/70 p-3">
-                <button
-                  type="button"
-                  onClick={() => setInfoOpen((prev) => !prev)}
-                  className="flex w-full items-center justify-between text-left"
-                >
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
-                    Template info
-                  </span>
-                  <span className="text-[11px] font-semibold text-slate-500">
-                    {infoOpen ? "Hide" : "Show"}
-                  </span>
-                </button>
-                {infoOpen ? (
-                  <div className="mt-3 grid gap-3">
-                    <label className="text-xs font-medium text-slate-700">
-                      Name
-                      <input
-                        value={draft.name}
-                        onChange={(event) => setDraft((prev) => ({ ...prev, name: event.target.value }))}
-                        className="dr-input mt-1 w-full"
-                      />
-                    </label>
-                    <label className="text-xs font-medium text-slate-700">
-                      Description
-                      <input
-                        value={draft.description ?? ""}
-                        onChange={(event) => setDraft((prev) => ({ ...prev, description: event.target.value }))}
-                        className="dr-input mt-1 w-full"
-                      />
-                    </label>
-                    <label className="text-xs font-medium text-slate-700">
-                      Dataspace
-                      <select
-                        value={draft.settings.dataspaceId ?? ""}
-                        onChange={(event) =>
-                          setDraft((prev) => ({
-                            ...prev,
-                            settings: { ...prev.settings, dataspaceId: event.target.value || null }
-                          }))
-                        }
-                        className="dr-input mt-1 w-full"
-                      >
-                        <option value="">No dataspace</option>
-                        {dataspaces.map((dataspace) => (
-                          <option key={dataspace.id} value={dataspace.id}>
-                            {dataspace.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="text-xs font-medium text-slate-700">
-                      Template source
-                      <select
-                        value={draft.id ?? ""}
-                        onChange={(event) => {
-                          if (!event.target.value) {
-                            setDraft(buildDefaultTemplateDraft());
-                            const params = new URLSearchParams(searchParams?.toString() || "");
-                            params.delete("templateId");
-                            params.set("mode", mode);
-                            router.replace(`/templates/workspace?${params.toString()}`);
-                            return;
-                          }
-                          loadTemplateById(event.target.value);
-                        }}
-                        className="dr-input mt-1 w-full"
-                      >
-                        <option value="">Unsaved draft</option>
-                        {templatesState.map((template) => (
-                          <option key={template.id} value={template.id}>
-                            {template.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="text-xs font-medium text-slate-700">
-                      Language
-                      <select
-                        value={draft.settings.language}
-                        onChange={(event) =>
-                          setDraft((prev) => ({
-                            ...prev,
-                            settings: { ...prev.settings, language: event.target.value }
-                          }))
-                        }
-                        className="dr-input mt-1 w-full"
-                      >
-                        <option value="EN">English</option>
-                        <option value="IT">Italian</option>
-                      </select>
-                    </label>
-                    <label className="text-xs font-medium text-slate-700">
-                      Transcription
-                      <select
-                        value={draft.settings.transcriptionProvider}
-                        onChange={(event) =>
-                          setDraft((prev) => ({
-                            ...prev,
-                            settings: { ...prev.settings, transcriptionProvider: event.target.value }
-                          }))
-                        }
-                        className="dr-input mt-1 w-full"
-                      >
-                        <option value="DEEPGRAM">Deepgram</option>
-                        <option value="DEEPGRAMLIVE">Deepgram Live</option>
-                        <option value="VOSK">Vosk</option>
-                        <option value="WHISPERREMOTE">Whisper Remote</option>
-                      </select>
-                    </label>
-                    <label className="text-xs font-medium text-slate-700">
-                      Room size
-                      <input
-                        type="number"
-                        min={2}
-                        max={12}
-                        value={draft.settings.maxParticipantsPerRoom}
-                        onChange={(event) =>
-                          setDraft((prev) => ({
-                            ...prev,
-                            settings: {
-                              ...prev.settings,
-                              maxParticipantsPerRoom: Math.max(2, Math.min(12, Number(event.target.value) || 2))
-                            }
-                          }))
-                        }
-                        className="dr-input mt-1 w-full"
-                      />
-                    </label>
-                    <label className="text-xs font-medium text-slate-700">
-                      Capacity
-                      <input
-                        type="number"
-                        min={1}
-                        value={draft.settings.capacity ?? ""}
-                        onChange={(event) =>
-                          setDraft((prev) => ({
-                            ...prev,
-                            settings: { ...prev.settings, capacity: event.target.value ? Number(event.target.value) : null }
-                          }))
-                        }
-                        className="dr-input mt-1 w-full"
-                      />
-                    </label>
-                    <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(draft.isPublic)}
-                        onChange={(event) => setDraft((prev) => ({ ...prev, isPublic: event.target.checked }))}
-                      />
-                      Public
-                    </label>
-                    <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={draft.settings.allowOddGroup}
-                        onChange={(event) =>
-                          setDraft((prev) => ({
-                            ...prev,
-                            settings: { ...prev.settings, allowOddGroup: event.target.checked }
-                          }))
-                        }
-                      />
-                      Allow odd group
-                    </label>
-                    <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={draft.settings.requiresApproval}
-                        onChange={(event) =>
-                          setDraft((prev) => ({
-                            ...prev,
-                            settings: { ...prev.settings, requiresApproval: event.target.checked }
-                          }))
-                        }
-                      />
-                      Requires approval
-                    </label>
-                  </div>
-                ) : null}
+          {mobileAiOpen ? (
+            <div className="fixed inset-0 z-40 flex items-end bg-slate-950/35">
+              <button type="button" className="absolute inset-0" onClick={() => setMobileAiOpen(false)} aria-label="Close AI assistant" />
+              <div className="relative flex h-[78dvh] w-full flex-col rounded-t-[30px] border-t border-slate-200 shadow-[0_-20px_60px_rgba(15,23,42,0.25)]">
+                {renderAiPanel({ mobile: true })}
               </div>
-              <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white/70">
-                <div className="flex-1 space-y-3 overflow-y-auto p-3">
-                  {aiMessages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={
-                        message.role === "user"
-                          ? "ml-6 rounded-2xl rounded-br-md bg-slate-900 px-3 py-2 text-sm text-white"
-                          : message.role === "assistant"
-                            ? "mr-6 rounded-2xl rounded-bl-md bg-emerald-50 px-3 py-2 text-sm text-emerald-950"
-                            : "rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600"
-                      }
-                    >
-                      {message.text}
-                    </div>
-                  ))}
-
-                  {pendingAiDraft ? (
-                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4">
-                  <p className="text-sm font-semibold text-emerald-900">AI draft ready</p>
-                  <p className="mt-1 text-sm text-emerald-800">
-                    {pendingAiSummary}
-                  </p>
-                  <div className="mt-3 text-sm text-emerald-900">
-                    <div className="font-semibold">{pendingAiDraft.name}</div>
-                    <div>{pendingAiDraft.blocks.length} blocks</div>
-                  </div>
-                  <div className="mt-3 flex gap-2">
-                    <button type="button" className="dr-button px-3 py-1 text-xs" onClick={applyPendingAiDraft}>
-                      Apply changes
-                    </button>
-                    <button
-                      type="button"
-                      className="dr-button-outline px-3 py-1 text-xs"
-                      onClick={() => {
-                        setPendingAiDraft(null);
-                        setPendingAiSummary(null);
-                      }}
-                    >
-                      Discard
-                    </button>
-                  </div>
-                    </div>
-                  ) : null}
-
-                  <div className="rounded-2xl border border-slate-200 bg-white/70 p-3">
-                    <button
-                      type="button"
-                      onClick={() => setRawOutputOpen((prev) => !prev)}
-                      className="flex w-full items-center justify-between text-left"
-                    >
-                      <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                        Raw output
-                      </span>
-                      <span className="text-[11px] font-semibold text-slate-500">
-                        {rawOutputOpen ? "Hide" : "Show"}
-                      </span>
-                    </button>
-                    {rawOutputOpen ? (
-                      <pre className="mt-2 max-h-[220px] overflow-auto whitespace-pre-wrap text-xs text-slate-700">
-                        {aiRaw || "No AI output yet."}
-                      </pre>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="sticky bottom-0 right-0 border-t border-slate-200 bg-white/95 p-3">
-                  <textarea
-                    value={aiPrompt}
-                    onChange={(event) => setAiPrompt(event.target.value)}
-                    className="dr-input min-h-[104px] w-full text-sm"
-                    placeholder="Ask AI to create or modify this template..."
-                  />
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button type="button" className="dr-button px-3 py-1 text-xs" onClick={() => runAi("generate")} disabled={aiLoading}>
-                      {aiLoading ? "Working..." : "Generate"}
-                    </button>
-                    <button
-                      type="button"
-                      className="dr-button-outline px-3 py-1 text-xs"
-                      onClick={() => runAi("modify")}
-                      disabled={aiLoading || draft.blocks.length === 0}
-                    >
-                      Modify
-                    </button>
-                  </div>
-                  {aiError ? <p className="mt-3 text-sm text-rose-600">{aiError}</p> : null}
-                  {aiRequestId ? <p className="mt-2 text-[11px] text-slate-400">Request ID: {aiRequestId}</p> : null}
-                  {saveMessage ? <p className="mt-2 text-xs text-slate-500">{saveMessage}</p> : null}
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="mt-2 text-center text-[10px] text-slate-500">
-              <div className="font-semibold uppercase tracking-[0.2em]">AI</div>
             </div>
-          )}
-        </div>
-      </div>
+          ) : null}
+        </>
+      ) : null}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { postEventHubEvent } from "@/lib/eventHub";
 import { extractRemoteWorkerToken, verifyRemoteWorkerToken } from "@/lib/remoteWorkerToken";
 import { canStartProviderWork } from "@/lib/transcriptionLimits";
+import { parseAutoRemoteAssignment } from "@/lib/autoRemoteAssignment";
 
 export async function POST(request: Request) {
   const token = extractRemoteWorkerToken(request);
@@ -58,7 +59,8 @@ export async function POST(request: Request) {
   }
 
   const claimedJob = await prisma.$transaction(async (tx) => {
-    const capacity = await canStartProviderWork("WHISPERREMOTE");
+    const whisperCapacity = await canStartProviderWork("WHISPERREMOTE");
+    const autoRemoteCapacity = await canStartProviderWork("AUTOREMOTE");
     const jobs = await tx.remoteWorkerJob.findMany({
       where: { status: "PENDING" },
       orderBy: { createdAt: "asc" },
@@ -79,8 +81,14 @@ export async function POST(request: Request) {
 
     const job =
       jobs.find((candidate) => {
-        if (candidate.provider !== "WHISPERREMOTE") return true;
-        return capacity.allowed;
+        if (candidate.provider === "WHISPERREMOTE") return whisperCapacity.allowed;
+        if (candidate.provider === "AUTOREMOTE") {
+          if (!autoRemoteCapacity.allowed) return false;
+          const assignment = parseAutoRemoteAssignment(candidate.payloadJson);
+          if (!assignment) return false;
+          return assignment.assignedUserId === payload.uid;
+        }
+        return true;
       }) || null;
 
     if (!job) {

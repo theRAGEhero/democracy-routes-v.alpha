@@ -121,9 +121,6 @@ export default async function DataspacePage() {
         <h1 className="text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
           Dataspace
         </h1>
-        <p className="text-sm text-slate-600">
-          Create a shared dataspace or join an existing one.
-        </p>
       </div>
       <DataspaceClient
         initialDataspaces={payload}

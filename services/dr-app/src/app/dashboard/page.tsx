@@ -33,7 +33,7 @@ export default async function DashboardPage() {
         ]
       },
       orderBy: { createdAt: "desc" },
-      include: { dataspace: { select: { id: true, name: true, personalOwnerId: true, color: true } } }
+      include: { dataspace: { select: { id: true, name: true, personalOwnerId: true, color: true, imageUrl: true } } }
     }),
     prisma.dataspace.findMany({
       where: {
@@ -44,7 +44,7 @@ export default async function DashboardPage() {
         ]
       },
       orderBy: { createdAt: "desc" },
-      select: { id: true, name: true, personalOwnerId: true, color: true }
+      select: { id: true, name: true, personalOwnerId: true, color: true, imageUrl: true }
     }),
     prisma.meetingInvite.findMany({
       where: { userId: session.user.id, status: "PENDING" },
@@ -485,14 +485,15 @@ export default async function DashboardPage() {
     }));
 
   const dataspaceOptions = [
-    { key: "personal", label: "My Data Space", color: null },
-    { key: "none", label: "No dataspace", color: null },
+    { key: "personal", label: "My Data Space", color: null, imageUrl: session.user.avatarUrl ?? null },
+    { key: "none", label: "No dataspace", color: null, imageUrl: null },
     ...dataspaces
       .filter((dataspace: (typeof dataspaces)[number]) => !dataspace.personalOwnerId)
       .map((dataspace: (typeof dataspaces)[number]) => ({
         key: dataspace.id,
         label: dataspace.name,
-        color: dataspace.color ?? null
+        color: dataspace.color ?? null,
+        imageUrl: dataspace.imageUrl ?? null
       }))
   ];
 
