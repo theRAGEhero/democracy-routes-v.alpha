@@ -16,5 +16,27 @@ export default async function AdminAiAgentsPage() {
     orderBy: { createdAt: "desc" }
   });
 
-  return <AiAgentsAdminClient initialAgents={agents} />;
+  const runs = await prisma.meetingAiAgentRun.findMany({
+    orderBy: { createdAt: "desc" },
+    take: 40,
+    include: {
+      agent: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          color: true
+        }
+      },
+      meeting: {
+        select: {
+          id: true,
+          title: true,
+          roomId: true
+        }
+      }
+    }
+  });
+
+  return <AiAgentsAdminClient initialAgents={agents} initialRuns={runs} />;
 }

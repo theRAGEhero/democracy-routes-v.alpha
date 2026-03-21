@@ -1112,7 +1112,7 @@ export function ParticipantViewClient({
                 ? `Record ${recordIndex || ""}`.trim()
                 : null}
               {status === "active" && currentSegment?.type === "PAIRING"
-                ? `Pairing ${currentRound} of ${roundsCount}`
+                ? `Discussion ${currentRound} of ${roundsCount}`
                 : null}
               {status === "done" && "Finished"}
             </span>
@@ -1188,7 +1188,7 @@ export function ParticipantViewClient({
             <span className="font-semibold text-slate-700">Experience</span>
             <span className="text-slate-700">
               {currentSegment?.type === "PAIRING"
-                ? "1:1 call"
+                ? "Discussion call"
                 : currentSegment?.type === "START"
                   ? "Start"
                   : currentSegment?.type === "PARTICIPANTS"
@@ -1257,9 +1257,9 @@ export function ParticipantViewClient({
             {assignments.map((item) => {
               const meetingId = item.meetingId ?? meetingByRound[item.roundNumber];
               return (
-                <div key={item.roundNumber} className="rounded border border-slate-200 bg-white/70 px-3 py-2">
+                  <div key={item.roundNumber} className="rounded border border-slate-200 bg-white/70 px-3 py-2">
                   <div className="break-all">
-                    Pairing {item.roundNumber}: {item.partnerLabel}{" "}
+                    Discussion {item.roundNumber}: {item.partnerLabel}{" "}
                     {item.isBreak ? "(break)" : `— ${item.roomId}`}
                   </div>
                   {meetingId ? (
@@ -1285,7 +1285,7 @@ export function ParticipantViewClient({
                 Your journey, captured
               </h3>
               <p className="mt-1 text-sm text-slate-600">
-              Notes, forms, prompts, and pairing highlights from this plan.
+              Notes, forms, prompts, and discussion highlights from this plan.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1344,7 +1344,7 @@ export function ParticipantViewClient({
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <p className="text-xs font-semibold uppercase text-slate-500">Pairing {roundNumber}</p>
+                        <p className="text-xs font-semibold uppercase text-slate-500">Discussion {roundNumber}</p>
                         <p className="mt-1 text-lg font-semibold text-slate-900">
                           {recapView === "plan" ? "Multiple pairs" : roundAssignment?.partnerLabel || "Partner"}
                         </p>

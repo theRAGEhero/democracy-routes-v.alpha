@@ -7,10 +7,13 @@
 **/dist/
 **/build/
 **/.cache/
+**/tsconfig.tsbuildinfo
 
 services/dr-video/recordings/
 services/dr-video/logs/
 services/dr-app/data/
+audio-api/deepgram/logs/
+audio-api/vosk/logs/
 
 *.log
 .DS_Store
@@ -20,3 +23,17 @@ services/dr-app/data/
 
 # Local dev env
 /.env.dev
+
+# Backups and dumps
+/backups/
+
+# Editor / temporary backups
+*~
+*.bak
+*.bak.*
+
+# Local archive clutter
+*.tar.gz
+*.tgz
+*.zip
+*.7z

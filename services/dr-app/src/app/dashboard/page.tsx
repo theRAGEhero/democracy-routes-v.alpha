@@ -205,6 +205,7 @@ export default async function DashboardPage() {
       id: meeting.id,
       title: meeting.title,
       statusLabel: isMeetingActive(meeting) ? "Active" : "Expired",
+      scheduledLabel: formatDateTime(meeting.scheduledStartAt, meeting.timezone) ?? "Not scheduled",
       expiresLabel: formatDateTime(meeting.expiresAt, meeting.timezone),
       language: meeting.language,
       providerLabel:

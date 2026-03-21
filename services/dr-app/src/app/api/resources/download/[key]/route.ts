@@ -19,7 +19,10 @@ export async function GET(request: Request, { params }: RouteContext) {
   }
 
   await incrementResourceDownloadCount(key);
-  return NextResponse.redirect(new URL(resource.publicPath, request.url), {
-    status: 307
+  return new NextResponse(null, {
+    status: 307,
+    headers: {
+      Location: resource.publicPath
+    }
   });
 }

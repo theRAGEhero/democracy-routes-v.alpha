@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { blockTypeSchema } from "@/lib/blockType";
 
 const agreementDeadlineSchema = z
   .union([z.string(), z.number().int().min(0)])
@@ -13,7 +14,7 @@ const agreementDeadlineSchema = z
   });
 
 const blockSchema = z.object({
-  type: z.enum(["START", "PARTICIPANTS", "PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING", "BREAK", "HARMONICA", "DEMBRANE", "DELIBERAIDE", "POLIS", "AGORACITIZENS", "NEXUSPOLITICS", "SUFFRAGO"]),
+  type: blockTypeSchema,
   durationSeconds: z.number().int().min(1).max(7200),
   startMode: z
     .enum([

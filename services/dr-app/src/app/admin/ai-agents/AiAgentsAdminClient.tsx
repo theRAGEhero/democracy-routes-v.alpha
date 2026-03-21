@@ -17,8 +17,34 @@ type AiAgent = {
   updatedAt: string | Date;
 };
 
+type AiAgentRun = {
+  id: string;
+  status: string;
+  reasonSkipped: string | null;
+  error: string | null;
+  transcriptWindowHash: string | null;
+  transcriptChars: number | null;
+  responseText: string | null;
+  model: string | null;
+  evaluatedAt: string | Date;
+  respondedAt: string | Date | null;
+  createdAt: string | Date;
+  agent: {
+    id: string;
+    name: string;
+    username: string;
+    color: string;
+  };
+  meeting: {
+    id: string;
+    title: string;
+    roomId: string;
+  };
+};
+
 type Props = {
   initialAgents: AiAgent[];
+  initialRuns: AiAgentRun[];
 };
 
 type AgentDraft = {
@@ -53,8 +79,54 @@ function slugify(value: string) {
     .slice(0, 120);
 }
 
-export function AiAgentsAdminClient({ initialAgents }: Props) {
+function formatRuntimeStatus(run: AiAgentRun) {
+  const raw = String(run.status || "PENDING").toUpperCase();
+  if (raw === "REPLIED") return "Replied";
+  if (raw === "FAILED") return "Failed";
+  if (raw === "SKIPPED") return "Skipped";
+  return raw.charAt(0) + raw.slice(1).toLowerCase();
+}
+
+function formatRuntimeTone(status: string) {
+  const raw = String(status || "").toUpperCase();
+  if (raw === "REPLIED") return "bg-emerald-50 text-emerald-700";
+  if (raw === "FAILED") return "bg-rose-50 text-rose-700";
+  if (raw === "SKIPPED") return "bg-amber-50 text-amber-700";
+  return "bg-slate-100 text-slate-600";
+}
+
+function formatStableDateTime(value: string | Date | null | undefined) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("en-GB", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone: "UTC"
+  }).format(date);
+}
+
+function formatStableTime(value: string | Date | null | undefined) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone: "UTC"
+  }).format(date);
+}
+
+export function AiAgentsAdminClient({ initialAgents, initialRuns }: Props) {
   const [agents, setAgents] = useState(initialAgents);
+  const [runs] = useState(initialRuns);
   const [draft, setDraft] = useState<AgentDraft>(EMPTY_DRAFT);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -107,10 +179,15 @@ export function AiAgentsAdminClient({ initialAgents }: Props) {
       );
       const data = await response.json().catch(() => null);
       if (!response.ok) {
+        const fieldErrors = data?.error?.fieldErrors
+          ? Object.values(data.error.fieldErrors)
+              .flat()
+              .filter((value: unknown): value is string => typeof value === "string" && value.trim().length > 0)
+          : [];
         const nextError =
           typeof data?.error === "string"
             ? data.error
-            : data?.error?.formErrors?.[0] ?? "Unable to save AI agent.";
+            : fieldErrors[0] ?? data?.error?.formErrors?.[0] ?? "Unable to save AI agent.";
         throw new Error(nextError);
       }
       const nextAgent = data?.agent as AiAgent;
@@ -193,6 +270,87 @@ export function AiAgentsAdminClient({ initialAgents }: Props) {
               </div>
             ))
           )}
+
+          <div className="dr-card p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Latest runtime</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Recent AI agent evaluations, skips, replies, and failures.
+                </p>
+              </div>
+            </div>
+
+            {runs.length === 0 ? (
+              <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-5 text-sm text-slate-500">
+                No runtime activity yet.
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {runs.map((run) => (
+                  <div key={run.id} className="rounded-2xl border border-slate-200 bg-white/80 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="inline-flex h-3 w-3 shrink-0 rounded-full border border-white/80 shadow-sm"
+                            style={{ backgroundColor: run.agent.color }}
+                          />
+                          <span className="truncate font-semibold text-slate-900">{run.agent.name}</span>
+                          <span className="text-xs text-slate-500">@{run.agent.username}</span>
+                        </div>
+                        <div className="mt-1 text-sm text-slate-600">
+                          <a href={`/meetings/${run.meeting.id}`} className="hover:underline">
+                            {run.meeting.title}
+                          </a>
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">{run.meeting.roomId}</div>
+                      </div>
+                      <div className="text-right">
+                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${formatRuntimeTone(run.status)}`}>
+                          {formatRuntimeStatus(run)}
+                        </span>
+                        <div className="mt-2 text-xs text-slate-500">
+                          {formatStableDateTime(run.createdAt)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-3">
+                      <div>
+                        <span className="font-semibold text-slate-700">Transcript chars:</span>{" "}
+                        {run.transcriptChars ?? "-"}
+                      </div>
+                      <div>
+                        <span className="font-semibold text-slate-700">Model:</span>{" "}
+                        {run.model || "-"}
+                      </div>
+                      <div>
+                        <span className="font-semibold text-slate-700">Responded:</span>{" "}
+                        {formatStableTime(run.respondedAt)}
+                      </div>
+                    </div>
+
+                    {run.reasonSkipped ? (
+                      <p className="mt-3 text-xs text-amber-700">
+                        <span className="font-semibold">Skip reason:</span> {run.reasonSkipped}
+                      </p>
+                    ) : null}
+                    {run.error ? (
+                      <p className="mt-3 text-xs text-rose-700">
+                        <span className="font-semibold">Error:</span> {run.error}
+                      </p>
+                    ) : null}
+                    {run.responseText ? (
+                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-700">
+                        {run.responseText}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="dr-card p-5">

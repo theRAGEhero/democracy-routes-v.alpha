@@ -8,6 +8,7 @@ type MeetingRow = {
   id: string;
   title: string;
   statusLabel: string;
+  scheduledLabel: string;
   expiresLabel: string;
   language: string;
   providerLabel: string;
@@ -116,6 +117,7 @@ export function MeetingsTable({
       const haystack = [
         meeting.title,
         meeting.statusLabel,
+        meeting.scheduledLabel,
         meeting.expiresLabel,
         meeting.language,
         meeting.providerLabel,
@@ -411,7 +413,11 @@ export function MeetingsTable({
                       ) : null}
                     </div>
 
-                    <div className={`mt-2 grid gap-2 text-[11px] text-slate-600 ${showCreatedBy ? "sm:grid-cols-2 xl:grid-cols-4" : "sm:grid-cols-2 xl:grid-cols-3"}`}>
+                    <div className={`mt-2 grid gap-2 text-[11px] text-slate-600 ${showCreatedBy ? "sm:grid-cols-2 xl:grid-cols-5" : "sm:grid-cols-2 xl:grid-cols-4"}`}>
+                      <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2">
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Starts</div>
+                        <div className="mt-1 text-xs font-medium text-slate-700">{meeting.scheduledLabel}</div>
+                      </div>
                       <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2">
                         <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Expires</div>
                         <div className="mt-1 text-xs font-medium text-slate-700">{meeting.expiresLabel}</div>

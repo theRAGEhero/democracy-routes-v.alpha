@@ -7,7 +7,6 @@ import { formatDateTime, isMeetingActive } from "@/lib/utils";
 import { MeetingActions } from "@/app/meetings/[id]/MeetingActions";
 import { MeetingInviteActions } from "@/app/meetings/[id]/MeetingInviteActions";
 import { MeetingParticipation } from "@/app/meetings/[id]/MeetingParticipation";
-import { MeetingSummaryPanel } from "@/app/meetings/[id]/MeetingSummaryPanel";
 import { buildCallJoinUrl, buildDisplayName, normalizeCallBaseUrl } from "@/lib/callUrl";
 import { buildVideoAccessToken } from "@/lib/videoAccess";
 import { MeetingDetailClient } from "@/app/meetings/[id]/MeetingDetailClient";
@@ -275,11 +274,6 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
         liveTranscriptionEnabled={liveTranscriptionEnabled}
         postCallTranscriptEnabled={postCallTranscriptEnabled}
         initialRoundId={meeting.transcriptionRoundId ?? null}
-      />
-
-      <MeetingSummaryPanel
-        meetingId={meeting.id}
-        enabled={postCallTranscriptEnabled}
       />
 
       <div className="max-h-[18dvh] overflow-auto">

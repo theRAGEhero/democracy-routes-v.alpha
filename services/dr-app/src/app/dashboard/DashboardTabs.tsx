@@ -48,8 +48,19 @@ type Props = {
   calendarEvents: Parameters<typeof CalendarPanel>[0]["events"];
 };
 
-const TABS = ["Overview", "Meetings", "Templates", "Invites", "Calendar"] as const;
+const TABS = ["Overview", "Meetings", "Invites", "Calendar"] as const;
 type TabKey = (typeof TABS)[number];
+
+function overviewTypeBadgeClass(type: RecentItem["type"] | UpcomingItem["type"]) {
+  switch (type) {
+    case "Meeting":
+      return "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200";
+    case "Template":
+      return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
+    default:
+      return "bg-slate-100 text-slate-600";
+  }
+}
 
 export function DashboardTabs({
   meetingRows,
@@ -190,8 +201,8 @@ export function DashboardTabs({
         </div>
       </aside>
 
-      <div className="order-1 flex min-h-0 flex-1 flex-col lg:order-2 lg:min-w-0">
-        <div className="dr-card mb-4 overflow-x-auto px-2 py-2">
+      <div className="order-1 flex min-h-0 flex-1 flex-col overflow-hidden lg:order-2 lg:min-w-0">
+        <div className="dr-card mb-4 flex-shrink-0 overflow-x-auto px-2 py-2">
           <div className="flex min-w-max items-center gap-2">
             {TABS.map((key) => {
               const isInvites = key === "Invites";
@@ -226,7 +237,7 @@ export function DashboardTabs({
           </div>
         </div>
         {tab === "Overview" ? (
-          <div className="h-full overflow-auto">
+          <div className="min-h-0 flex-1 overflow-auto">
             <div className="grid gap-6 lg:grid-cols-2">
               <div className="dr-card p-6">
                 <h2 className="text-sm font-semibold uppercase text-slate-500">Recent activity</h2>
@@ -247,7 +258,9 @@ export function DashboardTabs({
                                 style={{ backgroundColor: item.dataspaceColor }}
                               />
                             ) : null}
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-slate-600">
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${overviewTypeBadgeClass(item.type)}`}
+                            >
                               {item.type}
                             </span>
                             <p className="font-medium text-slate-900">{item.title}</p>
@@ -274,7 +287,7 @@ export function DashboardTabs({
                           key={`${item.type}-${item.id}`}
                           className="flex flex-wrap items-center justify-between gap-3 rounded border border-slate-200 bg-white/70 px-3 py-2"
                         >
-                        <div>
+                          <div>
                             <div className="flex items-center gap-2">
                               {item.dataspaceColor ? (
                                 <span
@@ -282,10 +295,15 @@ export function DashboardTabs({
                                   style={{ backgroundColor: item.dataspaceColor }}
                                 />
                               ) : null}
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${overviewTypeBadgeClass(item.type)}`}
+                              >
+                                {item.type}
+                              </span>
                               <p className="font-medium text-slate-900">{item.title}</p>
                             </div>
                             <p className="text-xs text-slate-500">{item.startsAt}</p>
-                        </div>
+                          </div>
                           <Link href={item.href} className="text-xs font-semibold text-slate-700 hover:underline">
                             Open
                           </Link>
@@ -301,7 +319,7 @@ export function DashboardTabs({
         ) : null}
 
         {tab === "Meetings" ? (
-          <div className="h-full overflow-auto">
+          <div className="min-h-0 flex-1 overflow-auto">
             <MeetingsTable
               initialMeetings={scopedMeetings}
               dataspaceOptions={dataspaceOptions}
@@ -316,29 +334,13 @@ export function DashboardTabs({
           </div>
         ) : null}
 
-        {tab === "Templates" ? (
-          <div className="h-full overflow-auto">
-            <MeetingsTable
-              initialMeetings={scopedMeetings}
-              dataspaceOptions={dataspaceOptions}
-              flows={scopedPlans}
-              texts={scopedTexts}
-              showCreatedBy={false}
-              showFlagFilters={true}
-              initialMode="PLANS"
-              showModeTabs={false}
-              hideDataspaceFilter={true}
-            />
-          </div>
-        ) : null}
-
         {tab === "Invites" ? (
-          <div className="h-full overflow-auto">
+          <div className="min-h-0 flex-1 overflow-auto">
             <UpcomingInvites invites={upcomingInvites} />
           </div>
         ) : null}
         {tab === "Calendar" ? (
-          <div className="h-full overflow-auto">
+          <div className="min-h-0 flex-1 overflow-auto">
             <CalendarPanel events={scopedCalendar} />
           </div>
         ) : null}

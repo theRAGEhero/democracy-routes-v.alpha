@@ -474,6 +474,40 @@ app.get("/api/join-url", (req, res) => {
     embedUrl: url.toString()
   });
 });
+app.post("/api/client-events", express.json({ limit: "256kb" }), (req, res) => {
+  const events = Array.isArray(req.body?.events) ? req.body.events : [];
+  const access = String(req.body?.access || "").trim();
+  const clientSessionId = String(req.body?.clientSessionId || "").trim() || null;
+
+  if (!events.length) {
+    return json(res, 200, { ok: true, accepted: 0 });
+  }
+
+  let accepted = 0;
+  for (const entry of events.slice(0, 200)) {
+    const roomId = String(entry?.roomId || "").trim();
+    const meetingId = String(entry?.meetingId || "").trim() || null;
+    if (REQUIRE_ACCESS && roomId && !verifyAccessToken(access, roomId, meetingId)) {
+      continue;
+    }
+
+    accepted += 1;
+    const level = String(entry?.level || "info").toLowerCase();
+    const write = logger[level] || logger.info;
+    write("client_media_trace", {
+      event: String(entry?.event || "client_event"),
+      roomId: roomId || null,
+      meetingId,
+      peerId: String(entry?.peerId || "").trim() || null,
+      name: String(entry?.name || "").trim() || null,
+      clientSessionId,
+      clientTs: String(entry?.ts || "").trim() || null,
+      details: entry?.details && typeof entry.details === "object" ? entry.details : null
+    });
+  }
+
+  return json(res, 200, { ok: true, accepted });
+});
 app.use(express.raw({ type: "application/octet-stream", limit: "25mb" }));
 
 const rooms = new Map();

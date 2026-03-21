@@ -171,6 +171,7 @@ model Meeting {
   aiAgents    MeetingAiAgent[]
   aiAgentRuns MeetingAiAgentRun[]
   aiAgentMessages MeetingAiAgentMessage[]
+  participationStats MeetingParticipationStat[]
 
   @@index([createdById])
   @@index([isActive])
@@ -231,6 +232,7 @@ model AiAgent {
   creator           User?    @relation("AiAgentCreator", fields: [createdById], references: [id], onDelete: SetNull)
   meetings          MeetingAiAgent[]
   runs              MeetingAiAgentRun[]
+  messages          MeetingAiAgentMessage[]
 
   @@index([enabled])
   @@index([createdAt])
@@ -293,6 +295,21 @@ model MeetingAiAgentMessage {
   @@index([meetingId])
   @@index([agentId])
   @@index([createdAt])
+}
+
+model MeetingParticipationStat {
+  id              String   @id @default(cuid())
+  meetingId       String
+  participantKey  String
+  participantName String
+  voiceActivityMs Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  meeting         Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@unique([meetingId, participantKey])
+  @@index([meetingId])
+  @@index([updatedAt])
 }
 
 model MeetingGuestInvite {

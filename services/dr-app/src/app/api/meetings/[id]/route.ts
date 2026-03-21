@@ -289,8 +289,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       data: enabledAgents.map((agent) => ({
         meetingId: meeting.id,
         agentId: agent.id
-      })),
-      skipDuplicates: true
+      }))
     });
   }
 

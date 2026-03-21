@@ -25,6 +25,7 @@ type Props = {
   canInvite: boolean;
   sidePanelVisible: boolean;
   sidePanelLabel: string;
+  sidePanelToggleDisabled?: boolean;
   onToggleSidePanel: () => void;
 };
 
@@ -46,6 +47,7 @@ export function EmbedCall({
   canInvite,
   sidePanelVisible,
   sidePanelLabel,
+  sidePanelToggleDisabled = false,
   onToggleSidePanel
 }: Props) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -122,7 +124,7 @@ export function EmbedCall({
     <div className="flex h-full min-h-0 flex-col">
       <div
         ref={containerRef}
-        className="flex min-h-[55dvh] flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white/80"
+        className="flex min-h-[55dvh] flex-1 flex-col overflow-visible rounded-2xl border border-slate-200 bg-white/80"
         onClick={(event) => event.stopPropagation()}
       >
         {isActive ? (
@@ -141,7 +143,7 @@ export function EmbedCall({
             {isActive ? "Call is hidden." : "Meeting is inactive or expired."}
           </div>
         )}
-        <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 bg-white/70 px-3 py-2 text-[11px] text-slate-600">
+        <div className="relative z-20 flex flex-wrap items-center gap-2 overflow-visible border-t border-slate-200 bg-white/95 px-3 py-2 text-[11px] text-slate-600">
           <div className="flex flex-wrap items-center gap-x-3">
             <span className="inline-flex items-center gap-1">
               <span className="font-semibold uppercase text-slate-500">Expires</span>
@@ -183,7 +185,7 @@ export function EmbedCall({
               type="button"
               onClick={onToggleSidePanel}
               className="dr-button-outline px-2 py-1 text-[11px]"
-              disabled={!isActive}
+              disabled={sidePanelToggleDisabled}
             >
               {sidePanelVisible ? `Hide ${sidePanelLabel}` : `Show ${sidePanelLabel}`}
             </button>

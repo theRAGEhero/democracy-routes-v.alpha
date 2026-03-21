@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 type MatchRoom = {
   participants: string[];
@@ -20,13 +20,17 @@ type MatchingResult = {
 type Props = {
   planId: string;
   canRun: boolean;
+  mode: "polar" | "anti";
 };
 
-export function MatchingPanel({ planId, canRun }: Props) {
-  const [mode, setMode] = useState<"polar" | "anti">("polar");
+export function MatchingPanel({ planId, canRun, mode }: Props) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<MatchingResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const modeLabel = useMemo(
+    () => (mode === "anti" ? "De-polarizing (contrast)" : "Polarizing (similar)"),
+    [mode]
+  );
 
   const runMatching = async () => {
     setLoading(true);
@@ -61,16 +65,11 @@ export function MatchingPanel({ planId, canRun }: Props) {
           <p className="mt-1 text-sm text-slate-600">
             Generate new pairings using live transcript signals.
           </p>
+          <p className="mt-3 text-xs text-slate-500">
+            Mode from template: <span className="font-semibold text-slate-700">{modeLabel}</span>
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={mode}
-            onChange={(event) => setMode(event.target.value as "polar" | "anti")}
-            className="dr-input h-9 rounded px-2 text-xs"
-          >
-            <option value="polar">Polarizing (similar)</option>
-            <option value="anti">Anti-polarizing (contrast)</option>
-          </select>
           <button
             type="button"
             onClick={runMatching}

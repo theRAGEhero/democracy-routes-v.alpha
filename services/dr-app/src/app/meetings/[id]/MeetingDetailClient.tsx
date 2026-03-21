@@ -51,6 +51,7 @@ export function MeetingDetailClient({
   const [transcriptRefreshKey, setTranscriptRefreshKey] = useState(0);
   const [postCallPanelAvailable, setPostCallPanelAvailable] = useState(false);
   const [postCallPanelExpanded, setPostCallPanelExpanded] = useState(false);
+  const [postCallPanelTouched, setPostCallPanelTouched] = useState(false);
   const router = useRouter();
   const sidePanelVisible = liveTranscriptionEnabled ? liveTranscriptVisible : postCallPanelExpanded;
   const transcriptPanelOpen =
@@ -58,6 +59,7 @@ export function MeetingDetailClient({
       ? liveTranscriptVisible
       : postCallTranscriptEnabled && postCallPanelAvailable && postCallPanelExpanded;
   const sidePanelLabel = liveTranscriptionEnabled ? "transcript" : "post-call transcription";
+  const sidePanelToggleDisabled = liveTranscriptionEnabled ? !isActive : !postCallPanelAvailable;
 
   useEffect(() => {
     if (typeof window !== "undefined" && window.innerWidth < 1024) {
@@ -143,12 +145,20 @@ export function MeetingDetailClient({
     };
   }, [meetingId, postCallPanelAvailable, postCallTranscriptEnabled, liveTranscriptionEnabled]);
 
+  useEffect(() => {
+    if (liveTranscriptionEnabled || !postCallTranscriptEnabled) return;
+    if (!postCallPanelTouched) {
+      setPostCallPanelExpanded(false);
+    }
+  }, [liveTranscriptionEnabled, postCallPanelAvailable, postCallPanelTouched, postCallTranscriptEnabled]);
+
   function handleToggleSidePanel() {
     if (liveTranscriptionEnabled) {
       setLiveTranscriptVisible((prev) => !prev);
       return;
     }
     if (!postCallPanelAvailable) return;
+    setPostCallPanelTouched(true);
     setPostCallPanelExpanded((prev) => !prev);
   }
 
@@ -182,6 +192,7 @@ export function MeetingDetailClient({
           canInvite={canInvite}
           sidePanelVisible={sidePanelVisible}
           sidePanelLabel={sidePanelLabel}
+          sidePanelToggleDisabled={sidePanelToggleDisabled}
           onToggleSidePanel={handleToggleSidePanel}
         />
         </div>

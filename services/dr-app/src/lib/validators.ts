@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { blockTypeSchema } from "@/lib/blockType";
 
 const agreementDeadlineSchema = z
   .union([z.string(), z.number().int().min(0)])
@@ -67,7 +68,7 @@ export const createPlanSchema = z.object({
   blocks: z
     .array(
       z.object({
-        type: z.enum(["START", "PARTICIPANTS", "PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING", "BREAK", "HARMONICA", "DEMBRANE", "DELIBERAIDE", "POLIS", "AGORACITIZENS", "NEXUSPOLITICS", "SUFFRAGO"]),
+        type: blockTypeSchema,
         durationSeconds: z.number().int().min(1).max(7200),
         startMode: z
           .enum([

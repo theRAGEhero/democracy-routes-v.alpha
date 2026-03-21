@@ -231,8 +231,7 @@ export async function POST(request: Request) {
         data: enabledAgents.map((agent) => ({
           meetingId: meeting.id,
           agentId: agent.id
-        })),
-        skipDuplicates: true
+        }))
       });
     }
   }

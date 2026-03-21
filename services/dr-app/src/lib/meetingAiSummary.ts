@@ -9,6 +9,46 @@ const summaryResponseSchema = z.object({
   generatedDescription: z.string().trim().max(500).optional().nullable()
 });
 
+const GOVERNANCE_TITLE_ADJECTIVES = new Set([
+  "civic",
+  "deliberative",
+  "commons",
+  "public",
+  "democratic",
+  "inclusive",
+  "participatory",
+  "community",
+  "restorative",
+  "mediation",
+  "consensus",
+  "bridge",
+  "peace",
+  "cooperative",
+  "mutual",
+  "solidarity",
+  "dialogue"
+]);
+
+const GOVERNANCE_TITLE_NOUNS = new Set([
+  "forum",
+  "roundtable",
+  "assembly",
+  "council",
+  "dialogue",
+  "mediation",
+  "commons",
+  "policy lab",
+  "civic lab",
+  "listening circle",
+  "peace table",
+  "consensus table",
+  "conflict lab",
+  "governance lab",
+  "civic session",
+  "deliberation",
+  "public square"
+]);
+
 function computeTranscriptHash(transcriptText: string, transcriptJson: string | null) {
   return crypto
     .createHash("sha256")
@@ -20,7 +60,19 @@ function computeTranscriptHash(transcriptText: string, transcriptJson: string | 
 
 function shouldAutofillTitle(title: string | null | undefined) {
   const value = String(title || "").trim();
-  return !value || /^untitled meeting$/i.test(value) || /^meeting$/i.test(value);
+  if (!value || /^untitled meeting$/i.test(value) || /^meeting$/i.test(value)) {
+    return true;
+  }
+
+  const normalized = value.toLowerCase().replace(/\s+/g, " ").trim();
+  const parts = normalized.split(" ");
+  if (parts.length < 2) {
+    return false;
+  }
+
+  const adjective = parts[0] ?? "";
+  const noun = parts.slice(1).join(" ").trim();
+  return GOVERNANCE_TITLE_ADJECTIVES.has(adjective) && GOVERNANCE_TITLE_NOUNS.has(noun);
 }
 
 function shouldAutofillDescription(description: string | null | undefined) {

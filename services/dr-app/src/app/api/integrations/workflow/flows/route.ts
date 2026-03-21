@@ -3,6 +3,7 @@ import { z } from "zod";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { requireWorkflowKey } from "@/app/api/integrations/workflow/utils";
+import { blockTypeSchema } from "@/lib/blockType";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ const participantSchema = z.object({
 });
 
 const blockSchema = z.object({
-  type: z.enum(["START", "PARTICIPANTS", "PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING", "BREAK", "HARMONICA", "DEMBRANE", "DELIBERAIDE", "POLIS", "AGORACITIZENS", "NEXUSPOLITICS", "SUFFRAGO"]),
+  type: blockTypeSchema,
   duration_seconds: z.number().int().positive().max(21600),
   start_mode: z
     .enum([

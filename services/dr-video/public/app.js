@@ -89,6 +89,14 @@ const EMBED_UI = ["1", "true", "yes"].includes(String(PAGE_URL.searchParams.get(
 const HIDE_DOCK = ["1", "true", "yes"].includes(String(PAGE_URL.searchParams.get("hideDock") || "").toLowerCase());
 const ACCESS_TOKEN = String(PAGE_URL.searchParams.get("access") || "").trim();
 const BASE_PATH = PAGE_URL.pathname.startsWith("/video/") || PAGE_URL.pathname === "/video" ? "/video" : "";
+const CLIENT_TRACE_SESSION_ID =
+  (window.crypto && typeof window.crypto.randomUUID === "function"
+    ? window.crypto.randomUUID()
+    : `trace_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`);
+const CLIENT_TRACE_BUFFER_LIMIT = 200;
+const CLIENT_TRACE_FLUSH_MS = 1800;
+let clientTraceBuffer = [];
+let clientTraceFlushTimer = null;
 
 function withBasePath(path) {
   const normalized = String(path || "");
@@ -96,6 +104,100 @@ function withBasePath(path) {
   if (!normalized.startsWith("/")) return BASE_PATH + "/" + normalized;
   if (normalized === BASE_PATH || normalized.startsWith(BASE_PATH + "/")) return normalized;
   return BASE_PATH + normalized;
+}
+
+function safeTraceValue(value, depth = 0) {
+  if (value == null) return value;
+  if (depth > 2) return String(value);
+  const type = typeof value;
+  if (type === "string" || type === "number" || type === "boolean") return value;
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      stack: typeof value.stack === "string" ? value.stack.slice(0, 600) : null
+    };
+  }
+  if (Array.isArray(value)) return value.slice(0, 20).map((item) => safeTraceValue(item, depth + 1));
+  if (type === "object") {
+    const out = {};
+    for (const [key, entryValue] of Object.entries(value).slice(0, 30)) {
+      out[key] = safeTraceValue(entryValue, depth + 1);
+    }
+    return out;
+  }
+  return String(value);
+}
+
+function summarizeTrack(track) {
+  if (!track) return null;
+  return {
+    id: track.id || null,
+    kind: track.kind || null,
+    enabled: typeof track.enabled === "boolean" ? track.enabled : null,
+    muted: typeof track.muted === "boolean" ? track.muted : null,
+    readyState: track.readyState || null,
+    label: track.label || null
+  };
+}
+
+function queueClientTrace(level, event, details = {}) {
+  const entry = {
+    ts: new Date().toISOString(),
+    level,
+    event,
+    clientSessionId: CLIENT_TRACE_SESSION_ID,
+    roomId: roomId || sanitizeRoomId(roomEl?.value),
+    meetingId: meetingId || null,
+    peerId: peerId || null,
+    name: nameEl?.value?.trim?.() || null,
+    details: safeTraceValue(details)
+  };
+  clientTraceBuffer.push(entry);
+  if (clientTraceBuffer.length > CLIENT_TRACE_BUFFER_LIMIT) {
+    clientTraceBuffer = clientTraceBuffer.slice(clientTraceBuffer.length - CLIENT_TRACE_BUFFER_LIMIT);
+  }
+}
+
+async function flushClientTrace(force = false) {
+  if (!clientTraceBuffer.length) return;
+  const payload = clientTraceBuffer.slice();
+  clientTraceBuffer = [];
+  if (clientTraceFlushTimer) {
+    clearTimeout(clientTraceFlushTimer);
+    clientTraceFlushTimer = null;
+  }
+
+  try {
+    await fetch(withBasePath("/api/client-events"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        clientSessionId: CLIENT_TRACE_SESSION_ID,
+        access: ACCESS_TOKEN || "",
+        events: payload
+      }),
+      keepalive: force
+    });
+  } catch {
+    clientTraceBuffer = payload.concat(clientTraceBuffer).slice(-CLIENT_TRACE_BUFFER_LIMIT);
+  }
+}
+
+function scheduleClientTraceFlush(force = false) {
+  if (force) {
+    void flushClientTrace(true);
+    return;
+  }
+  if (clientTraceFlushTimer) return;
+  clientTraceFlushTimer = setTimeout(() => {
+    void flushClientTrace(false);
+  }, CLIENT_TRACE_FLUSH_MS);
+}
+
+function trace(level, event, details = {}) {
+  queueClientTrace(level, event, details);
+  scheduleClientTraceFlush(level === "warn" || level === "error");
 }
 const ICONS = {
   viewAuto: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h16"/><path d="M12 4v16"/><circle cx="12" cy="12" r="8"/></svg>',
@@ -140,8 +242,11 @@ let recordingOwnerPeerId = null;
 let recordingMode = "av";
 let drAppBaseUrl = String(window.DR_APP_BASE_URL || "").trim();
 let drAppTranscriptTarget = "";
+let drAppParticipationStatsTarget = "";
 let lastTranscriptPushAt = 0;
 const TRANSCRIPT_PUSH_INTERVAL_MS = 1200;
+let lastParticipationStatsPushAt = 0;
+const PARTICIPATION_STATS_PUSH_INTERVAL_MS = 15000;
 let viewMode = "auto";
 let activeSpeakerPeerId = null;
 let pinnedSpeakerPeerId = null;
@@ -162,7 +267,7 @@ let transcriptInterimItem = "";
 let lastTranscriptSpeakerKey = "";
 let lastActiveSpeakerEmitAt = 0;
 let lastActiveSpeakerPeerKey = "";
-let transcriptPanelVisible = true;
+let transcriptPanelVisible = !EMBED_MODE;
 let chatPanelVisible = false;
 let overlayHideTimer = null;
 const overlayAutoHideEnabled = window.matchMedia && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
@@ -174,6 +279,10 @@ const consumerByProducerId = new Map();
 const pending = new Map();
 const observedTracks = new WeakSet();
 const audioAnalyserByPeer = new Map();
+const voiceActivityByPeer = new Map();
+const SPEAKING_RMS_THRESHOLD = 0.035;
+const SPEAKING_START_MS = 900;
+const SPEAKING_END_SILENCE_MS = 1100;
 
 function postHostEvent(type, payload = {}) {
   if (!EMBED_MODE) return;
@@ -670,6 +779,8 @@ function initializeJoinFields() {
   }
   if (drAppBaseUrl && meetingId) {
     drAppTranscriptTarget = drAppBaseUrl.replace(/\/+$/, "") + `/api/meetings/${meetingId}/live-transcript`;
+    drAppParticipationStatsTarget =
+      drAppBaseUrl.replace(/\/+$/, "") + `/api/meetings/${meetingId}/participation-stats`;
   }
 
   if (autoRecordAudioFromQuery && ["1", "true", "yes", "on"].includes(autoRecordAudioFromQuery)) {
@@ -722,7 +833,85 @@ async function postLiveTranscriptLine(text, speaker, time) {
       })
     });
   } catch {
-    // ignore
+    trace("warn", "dr_app_live_transcript_push_failed", {
+      target: drAppTranscriptTarget,
+      speaker,
+      time
+    });
+  }
+}
+
+function getPeerDisplayLabel(peerKey) {
+  if (peerKey === "local") {
+    return nameEl.value.trim() || "You";
+  }
+  const tile = peerTiles.get(peerKey);
+  const tileLabel = tile?.meta?.textContent?.replace(/\s*\(you\)\s*$/i, "").trim();
+  return tileLabel || peerNames.get(peerKey) || String(peerKey || "Participant");
+}
+
+function ensureVoiceActivityEntry(peerKey, participantName) {
+  const normalizedKey = String(peerKey || "participant").trim() || "participant";
+  const current = voiceActivityByPeer.get(normalizedKey);
+  if (current) {
+    if (participantName) current.participantName = participantName;
+    return current;
+  }
+  const entry = {
+    participantKey: normalizedKey,
+    participantName: participantName || getPeerDisplayLabel(normalizedKey),
+    voiceActivityMs: 0,
+    isSpeaking: false,
+    aboveThresholdSince: 0,
+    silenceSince: 0,
+    lastSampleAt: 0
+  };
+  voiceActivityByPeer.set(normalizedKey, entry);
+  return entry;
+}
+
+function updateVoiceActivityParticipant(peerKey, participantName) {
+  ensureVoiceActivityEntry(peerKey, participantName);
+}
+
+function finalizeVoiceActivityEntry(entry, now) {
+  if (!entry) return null;
+  if (entry.isSpeaking && entry.lastSampleAt > 0 && now > entry.lastSampleAt) {
+    entry.voiceActivityMs += now - entry.lastSampleAt;
+    entry.lastSampleAt = now;
+  }
+  return {
+    participantKey: entry.participantKey,
+    participantName: entry.participantName,
+    voiceActivityMs: Math.max(0, Math.round(entry.voiceActivityMs))
+  };
+}
+
+async function postParticipationStats(force = false) {
+  if (!drAppParticipationStatsTarget || !meetingId) return;
+  const now = Date.now();
+  if (!force && now - lastParticipationStatsPushAt < PARTICIPATION_STATS_PUSH_INTERVAL_MS) return;
+  const participants = [];
+  for (const [peerKey, entry] of voiceActivityByPeer.entries()) {
+    entry.participantName = getPeerDisplayLabel(peerKey);
+    const finalized = finalizeVoiceActivityEntry(entry, now);
+    if (finalized && finalized.participantName && finalized.voiceActivityMs >= 1000) {
+      participants.push(finalized);
+    }
+  }
+  if (participants.length === 0) return;
+  lastParticipationStatsPushAt = now;
+  try {
+    await fetch(drAppParticipationStatsTarget, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participants })
+    });
+  } catch {
+    trace("warn", "dr_app_participation_stats_push_failed", {
+      target: drAppParticipationStatsTarget,
+      participantCount: participants.length
+    });
   }
 }
 
@@ -733,6 +922,7 @@ function log(line) {
 }
 
 function logRtcDebug(event, details = {}) {
+  trace("debug", event, details);
   const parts = Object.entries(details)
     .filter(([, value]) => value !== undefined && value !== null && value !== "")
     .map(([key, value]) => `${key}=${String(value)}`);
@@ -899,6 +1089,7 @@ function attachSpeakerAnalyser(peerKey, track) {
     analyser.smoothingTimeConstant = 0.8;
     source.connect(analyser);
     audioAnalyserByPeer.set(peerKey, { source, analyser, stream });
+    updateVoiceActivityParticipant(peerKey, getPeerDisplayLabel(peerKey));
   } catch {}
 }
 
@@ -1014,6 +1205,7 @@ function syncEmbeddedViewMode() {
 function pollActiveSpeaker() {
   let winner = null;
   let maxLevel = 0.01;
+  const now = Date.now();
 
   for (const [peerKey, node] of audioAnalyserByPeer.entries()) {
     const data = new Uint8Array(node.analyser.fftSize);
@@ -1024,6 +1216,30 @@ function pollActiveSpeaker() {
       sum += v * v;
     }
     const rms = Math.sqrt(sum / data.length);
+    const entry = ensureVoiceActivityEntry(peerKey, getPeerDisplayLabel(peerKey));
+    if (entry.lastSampleAt <= 0) entry.lastSampleAt = now;
+    if (entry.isSpeaking && now > entry.lastSampleAt) {
+      entry.voiceActivityMs += now - entry.lastSampleAt;
+    }
+    entry.lastSampleAt = now;
+    if (rms >= SPEAKING_RMS_THRESHOLD) {
+      entry.silenceSince = 0;
+      if (!entry.isSpeaking) {
+        if (!entry.aboveThresholdSince) entry.aboveThresholdSince = now;
+        if (now - entry.aboveThresholdSince >= SPEAKING_START_MS) {
+          entry.isSpeaking = true;
+        }
+      }
+    } else {
+      entry.aboveThresholdSince = 0;
+      if (entry.isSpeaking) {
+        if (!entry.silenceSince) entry.silenceSince = now;
+        if (now - entry.silenceSince >= SPEAKING_END_SILENCE_MS) {
+          entry.isSpeaking = false;
+          entry.silenceSince = 0;
+        }
+      }
+    }
     if (rms > maxLevel) {
       maxLevel = rms;
       winner = peerKey;
@@ -1035,13 +1251,16 @@ function pollActiveSpeaker() {
     if (!pinnedSpeakerPeerId) updateVideosLayout();
   }
 
+  void postParticipationStats(false);
+
   if (!winner) return;
   if (!isSocketOpen()) return;
   if (!transcriptionLanguage) return;
   if (!recordingEnabled || recordingOwnerPeerId !== peerId) return;
 
-  const now = Date.now();
-  const shouldEmit = winner !== lastActiveSpeakerPeerKey || now - lastActiveSpeakerEmitAt > 1400;
+  const emitNow = Date.now();
+  const shouldEmit =
+    winner !== lastActiveSpeakerPeerKey || emitNow - lastActiveSpeakerEmitAt > 1400;
   if (!shouldEmit) return;
 
   const activePeerId = winner === "local" ? peerId : String(winner);
@@ -1051,11 +1270,11 @@ function pollActiveSpeaker() {
         action: "activeSpeaker",
         data: {
           activePeerId,
-          ts: now
+          ts: emitNow
         }
       })
     );
-    lastActiveSpeakerEmitAt = now;
+    lastActiveSpeakerEmitAt = emitNow;
     lastActiveSpeakerPeerKey = winner;
   } catch {}
 }
@@ -1187,6 +1406,7 @@ function createTile(peerKey, label, { isLocal = false } = {}) {
 
   const tile = { wrap, meta, video, audio, stream, videoStream, audioStream, isLocal };
   peerTiles.set(peerKey, tile);
+  updateVoiceActivityParticipant(peerKey, label.replace(/\s*\(you\)\s*$/i, "").trim() || label);
   logRtcDebug("tile_created", {
     peer: peerKey,
     local: isLocal,
@@ -1208,6 +1428,7 @@ function ensureTile(peerKey, label, opts) {
   const existing = peerTiles.get(peerKey);
   if (existing) {
     existing.meta.textContent = label;
+    updateVoiceActivityParticipant(peerKey, label.replace(/\s*\(you\)\s*$/i, "").trim() || label);
     return existing;
   }
   return createTile(peerKey, label, opts);
@@ -1230,9 +1451,18 @@ function observeIncomingTrack(peerKey, kind, track) {
     return (tile && tile.meta && tile.meta.textContent) || peerKey;
   };
 
-  track.onmute = () => log("Track muted: " + who() + " (" + kind + ")");
-  track.onunmute = () => log("Track unmuted: " + who() + " (" + kind + ")");
-  track.onended = () => log("Track ended: " + who() + " (" + kind + ")");
+  track.onmute = () => {
+    trace("info", "track_muted", { peer: peerKey, label: who(), kind, track: summarizeTrack(track) });
+    log("Track muted: " + who() + " (" + kind + ")");
+  };
+  track.onunmute = () => {
+    trace("info", "track_unmuted", { peer: peerKey, label: who(), kind, track: summarizeTrack(track) });
+    log("Track unmuted: " + who() + " (" + kind + ")");
+  };
+  track.onended = () => {
+    trace("warn", "track_ended", { peer: peerKey, label: who(), kind, track: summarizeTrack(track) });
+    log("Track ended: " + who() + " (" + kind + ")");
+  };
   logRtcDebug("track_observed", {
     peer: peerKey,
     kind,
@@ -1546,6 +1776,7 @@ function refreshOverlayAutoHideState() {
 
 function sendRequest(action, data = {}) {
   const requestId = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  trace("debug", "ws_request_sent", { action, requestId, data });
   ws.send(JSON.stringify({ action, requestId, data }));
 
   return new Promise((resolve, reject) => {
@@ -1553,6 +1784,7 @@ function sendRequest(action, data = {}) {
     setTimeout(() => {
       if (!pending.has(requestId)) return;
       pending.delete(requestId);
+      trace("warn", "ws_request_timeout", { action, requestId });
       reject(new Error(`timeout: ${action}`));
     }, 10000);
   });
@@ -1575,6 +1807,12 @@ async function updateDeviceLists() {
   if (videoDeviceEl.value) dockVideoDeviceEl.value = videoDeviceEl.value;
 
   refreshDevicePickerState();
+  trace("info", "media_devices_enumerated", {
+    audioInputCount: audioInputs.length,
+    videoInputCount: videoInputs.length,
+    selectedAudioDeviceId: audioDeviceEl.value || null,
+    selectedVideoDeviceId: videoDeviceEl.value || null
+  });
 }
 
 function selectedAudioConstraint() {
@@ -1606,13 +1844,24 @@ async function refreshPreview() {
 
   try {
     stopPreviewStream();
+    trace("info", "preview_get_user_media_start", {
+      audioConstraint: selectedAudioConstraint(),
+      videoConstraint: selectedVideoConstraint()
+    });
     previewStream = await navigator.mediaDevices.getUserMedia({
       audio: selectedAudioConstraint(),
       video: selectedVideoConstraint()
     });
+    trace("info", "preview_get_user_media_ok", {
+      audioTrack: summarizeTrack(previewStream.getAudioTracks()[0]),
+      videoTrack: summarizeTrack(previewStream.getVideoTracks()[0])
+    });
     previewVideoEl.srcObject = previewStream;
     previewVideoEl.play().catch(() => null);
   } catch (error) {
+    trace("warn", "preview_get_user_media_failed", {
+      error: error instanceof Error ? error.message : String(error)
+    });
     log(`Preview unavailable: ${String(error)}`);
   }
 }
@@ -1624,6 +1873,9 @@ async function switchAudioDevice() {
   }
 
   try {
+    trace("info", "audio_device_switch_start", {
+      nextDeviceId: audioDeviceEl.value || null
+    });
     const temp = await navigator.mediaDevices.getUserMedia({
       audio: selectedAudioConstraint(),
       video: false
@@ -1646,8 +1898,15 @@ async function switchAudioDevice() {
     }
 
     await updateDeviceLists();
+    trace("info", "audio_device_switch_ok", {
+      newTrack: summarizeTrack(newTrack)
+    });
     log("Microphone switched");
   } catch (error) {
+    trace("warn", "audio_device_switch_failed", {
+      nextDeviceId: audioDeviceEl.value || null,
+      error: error instanceof Error ? error.message : String(error)
+    });
     log(`Microphone switch failed: ${String(error)}`);
   }
 }
@@ -1659,6 +1918,9 @@ async function switchVideoDevice() {
   }
 
   try {
+    trace("info", "video_device_switch_start", {
+      nextDeviceId: videoDeviceEl.value || null
+    });
     const temp = await navigator.mediaDevices.getUserMedia({
       audio: false,
       video: selectedVideoConstraint()
@@ -1681,8 +1943,15 @@ async function switchVideoDevice() {
     }
 
     await updateDeviceLists();
+    trace("info", "video_device_switch_ok", {
+      newTrack: summarizeTrack(newTrack)
+    });
     log("Camera switched");
   } catch (error) {
+    trace("warn", "video_device_switch_failed", {
+      nextDeviceId: videoDeviceEl.value || null,
+      error: error instanceof Error ? error.message : String(error)
+    });
     log(`Camera switch failed: ${String(error)}`);
   }
 }
@@ -1692,14 +1961,24 @@ async function ensureRecvTransport() {
 
   const params = await sendRequest("createTransport", { direction: "recv" });
   recvTransport = device.createRecvTransport(params);
+  trace("info", "recv_transport_created", { transportId: recvTransport.id });
 
   recvTransport.on("connect", async ({ dtlsParameters }, callback, errback) => {
     try {
+      trace("debug", "recv_transport_connect_start", { transportId: recvTransport.id });
       await sendRequest("connectTransport", { transportId: recvTransport.id, dtlsParameters });
+      trace("info", "recv_transport_connect_ok", { transportId: recvTransport.id });
       callback();
     } catch (error) {
+      trace("warn", "recv_transport_connect_failed", {
+        transportId: recvTransport.id,
+        error: error instanceof Error ? error.message : String(error)
+      });
       errback(error);
     }
+  });
+  recvTransport.on("connectionstatechange", (state) => {
+    trace("info", "recv_transport_state", { transportId: recvTransport.id, state });
   });
 
   return recvTransport;
@@ -1726,21 +2005,45 @@ async function consumeProducer({ producerId, peerId: remotePeerId, kind }) {
     });
 
     consumerByProducerId.set(producerId, { consumer, peerId: remotePeerId, kind: params.kind });
+    trace("info", "consumer_created", {
+      consumerId: consumer.id,
+      producerId,
+      peer: remotePeerId,
+      kind: params.kind
+    });
 
     const displayName = peerNames.get(remotePeerId) || remotePeerId;
     ensureTile(remotePeerId, displayName, { isLocal: false });
     setTileTrack(remotePeerId, params.kind, consumer.track);
 
     consumer.on("transportclose", () => {
+      trace("warn", "consumer_transport_closed", {
+        consumerId: consumer.id,
+        producerId,
+        peer: remotePeerId,
+        kind: params.kind
+      });
       consumerByProducerId.delete(producerId);
     });
 
     consumer.on("trackended", () => {
+      trace("warn", "consumer_track_ended", {
+        consumerId: consumer.id,
+        producerId,
+        peer: remotePeerId,
+        kind: params.kind
+      });
       consumerByProducerId.delete(producerId);
     });
 
     await sendRequest("resumeConsumer", { consumerId: consumer.id });
   } catch (error) {
+    trace("warn", "consume_failed", {
+      peer: remotePeerId,
+      kind,
+      producerId,
+      error: error instanceof Error ? error.message : String(error)
+    });
     log(`Consume failed for ${remotePeerId} (${kind}): ${String(error)}`);
   }
 }
@@ -1818,9 +2121,19 @@ async function startTranscriptionRecorder(recordingSessionId = "") {
     transcriptionRecorder = mimeType
       ? new MediaRecorder(mixed.stream, { mimeType })
       : new MediaRecorder(mixed.stream);
+    trace("info", "transcription_recorder_created", {
+      sessionId: transcriptionRecorderSessionId,
+      mimeType: transcriptionRecorder.mimeType || mimeType || null,
+      trackKinds: mixed.stream.getTracks().map((track) => track.kind)
+    });
 
     transcriptionRecorder.ondataavailable = async (event) => {
       if (!event.data || !event.data.size) return;
+      trace("debug", "transcription_recorder_chunk", {
+        sessionId: transcriptionRecorderSessionId,
+        seq: transcriptionRecorderSeq,
+        size: event.data.size
+      });
       const url =
         withBasePath("/api/transcription/chunk?roomId=") + encodeURIComponent(roomId) +
         "&peerId=" + encodeURIComponent(peerId) +
@@ -1831,8 +2144,13 @@ async function startTranscriptionRecorder(recordingSessionId = "") {
         method: "POST",
         headers: { "content-type": "application/octet-stream" },
         body: event.data
-      })
+        })
         .catch((error) => {
+          trace("warn", "transcription_upload_failed", {
+            sessionId: transcriptionRecorderSessionId,
+            seq: transcriptionRecorderSeq - 1,
+            error: error instanceof Error ? error.message : String(error)
+          });
           log("Transcription upload failed: " + String(error));
         })
         .finally(() => {
@@ -1843,6 +2161,9 @@ async function startTranscriptionRecorder(recordingSessionId = "") {
     };
 
     transcriptionRecorder.onstop = async () => {
+      trace("info", "transcription_recorder_stopped", {
+        sessionId: transcriptionRecorderSessionId
+      });
       if (transcriptionUploadPending.length) {
         await Promise.allSettled([...transcriptionUploadPending]);
       }
@@ -1870,9 +2191,22 @@ async function startTranscriptionRecorder(recordingSessionId = "") {
       transcriptionRecorderSessionId = "";
       transcriptionUploadPending = [];
     };
+    transcriptionRecorder.onerror = (event) => {
+      trace("error", "transcription_recorder_error", {
+        sessionId: transcriptionRecorderSessionId,
+        error: event?.error?.message || String(event?.error || "unknown")
+      });
+    };
 
     transcriptionRecorder.start(1000);
+    trace("info", "transcription_recorder_started", {
+      sessionId: transcriptionRecorderSessionId,
+      timesliceMs: 1000
+    });
   } catch (error) {
+    trace("error", "transcription_start_failed", {
+      error: error instanceof Error ? error.message : String(error)
+    });
     log("Transcription start failed: " + String(error));
   }
 }
@@ -1903,9 +2237,21 @@ async function beginLocalRecorder(mode = "av") {
     normalizedMode === "audio" ? "audio/webm;codecs=opus" : "video/webm;codecs=vp8,opus";
   const mimeType = MediaRecorder.isTypeSupported(preferredMimeType) ? preferredMimeType : undefined;
   rec = mimeType ? new MediaRecorder(mediaStream, { mimeType }) : new MediaRecorder(mediaStream);
+  trace("info", "recording_recorder_created", {
+    sessionId: recSessionId,
+    mode: normalizedMode,
+    mimeType: rec.mimeType || mimeType || null,
+    trackKinds
+  });
 
   rec.ondataavailable = async (event) => {
     if (!event.data || !event.data.size) return;
+    trace("debug", "recording_chunk_ready", {
+      sessionId: recSessionId,
+      mode: normalizedMode,
+      seq: recSeq,
+      size: event.data.size
+    });
     const url = withBasePath("/api/record/chunk?roomId=" + encodeURIComponent(roomId) + "&peerId=" + encodeURIComponent(peerId) + "&sessionId=" + encodeURIComponent(recSessionId) + "&mode=" + encodeURIComponent(normalizedMode) + "&seq=" + recSeq++);
     const uploadPromise = fetch(url, {
         method: "POST",
@@ -1913,6 +2259,12 @@ async function beginLocalRecorder(mode = "av") {
         body: event.data
       })
       .catch((error) => {
+        trace("warn", "recording_chunk_upload_failed", {
+          sessionId: recSessionId,
+          mode: normalizedMode,
+          seq: recSeq - 1,
+          error: error instanceof Error ? error.message : String(error)
+        });
         log(`Chunk upload failed: ${String(error)}`);
       })
       .finally(() => {
@@ -1930,6 +2282,10 @@ async function beginLocalRecorder(mode = "av") {
   }
 
   rec.onstop = async () => {
+    trace("info", "recording_recorder_stopped", {
+      sessionId: recSessionId,
+      mode: normalizedMode
+    });
     await stopTranscriptionRecorder();
 
     if (recordingComposite) {
@@ -1974,8 +2330,20 @@ async function beginLocalRecorder(mode = "av") {
     log(`Recording stopped (${normalizedMode === "audio" ? "audio-only" : "video+audio"})`);
     refreshRecordingButtons();
   };
+  rec.onerror = (event) => {
+    trace("error", "recording_recorder_error", {
+      sessionId: recSessionId,
+      mode: normalizedMode,
+      error: event?.error?.message || String(event?.error || "unknown")
+    });
+  };
 
   rec.start(2000);
+  trace("info", "recording_recorder_started", {
+    sessionId: recSessionId,
+    mode: normalizedMode,
+    timesliceMs: 2000
+  });
   log(`Recording started (${normalizedMode === "audio" ? "audio-only mix" : "video+audio mix"})`);
   refreshRecordingButtons();
 }
@@ -2150,6 +2518,11 @@ async function joinRoom() {
   }
 
   resetRtcState();
+  trace("info", "join_begin", {
+    currentRoomField: roomEl.value || null,
+    meetingId: meetingId || null,
+    embed: EMBED_MODE || EMBED_UI
+  });
 
   roomId = sanitizeRoomId(roomEl.value);
   if (!roomId) {
@@ -2174,9 +2547,13 @@ async function joinRoom() {
 
   const wsProtocol = location.protocol === "https:" ? "wss" : "ws";
   ws = new WebSocket(wsProtocol + "://" + location.host + withBasePath("/ws"));
+  trace("info", "ws_connecting", {
+    url: wsProtocol + "://" + location.host + withBasePath("/ws")
+  });
 
   ws.onopen = async () => {
     try {
+      trace("info", "ws_open", {});
       setStatus("Connecting...");
       clearRemoteState();
 
@@ -2189,6 +2566,12 @@ async function joinRoom() {
         access: ACCESS_TOKEN
       });
       peerId = joined.peerId;
+      trace("info", "join_acknowledged", {
+        peerId,
+        roomId,
+        remotePeerCount: Array.isArray(joined.peers) ? joined.peers.length : 0,
+        producerCount: Array.isArray(joined.producerIds) ? joined.producerIds.length : 0
+      });
       loadTranscriptHistory(Array.isArray(joined.transcriptHistory) ? joined.transcriptHistory : []);
       clearChatBox();
       if (Array.isArray(joined.chatMessages)) {
@@ -2216,14 +2599,24 @@ async function joinRoom() {
 
       const sendParams = await sendRequest("createTransport", { direction: "send" });
       sendTransport = device.createSendTransport(sendParams);
+      trace("info", "send_transport_created", { transportId: sendTransport.id });
 
       sendTransport.on("connect", async ({ dtlsParameters }, callback, errback) => {
         try {
+          trace("debug", "send_transport_connect_start", { transportId: sendTransport.id });
           await sendRequest("connectTransport", { transportId: sendTransport.id, dtlsParameters });
+          trace("info", "send_transport_connect_ok", { transportId: sendTransport.id });
           callback();
         } catch (error) {
+          trace("warn", "send_transport_connect_failed", {
+            transportId: sendTransport.id,
+            error: error instanceof Error ? error.message : String(error)
+          });
           errback(error);
         }
+      });
+      sendTransport.on("connectionstatechange", (state) => {
+        trace("info", "send_transport_state", { transportId: sendTransport.id, state });
       });
 
       sendTransport.on("produce", async ({ kind, rtpParameters }, callback, errback) => {
@@ -2233,15 +2626,33 @@ async function joinRoom() {
             kind,
             rtpParameters
           });
+          trace("info", "send_transport_produce_ok", {
+            transportId: sendTransport.id,
+            kind,
+            producerId: result.producerId
+          });
           callback({ id: result.producerId });
         } catch (error) {
+          trace("warn", "send_transport_produce_failed", {
+            transportId: sendTransport.id,
+            kind,
+            error: error instanceof Error ? error.message : String(error)
+          });
           errback(error);
         }
       });
 
+      trace("info", "join_get_user_media_start", {
+        audioConstraint: selectedAudioConstraint(),
+        videoConstraint: selectedVideoConstraint()
+      });
       localStream = await navigator.mediaDevices.getUserMedia({
         audio: selectedAudioConstraint(),
         video: selectedVideoConstraint()
+      });
+      trace("info", "join_get_user_media_ok", {
+        audioTrack: summarizeTrack(localStream.getAudioTracks()[0]),
+        videoTrack: summarizeTrack(localStream.getVideoTracks()[0])
       });
 
       ensureTile("local", `${displayName} (you)`, { isLocal: true });
@@ -2262,6 +2673,20 @@ async function joinRoom() {
             opusPtime: 20
           }
         });
+        trace("info", "audio_producer_created", {
+          producerId: audioProducer.id,
+          track: summarizeTrack(localAudioTrack)
+        });
+        audioProducer.on("trackended", () => {
+          trace("warn", "audio_producer_track_ended", {
+            producerId: audioProducer?.id || null
+          });
+        });
+        audioProducer.on("transportclose", () => {
+          trace("warn", "audio_producer_transport_closed", {
+            producerId: audioProducer?.id || null
+          });
+        });
       }
 
       const preferredVideoCodec = device.rtpCapabilities.codecs.find(
@@ -2274,6 +2699,20 @@ async function joinRoom() {
             ? { track: localVideoTrack, codec: preferredVideoCodec }
             : { track: localVideoTrack }
         );
+        trace("info", "video_producer_created", {
+          producerId: videoProducer.id,
+          track: summarizeTrack(localVideoTrack)
+        });
+        videoProducer.on("trackended", () => {
+          trace("warn", "video_producer_track_ended", {
+            producerId: videoProducer?.id || null
+          });
+        });
+        videoProducer.on("transportclose", () => {
+          trace("warn", "video_producer_transport_closed", {
+            producerId: videoProducer?.id || null
+          });
+        });
       }
 
       joined.peers?.forEach((p) => {
@@ -2298,12 +2737,21 @@ async function joinRoom() {
       renderParticipants();
       setStatus(`Connected to ${roomId}`);
       log(`Joined room ${roomId} as ${peerId}`);
+      trace("info", "join_completed", {
+        peerId,
+        roomId,
+        transcriptionLanguage: transcriptionLanguage || null
+      });
       if (transcriptionLanguage) {
         log("Transcription language: " + transcriptionLanguage.toUpperCase());
       }
       postHostEvent("connected", { connected: true, name: displayName });
       refreshAllControls();
     } catch (error) {
+      trace("error", "join_failed", {
+        roomId,
+        error: error instanceof Error ? error.message : String(error)
+      });
       log(`Join failed: ${String(error)}`);
       setStatus("Failed");
       try {
@@ -2330,8 +2778,16 @@ async function joinRoom() {
       const entry = pending.get(payload.requestId);
       if (!entry) return;
       pending.delete(payload.requestId);
-      if (payload.ok) entry.resolve(payload.data || {});
-      else entry.reject(new Error(payload.error || "request failed"));
+      if (payload.ok) {
+        trace("debug", "ws_request_resolved", { requestId: payload.requestId });
+        entry.resolve(payload.data || {});
+      } else {
+        trace("warn", "ws_request_rejected", {
+          requestId: payload.requestId,
+          error: payload.error || "request failed"
+        });
+        entry.reject(new Error(payload.error || "request failed"));
+      }
       return;
     }
 
@@ -2467,6 +2923,10 @@ async function joinRoom() {
   };
 
   ws.onclose = async () => {
+    trace("warn", "ws_closed", {
+      roomId,
+      peerId
+    });
     setStatus("Disconnected");
     log("Socket closed");
     resetRtcState();
@@ -2476,11 +2936,25 @@ async function joinRoom() {
     postHostEvent("connected", { connected: false });
     await refreshPreview();
   };
+  ws.onerror = (event) => {
+    trace("warn", "ws_error", {
+      readyState: ws?.readyState ?? null,
+      type: event?.type || null
+    });
+  };
 }
 
 async function leaveRoom() {
+  trace("info", "leave_begin", {
+    roomId,
+    peerId
+  });
   try {
     if (rec) await stopRecording();
+  } catch {}
+
+  try {
+    await postParticipationStats(true);
   } catch {}
 
   try {
@@ -2533,6 +3007,8 @@ async function leaveRoom() {
   recordingMode = "av";
   lastActiveSpeakerEmitAt = 0;
   lastActiveSpeakerPeerKey = "";
+  lastParticipationStatsPushAt = 0;
+  voiceActivityByPeer.clear();
 
   updateRoomBadge("");
   setConnectedView(false);
@@ -2540,6 +3016,9 @@ async function leaveRoom() {
   clearTranscriptBox();
   refreshAllControls();
   postHostEvent("left", { connected: false });
+  trace("info", "leave_completed", {
+    meetingId: meetingId || null
+  });
   try {
     if ((EMBED_MODE || EMBED_UI) && meetingId && drAppBaseUrl && window.parent) {
       window.parent.postMessage(
@@ -2580,6 +3059,13 @@ async function init() {
   renderTranscriptBox();
   setConnectedView(false);
   postHostEvent("ready", { embed: EMBED_MODE });
+  trace("info", "app_ready", {
+    embed: EMBED_MODE,
+    embedUi: EMBED_UI,
+    hideDock: HIDE_DOCK,
+    roomFromUrl: readRoomFromPath() || null,
+    meetingId: meetingId || null
+  });
 
   window.addEventListener("message", (event) => {
     handleHostCommand(event.data).catch((error) => {
@@ -2852,3 +3338,38 @@ autoRecordAudioEl.addEventListener("change", () => {
   if (autoRecordAudioEl.checked) autoRecordVideoEl.checked = false;
 });
 init().catch(() => null);
+
+window.addEventListener("error", (event) => {
+  trace("error", "window_error", {
+    message: event.message || null,
+    filename: event.filename || null,
+    lineno: event.lineno || null,
+    colno: event.colno || null
+  });
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  trace("error", "window_unhandled_rejection", {
+    reason:
+      event.reason instanceof Error
+        ? { name: event.reason.name, message: event.reason.message, stack: event.reason.stack || null }
+        : safeTraceValue(event.reason)
+  });
+});
+
+if (navigator.mediaDevices?.addEventListener) {
+  navigator.mediaDevices.addEventListener("devicechange", async () => {
+    trace("info", "media_devicechange", {});
+    try {
+      await updateDeviceLists();
+    } catch (error) {
+      trace("warn", "media_devicechange_refresh_failed", {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+}
+
+window.addEventListener("beforeunload", () => {
+  scheduleClientTraceFlush(true);
+});

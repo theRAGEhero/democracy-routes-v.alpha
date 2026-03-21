@@ -105,6 +105,31 @@ function serializeDraft(draft: TemplateDraft) {
   return JSON.stringify(draft);
 }
 
+const LOCAL_DRAFTS_STORAGE_KEY = "dr_template_workspace_local_drafts_v1";
+
+function getLocalDraftKey(templateId?: string | null) {
+  return templateId || "__new__";
+}
+
+function readStoredDraftMap() {
+  if (typeof window === "undefined") return {} as Record<string, TemplateDraft>;
+  try {
+    const raw = window.sessionStorage.getItem(LOCAL_DRAFTS_STORAGE_KEY);
+    if (!raw) return {} as Record<string, TemplateDraft>;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, TemplateDraft>) : {};
+  } catch {
+    return {} as Record<string, TemplateDraft>;
+  }
+}
+
+function writeStoredDraftMap(next: Record<string, TemplateDraft>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(LOCAL_DRAFTS_STORAGE_KEY, JSON.stringify(next));
+  } catch {}
+}
+
 export function TemplateWorkspaceClient({
   templates,
   dataspaces,
@@ -144,12 +169,13 @@ export function TemplateWorkspaceClient({
   const [mobileAiOpen, setMobileAiOpen] = useState(false);
   const [aiMessages, setAiMessages] = useState<AiMessage[]>([AI_INTRO_MESSAGE]);
   const lastLoadedRouteTemplateIdRef = useRef<string | null>(initialTemplateId ?? null);
-  const autosaveTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queuedAutosaveRef = useRef(false);
   const latestDraftRef = useRef(draft);
   const latestAiMessagesRef = useRef(aiMessages);
   const lastModeRef = useRef<WorkspaceMode>(initialMode);
   const lastDirtyRef = useRef<boolean>(false);
+  const localDraftsHydratedRef = useRef(false);
 
   async function persistAiHistory(templateId: string, messages: AiMessage[]) {
     try {
@@ -181,6 +207,29 @@ export function TemplateWorkspaceClient({
   useEffect(() => {
     latestAiMessagesRef.current = aiMessages;
   }, [aiMessages]);
+
+  useEffect(() => {
+    if (localDraftsHydratedRef.current) return;
+    localDraftsHydratedRef.current = true;
+    const routeTemplateId = searchParams?.get("templateId") || initialTemplateId || null;
+    if (!routeTemplateId) return;
+    const stored = readStoredDraftMap();
+    const cached = stored[getLocalDraftKey(routeTemplateId)];
+    if (!cached) return;
+    const cachedSignature = serializeDraft(cached);
+    setDraft(cached);
+    setLastSavedSignature(routeTemplateId ? initialSavedSignature : cachedSignature);
+    if (routeTemplateId !== cached.id) {
+      setLastSavedAt(null);
+    }
+  }, [initialSavedSignature, initialTemplateId, searchParams]);
+
+  useEffect(() => {
+    if (!localDraftsHydratedRef.current) return;
+    const stored = readStoredDraftMap();
+    stored[getLocalDraftKey(draft.id)] = draft;
+    writeStoredDraftMap(stored);
+  }, [draft]);
 
   useEffect(() => {
     void postClientLog({
@@ -226,45 +275,6 @@ export function TemplateWorkspaceClient({
     });
     lastDirtyRef.current = isDirty;
   }, [isDirty, currentTemplateId, mode, draft.blocks.length]);
-
-  useEffect(() => {
-    if (!isDirty) {
-      if (autosaveTimerRef.current) {
-        window.clearTimeout(autosaveTimerRef.current);
-        autosaveTimerRef.current = null;
-      }
-      return;
-    }
-    if (!currentTemplateId) {
-      return;
-    }
-    if (saving) {
-      queuedAutosaveRef.current = true;
-      return;
-    }
-    if (autosaveTimerRef.current) {
-      window.clearTimeout(autosaveTimerRef.current);
-    }
-    void postClientLog({
-      scope: "template_workspace",
-      message: "template_workspace_autosave_scheduled",
-      meta: {
-        templateId: currentTemplateId,
-        mode,
-        blockCount: draft.blocks.length
-      }
-    });
-    autosaveTimerRef.current = window.setTimeout(() => {
-      autosaveTimerRef.current = null;
-      void performSave("auto");
-    }, 1500);
-    return () => {
-      if (autosaveTimerRef.current) {
-        window.clearTimeout(autosaveTimerRef.current);
-        autosaveTimerRef.current = null;
-      }
-    };
-  }, [currentTemplateId, draftSignature, isDirty, performSave, saving]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -320,6 +330,14 @@ export function TemplateWorkspaceClient({
   useEffect(() => {
     const routeTemplateId = searchParams?.get("templateId") || initialTemplateId || null;
     if (!routeTemplateId) {
+      if (draft.id) {
+        const nextDraft = buildDefaultTemplateDraft();
+        setDraft(nextDraft);
+        setLastSavedSignature(serializeDraft(nextDraft));
+        setLastSavedAt(null);
+        setSaveError(null);
+        setSaveMessage(null);
+      }
       lastLoadedRouteTemplateIdRef.current = null;
       return;
     }
@@ -327,9 +345,10 @@ export function TemplateWorkspaceClient({
     const target = templatesState.find((item) => item.id === routeTemplateId);
     if (!target) return;
     lastLoadedRouteTemplateIdRef.current = routeTemplateId;
-    const nextDraft = mapTemplateToDraft(target);
+    const stored = readStoredDraftMap();
+    const nextDraft = stored[getLocalDraftKey(routeTemplateId)] ?? mapTemplateToDraft(target);
     setDraft(nextDraft);
-    setLastSavedSignature(serializeDraft(nextDraft));
+    setLastSavedSignature(serializeDraft(mapTemplateToDraft(target)));
     setLastSavedAt(target.updatedAt);
     setSaveError(null);
     setSaveMessage(null);
@@ -411,9 +430,10 @@ export function TemplateWorkspaceClient({
     const target = templatesState.find((item) => item.id === templateId);
     if (!target) return;
     lastLoadedRouteTemplateIdRef.current = templateId;
-    const nextDraft = mapTemplateToDraft(target);
+    const stored = readStoredDraftMap();
+    const nextDraft = stored[getLocalDraftKey(templateId)] ?? mapTemplateToDraft(target);
     setDraft(nextDraft);
-    setLastSavedSignature(serializeDraft(nextDraft));
+    setLastSavedSignature(serializeDraft(mapTemplateToDraft(target)));
     setLastSavedAt(target.updatedAt);
     setSaveError(null);
     setSaveMessage(null);
@@ -485,6 +505,10 @@ export function TemplateWorkspaceClient({
       if (nextId && nextId !== snapshot.id) {
         lastLoadedRouteTemplateIdRef.current = nextId;
         setDraft((prev) => ({ ...prev, id: nextId }));
+        const stored = readStoredDraftMap();
+        delete stored[getLocalDraftKey(snapshot.id)];
+        stored[getLocalDraftKey(nextId)] = { ...snapshot, id: nextId };
+        writeStoredDraftMap(stored);
         setTemplatesState((prev) => [
           {
             id: nextId,
@@ -504,6 +528,9 @@ export function TemplateWorkspaceClient({
         router.replace(`/templates/workspace?${params.toString()}`);
         void persistAiHistory(nextId, latestAiMessagesRef.current);
       } else if (nextId) {
+        const stored = readStoredDraftMap();
+        stored[getLocalDraftKey(nextId)] = { ...snapshot, id: nextId };
+        writeStoredDraftMap(stored);
         setTemplatesState((prev) =>
           prev.map((template) =>
             template.id === nextId
@@ -570,9 +597,59 @@ export function TemplateWorkspaceClient({
     }
   }, [mode, persistAiHistory, router, saving, searchParams]);
 
+  useEffect(() => {
+    if (!isDirty) {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+      return;
+    }
+    if (!currentTemplateId) {
+      return;
+    }
+    if (saving) {
+      queuedAutosaveRef.current = true;
+      return;
+    }
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+    }
+    void postClientLog({
+      scope: "template_workspace",
+      message: "template_workspace_autosave_scheduled",
+      meta: {
+        templateId: currentTemplateId,
+        mode,
+        blockCount: draft.blocks.length
+      }
+    });
+    autosaveTimerRef.current = setTimeout(() => {
+      autosaveTimerRef.current = null;
+      void performSave("auto");
+    }, 1500);
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+    };
+  }, [currentTemplateId, draftSignature, isDirty, mode, performSave, saving, draft.blocks.length]);
+
   async function handleSave() {
     await performSave("manual");
   }
+
+  const handleDraftChange = useCallback((nextDraft: TemplateDraft) => {
+    setDraft((prev) => {
+      const prevSignature = serializeDraft(prev);
+      const nextSignature = serializeDraft(nextDraft);
+      if (prevSignature === nextSignature) {
+        return prev;
+      }
+      return nextDraft;
+    });
+  }, []);
 
   const saveStatus = saving
     ? { label: "Saving...", className: "border-amber-200 bg-amber-50 text-amber-700" }
@@ -1343,7 +1420,7 @@ export function TemplateWorkspaceClient({
               <ModularBuilderClient
                 workspaceMode
                 draft={draft}
-                onDraftChange={setDraft}
+                onDraftChange={handleDraftChange}
                 templates={templatesState}
                 dataspaces={dataspaces}
               />
@@ -1352,7 +1429,7 @@ export function TemplateWorkspaceClient({
                 draft={draft}
                 posters={posters}
                 audioFiles={audioFiles}
-                onChange={setDraft}
+                onChange={handleDraftChange}
               />
             )}
           </div>

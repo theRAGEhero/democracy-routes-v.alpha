@@ -141,6 +141,10 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
           meditationDurationMinutes: plan.meditationDurationMinutes
         });
   const { totalEndMs } = schedule;
+  const matchingMode =
+    normalizedBlocks.find((block) => block.type === "MATCHING")?.matchingMode === "anti"
+      ? "anti"
+      : "polar";
   const isOwner = plan.createdById === session.user.id;
   const canEdit = (isAdmin || isOwner) && Date.now() <= totalEndMs;
   const canStartNow = (isAdmin || isOwner) && plan.startAt.getTime() > Date.now();
@@ -345,7 +349,7 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
         callDisplayName={participantCallDisplayName}
         canSkip={isOwner}
       />
-      <MatchingPanel planId={plan.id} canRun={isAdmin || isOwner} />
+      <MatchingPanel planId={plan.id} canRun={isAdmin || isOwner} mode={matchingMode} />
       <PlanAnalysisPanel
         planId={plan.id}
         initialAnalysis={
@@ -367,11 +371,11 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
           ) : null}
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4 text-sm text-slate-700">
             <div>
-              <p className="text-xs font-semibold uppercase text-slate-500">Pairings</p>
+              <p className="text-xs font-semibold uppercase text-slate-500">Discussions</p>
               <p>{plan.roundsCount}</p>
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase text-slate-500">Minutes per pairing</p>
+              <p className="text-xs font-semibold uppercase text-slate-500">Minutes per discussion</p>
               <p>{plan.roundDurationMinutes}</p>
             </div>
             <div>

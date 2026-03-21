@@ -122,8 +122,8 @@ export function MeetingActions({ meetingId, canInvite, isActive, variant = "card
 
   if (variant === "inline") {
     return (
-      <div className="flex flex-wrap items-center gap-2">
-        <form onSubmit={handleInvite} className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 overflow-visible">
+        <form onSubmit={handleInvite} className="flex items-center gap-2 overflow-visible">
           <div className="relative w-56">
             <input
               type="email"
@@ -136,7 +136,7 @@ export function MeetingActions({ meetingId, canInvite, isActive, variant = "card
               required
             />
             {showSuggestions && suggestions.length > 0 ? (
-              <div className="absolute z-10 mt-1 w-full rounded border border-slate-200 bg-white shadow-lg">
+              <div className="absolute bottom-full left-0 z-[70] mb-1 max-h-56 w-full overflow-auto rounded border border-slate-200 bg-white shadow-xl">
                 {suggestions.map((user) => (
                   <button
                     key={user.id}
