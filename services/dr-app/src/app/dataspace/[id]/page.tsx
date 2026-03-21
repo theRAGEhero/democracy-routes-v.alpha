@@ -5,12 +5,11 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatDateTime } from "@/lib/utils";
 import { DataspaceJoinLeave } from "@/app/dataspace/[id]/DataspaceJoinLeave";
-import { DataspaceInviteForm } from "@/app/dataspace/[id]/DataspaceInviteForm";
-import { DataspaceAnalysisPanel } from "@/app/dataspace/[id]/DataspaceAnalysisPanel";
 import { JoinButton } from "@/components/JoinButton";
 import { DataspaceSettingsModal } from "@/app/dataspace/[id]/DataspaceSettingsModal";
 import { DataspaceImportSources } from "@/app/dataspace/[id]/DataspaceImportSources";
 import { DataspaceMembersModal } from "@/app/dataspace/[id]/DataspaceMembersModal";
+import { DataspaceRelatedTabs } from "@/app/dataspace/[id]/DataspaceRelatedTabs";
 import { DEFAULT_DATASPACE_COLOR, getDataspaceTheme } from "@/lib/dataspaceColor";
 import { UserProfileLink } from "@/components/UserProfileLink";
 
@@ -47,6 +46,14 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
                 user: { select: { id: true, email: true } }
               }
             }
+          }
+        },
+        openProblems: {
+          where: { status: "OPEN" },
+          orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+          include: {
+            createdBy: { select: { email: true } },
+            joins: { select: { userId: true } }
           }
         },
         texts: { orderBy: { updatedAt: "desc" } }
@@ -437,56 +444,35 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
             </div>
           </div>
 
-          <div className="dr-card p-6">
-            <h2 className="text-sm font-semibold uppercase text-slate-500">Templates</h2>
-            <div className="mt-3 space-y-3 text-sm text-slate-700">
-              {dataspace.plans.length === 0 ? (
-                <p className="text-slate-500">No templates yet.</p>
-              ) : (
-                dataspace.plans.map((plan: (typeof dataspace.plans)[number]) => {
-                  const joinStatus =
-                    plan.createdById === session.user.id || planPairIds.has(plan.id)
+          <DataspaceRelatedTabs
+            dataspaceId={dataspace.id}
+            plans={dataspace.plans.map((plan: (typeof dataspace.plans)[number]) => {
+              const joinStatus =
+                plan.createdById === session.user.id || planPairIds.has(plan.id)
+                  ? "JOINED"
+                  : planParticipantMap.get(plan.id) === "PENDING"
+                    ? "PENDING"
+                    : planParticipantMap.get(plan.id) === "APPROVED"
                       ? "JOINED"
-                      : planParticipantMap.get(plan.id) === "PENDING"
-                        ? "PENDING"
-                        : planParticipantMap.get(plan.id) === "APPROVED"
-                          ? "JOINED"
-                          : "NONE";
-                  return (
-                    <div key={plan.id} className="flex items-center justify-between gap-3 rounded border border-slate-200 bg-white/70 px-3 py-2">
-                      <div>
-                        <p className="font-medium text-slate-900">{plan.title}</p>
-                        {renderPlanParticipantSummary(plan) ? (
-                          <p className="text-xs text-slate-500">{renderPlanParticipantSummary(plan)}</p>
-                        ) : null}
-                        <p className="text-xs text-slate-500">
-                          {formatDateTime(plan.startAt, plan.timezone)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        {plan.isPublic ? (
-                          <JoinButton
-                            resourceType="plan"
-                            resourceId={plan.id}
-                            initialStatus={joinStatus}
-                            canJoin={true}
-                          />
-                        ) : null}
-                        <Link
-                          href={`/flows/${plan.id}`}
-                          className="text-xs font-semibold text-slate-700 hover:underline"
-                        >
-                          Open
-                        </Link>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          <DataspaceAnalysisPanel dataspaceId={dataspace.id} />
+                      : "NONE";
+              return {
+                id: plan.id,
+                title: plan.title,
+                participantSummary: renderPlanParticipantSummary(plan),
+                startLabel: formatDateTime(plan.startAt, plan.timezone),
+                isPublic: plan.isPublic,
+                joinStatus
+              };
+            })}
+            openProblems={dataspace.openProblems.map((problem: (typeof dataspace.openProblems)[number]) => ({
+              id: problem.id,
+              title: problem.title,
+              description: problem.description,
+              createdByEmail: problem.createdBy.email,
+              joinCount: problem.joins.length,
+              joinedByMe: problem.joins.some((join) => join.userId === session.user.id)
+            }))}
+          />
         </div>
       </div>
       </div>

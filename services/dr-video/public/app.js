@@ -280,9 +280,11 @@ const pending = new Map();
 const observedTracks = new WeakSet();
 const audioAnalyserByPeer = new Map();
 const voiceActivityByPeer = new Map();
+const voiceActivitySentStateByPeer = new Map();
 const SPEAKING_RMS_THRESHOLD = 0.035;
 const SPEAKING_START_MS = 900;
 const SPEAKING_END_SILENCE_MS = 1100;
+const VOICE_ACTIVITY_HEARTBEAT_MS = 2500;
 
 function postHostEvent(type, payload = {}) {
   if (!EMBED_MODE) return;
@@ -782,6 +784,7 @@ function initializeJoinFields() {
     drAppParticipationStatsTarget =
       drAppBaseUrl.replace(/\/+$/, "") + `/api/meetings/${meetingId}/participation-stats`;
   }
+  voiceActivitySentStateByPeer.clear();
 
   if (autoRecordAudioFromQuery && ["1", "true", "yes", "on"].includes(autoRecordAudioFromQuery)) {
     setAutoRecordMode("audio");
@@ -885,6 +888,40 @@ function finalizeVoiceActivityEntry(entry, now) {
     participantName: entry.participantName,
     voiceActivityMs: Math.max(0, Math.round(entry.voiceActivityMs))
   };
+}
+
+function emitVoiceActivityState(peerKey, entry, force = false) {
+  if (!entry) return;
+  if (!isSocketOpen()) return;
+  if (!transcriptionLanguage) return;
+  if (!recordingEnabled || recordingOwnerPeerId !== peerId) return;
+
+  const now = Date.now();
+  const normalizedKey = String(peerKey || "").trim();
+  const last = voiceActivitySentStateByPeer.get(normalizedKey) || { speaking: null, ts: 0 };
+  const speaking = Boolean(entry.isSpeaking);
+  const shouldEmit =
+    force ||
+    last.speaking !== speaking ||
+    (speaking && now - Number(last.ts || 0) >= VOICE_ACTIVITY_HEARTBEAT_MS);
+  if (!shouldEmit) return;
+
+  const activePeerId = normalizedKey === "local" ? peerId : normalizedKey;
+  if (!activePeerId) return;
+
+  try {
+    ws.send(
+      JSON.stringify({
+        action: "voiceActivity",
+        data: {
+          activePeerId,
+          speaking,
+          ts: now
+        }
+      })
+    );
+    voiceActivitySentStateByPeer.set(normalizedKey, { speaking, ts: now });
+  } catch {}
 }
 
 async function postParticipationStats(force = false) {
@@ -1240,6 +1277,7 @@ function pollActiveSpeaker() {
         }
       }
     }
+    emitVoiceActivityState(peerKey, entry, false);
     if (rms > maxLevel) {
       maxLevel = rms;
       winner = peerKey;
@@ -2951,6 +2989,15 @@ async function leaveRoom() {
   });
   try {
     if (rec) await stopRecording();
+  } catch {}
+
+  try {
+    for (const [peerKey, entry] of voiceActivityByPeer.entries()) {
+      if (entry.isSpeaking) {
+        entry.isSpeaking = false;
+        emitVoiceActivityState(peerKey, entry, true);
+      }
+    }
   } catch {}
 
   try {

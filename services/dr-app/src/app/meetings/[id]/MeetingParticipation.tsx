@@ -101,8 +101,8 @@ export function MeetingParticipation({
   }
 
   return (
-    <div className="dr-card p-6">
-      <div className="flex flex-wrap items-center gap-3">
+    <div className="dr-card p-3">
+      <div className="flex flex-wrap items-center gap-2">
         <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold uppercase text-white">
           Public meeting
         </span>
@@ -122,7 +122,7 @@ export function MeetingParticipation({
         ) : null}
       </div>
 
-      <div className="mt-4">
+      <div className="mt-2">
         {!isDataspaceMember ? (
           <p className="text-sm text-slate-600">Only dataspace members can participate.</p>
         ) : isMember ? (
@@ -158,13 +158,13 @@ export function MeetingParticipation({
         )}
       </div>
 
-      {message ? <p className="mt-3 text-sm text-emerald-600">{message}</p> : null}
-      {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
+      {message ? <p className="mt-2 text-sm text-emerald-600">{message}</p> : null}
+      {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
 
       {canManageRequests && requests.length > 0 ? (
-        <div className="mt-5 border-t border-slate-200 pt-4">
+        <div className="mt-3 border-t border-slate-200 pt-3">
           <h3 className="text-sm font-semibold text-slate-900">Pending requests</h3>
-          <div className="mt-3 space-y-2 text-sm">
+          <div className="mt-2 space-y-2 text-sm">
             {requests.map((request) => (
               <div key={request.id} className="flex items-center justify-between rounded border border-slate-200 bg-white/70 px-3 py-2">
                 <span>{request.email}</span>

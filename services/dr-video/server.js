@@ -893,27 +893,158 @@ function recordTranscriptionActiveSpeaker(roomId, senderPeerId, activePeerIdRaw,
   });
 }
 
+function trimPeerSpeechWindows(session, now = Date.now()) {
+  if (!session) return;
+  const minTs = now - 15 * 60 * 1000;
+  const windowsByPeer = session.peerSpeechWindows || {};
+  for (const [peerId, windows] of Object.entries(windowsByPeer)) {
+    if (!Array.isArray(windows)) {
+      delete windowsByPeer[peerId];
+      continue;
+    }
+    const kept = windows.filter((window) => Number(window?.endMs || 0) >= minTs);
+    if (kept.length > 0) {
+      windowsByPeer[peerId] = kept;
+    } else {
+      delete windowsByPeer[peerId];
+    }
+  }
+  const openByPeer = session.peerSpeechOpen || {};
+  for (const [peerId, entry] of Object.entries(openByPeer)) {
+    const startMs = Number(entry?.startMs || 0);
+    const lastTsMs = Number(entry?.lastTsMs || 0);
+    if ((startMs && startMs < minTs) || (lastTsMs && lastTsMs < minTs)) {
+      delete openByPeer[peerId];
+    }
+  }
+}
+
+function closePeerSpeechWindow(session, peerId, endMsRaw) {
+  if (!session || !peerId) return;
+  const openByPeer = session.peerSpeechOpen || {};
+  const current = openByPeer[peerId];
+  if (!current) return;
+
+  const endMs = Math.max(Number(endMsRaw || 0), Number(current.lastTsMs || current.startMs || endMsRaw || 0));
+  const startMs = Number(current.startMs || 0);
+  if (startMs > 0 && endMs >= startMs) {
+    session.peerSpeechWindows[peerId] ||= [];
+    session.peerSpeechWindows[peerId].push({
+      startMs,
+      endMs
+    });
+  }
+  delete openByPeer[peerId];
+}
+
+function recordTranscriptionVoiceActivity(roomId, senderPeerId, payload) {
+  const session = transcriptionSessions.get(roomId);
+  if (!session) return;
+  if (session.ownerPeerId !== senderPeerId) return;
+
+  const room = rooms.get(roomId);
+  if (!room) return;
+
+  const activePeerId = String(payload?.activePeerId || "").trim();
+  if (!activePeerId) return;
+  if (!room.peers.has(activePeerId)) return;
+
+  const speaking = Boolean(payload?.speaking);
+  const now = Date.now();
+  let tsMs = clampNumber(payload?.ts, now);
+  if (tsMs > now + 5000 || tsMs < now - 5 * 60 * 1000) tsMs = now;
+
+  session.peerSpeechWindows ||= {};
+  session.peerSpeechOpen ||= {};
+
+  const openByPeer = session.peerSpeechOpen;
+  const current = openByPeer[activePeerId];
+
+  if (speaking) {
+    if (current) {
+      current.lastTsMs = Math.max(Number(current.lastTsMs || current.startMs || tsMs), tsMs);
+    } else {
+      openByPeer[activePeerId] = {
+        startMs: tsMs,
+        lastTsMs: tsMs
+      };
+    }
+  } else {
+    closePeerSpeechWindow(session, activePeerId, tsMs);
+  }
+
+  trimPeerSpeechWindows(session, now);
+
+  traceRecTrans("transcription_voice_activity", {
+    roomId,
+    senderPeerId,
+    activePeerId,
+    speaking,
+    tsMs,
+    openCount: Object.keys(session.peerSpeechOpen || {}).length
+  });
+}
+
+function collectPeerOverlapScores(session, segStartMs, segEndMs) {
+  const overlapByPeer = new Map();
+  const fromMs = segStartMs - 250;
+  const toMs = segEndMs + 250;
+  const now = Date.now();
+
+  const windowsByPeer = session.peerSpeechWindows || {};
+  for (const [peerId, windows] of Object.entries(windowsByPeer)) {
+    if (!Array.isArray(windows)) continue;
+    let totalOverlap = 0;
+    for (const window of windows) {
+      const startMs = Number(window?.startMs || 0);
+      const endMs = Number(window?.endMs || 0);
+      if (!startMs || !endMs || endMs < fromMs || startMs > toMs) continue;
+      totalOverlap += Math.max(0, Math.min(endMs, toMs) - Math.max(startMs, fromMs));
+    }
+    if (totalOverlap > 0) overlapByPeer.set(peerId, totalOverlap);
+  }
+
+  const openByPeer = session.peerSpeechOpen || {};
+  for (const [peerId, open] of Object.entries(openByPeer)) {
+    const startMs = Number(open?.startMs || 0);
+    const endMs = Math.max(Number(open?.lastTsMs || startMs), now);
+    if (!startMs || endMs < fromMs || startMs > toMs) continue;
+    const overlap = Math.max(0, Math.min(endMs, toMs) - Math.max(startMs, fromMs));
+    if (overlap > 0) {
+      overlapByPeer.set(peerId, (overlapByPeer.get(peerId) || 0) + overlap);
+    }
+  }
+
+  return overlapByPeer;
+}
+
 function mapDiarizedSpeakerToPeer(session, speakerInfo) {
   const speakerId = String(speakerInfo?.speakerId || "").trim();
   const startSec = Number(speakerInfo?.startSec);
   const endSec = Number(speakerInfo?.endSec);
   if (!speakerId || !Number.isFinite(startSec) || !Number.isFinite(endSec)) {
-    return { mappedPeerId: null, mappedPeerName: null, mappingConfidence: 0 };
+    return { mappedPeerId: null, mappedPeerName: null, mappingConfidence: 0, mappingMethod: "none" };
   }
 
   const segStartMs = session.startedAtMs + startSec * 1000;
   const segEndMs = session.startedAtMs + endSec * 1000;
-  const fromMs = segStartMs - 600;
-  const toMs = segEndMs + 600;
-  const counts = new Map();
+  trimPeerSpeechWindows(session, Date.now());
+  let counts = collectPeerOverlapScores(session, segStartMs, segEndMs);
+  let mappingMethod = "voice_overlap";
 
-  for (const ev of session.activeSpeakerEvents) {
-    if (ev.tsMs < fromMs || ev.tsMs > toMs) continue;
-    counts.set(ev.peerId, (counts.get(ev.peerId) || 0) + 1);
+  if (!counts.size) {
+    const fromMs = segStartMs - 600;
+    const toMs = segEndMs + 600;
+    counts = new Map();
+    for (const ev of session.activeSpeakerEvents) {
+      if (ev.tsMs < fromMs || ev.tsMs > toMs) continue;
+      counts.set(ev.peerId, (counts.get(ev.peerId) || 0) + 1);
+    }
+    mappingMethod = counts.size ? "active_speaker_fallback" : "none";
   }
 
   if (!counts.size) {
-    return { mappedPeerId: null, mappedPeerName: null, mappingConfidence: 0 };
+    return { mappedPeerId: null, mappedPeerName: null, mappingConfidence: 0, mappingMethod };
   }
 
   let winnerPeerId = null;
@@ -928,7 +1059,7 @@ function mapDiarizedSpeakerToPeer(session, speakerInfo) {
   }
 
   if (!winnerPeerId || winnerVotes <= 0) {
-    return { mappedPeerId: null, mappedPeerName: null, mappingConfidence: 0 };
+    return { mappedPeerId: null, mappedPeerName: null, mappingConfidence: 0, mappingMethod };
   }
 
   const perSpeakerVotes = session.speakerPeerVotes[speakerId] || {};
@@ -956,7 +1087,8 @@ function mapDiarizedSpeakerToPeer(session, speakerInfo) {
   return {
     mappedPeerId,
     mappedPeerName: mappedPeer ? mappedPeer.name : null,
-    mappingConfidence: confidence
+    mappingConfidence: confidence,
+    mappingMethod
   };
 }
 
@@ -1816,6 +1948,8 @@ function getOrCreateTranscriptionSession(roomId, ownerPeerId, languageRaw, recor
     rawEvents: [],
     finalWords: [],
     activeSpeakerEvents: [],
+    peerSpeechWindows: {},
+    peerSpeechOpen: {},
     speakerPeerVotes: {},
     peerNameById: {},
     ready: false,
@@ -2018,6 +2152,13 @@ function closePeer(peerId) {
   if (!peer) return;
 
   const roomId = peer.roomId;
+  const now = Date.now();
+  const transcriptionSession = transcriptionSessions.get(roomId);
+  if (transcriptionSession) {
+    closePeerSpeechWindow(transcriptionSession, peerId, now);
+    delete transcriptionSession.peerSpeechOpen?.[peerId];
+    delete transcriptionSession.peerSpeechWindows?.[peerId];
+  }
 
   for (const consumer of peer.consumers.values()) {
     try {
@@ -3371,6 +3512,12 @@ wss.on("connection", (ws) => {
 
       if (action === "activeSpeaker") {
         recordTranscriptionActiveSpeaker(peer.roomId, peer.id, data?.activePeerId, data?.ts);
+        if (requestId) ok(ws, requestId, { ok: true });
+        return;
+      }
+
+      if (action === "voiceActivity") {
+        recordTranscriptionVoiceActivity(peer.roomId, peer.id, data || {});
         if (requestId) ok(ws, requestId, { ok: true });
         return;
       }

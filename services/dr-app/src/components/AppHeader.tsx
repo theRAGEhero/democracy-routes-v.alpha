@@ -185,6 +185,9 @@ export function AppHeader() {
             </div>
           </a>
             <div className="hidden items-center gap-2 text-xs text-slate-600 sm:flex">
+              <Link href="/presentation" className="rounded-full px-3 py-1 hover:bg-white/70">
+                Presentation
+              </Link>
               <Link href="/about" className="rounded-full px-3 py-1 hover:bg-white/70">
                 About
               </Link>
@@ -206,7 +209,10 @@ export function AppHeader() {
             </button>
           </div>
           {showMobileMenu ? (
-            <div className="absolute left-0 right-0 top-full z-40 mt-3 flex flex-col gap-2 rounded-2xl border border-slate-200/70 bg-white/95 p-3 text-sm text-slate-700 shadow-[0_18px_45px_rgba(15,23,42,0.12)] sm:hidden">
+            <div className="absolute left-0 right-0 top-full z-40 mt-3 flex flex-col gap-2 rounded-2xl border border-slate-300 bg-white p-3 text-sm text-slate-700 shadow-[0_22px_54px_rgba(15,23,42,0.16)] sm:hidden">
+              <Link href="/presentation" onClick={() => setShowMobileMenu(false)}>
+                Presentation
+              </Link>
               <Link href="/about" onClick={() => setShowMobileMenu(false)}>
                 About
               </Link>
@@ -323,6 +329,20 @@ export function AppHeader() {
                   >
                     Dataspaces
                   </Link>
+                  <Link
+                    href="/presentation"
+                    onClick={() => setShowMobileMenu(false)}
+                    className="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    Presentation
+                  </Link>
+                  <Link
+                    href="/open-problems"
+                    onClick={() => setShowMobileMenu(false)}
+                    className="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    Open Problems
+                  </Link>
                 </div>
 
                 <div className="space-y-2">
@@ -418,6 +438,12 @@ export function AppHeader() {
             <Link href="/dashboard" className="rounded-full px-3 py-1 hover:bg-white/70">
               Dashboard
             </Link>
+            <Link href="/presentation" className="rounded-full px-3 py-1 hover:bg-white/70">
+              Presentation
+            </Link>
+            <Link href="/open-problems" className="rounded-full px-3 py-1 hover:bg-white/70">
+              Open Problems
+            </Link>
             <div
               className="relative"
               onMouseEnter={openDataspaceMenu}
@@ -437,7 +463,7 @@ export function AppHeader() {
               </button>
               {showDataspaceMenu ? (
                 <div
-                  className="absolute left-0 mt-2 w-60 rounded-xl border border-slate-200 bg-white/96 p-2 text-xs shadow-[0_12px_28px_rgba(15,23,42,0.1)]"
+                  className="absolute left-0 mt-2 w-60 rounded-xl border border-slate-300 bg-white p-2 text-xs shadow-[0_18px_40px_rgba(15,23,42,0.16)]"
                   onMouseEnter={openDataspaceMenu}
                   onMouseLeave={scheduleCloseDataspaceMenu}
                 >
@@ -492,7 +518,7 @@ export function AppHeader() {
               </button>
               {showNewMenu ? (
                 <div
-                  className="absolute left-0 mt-2 w-48 rounded-xl border border-slate-200 bg-white/96 p-2 text-xs shadow-[0_12px_28px_rgba(15,23,42,0.1)]"
+                  className="absolute left-0 mt-2 w-48 rounded-xl border border-slate-300 bg-white p-2 text-xs shadow-[0_18px_40px_rgba(15,23,42,0.16)]"
                   onMouseEnter={openTemplatesMenu}
                   onMouseLeave={scheduleCloseTemplatesMenu}
                 >
@@ -529,7 +555,7 @@ export function AppHeader() {
               </button>
               {showMeetingMenu ? (
                 <div
-                  className="absolute right-0 mt-2 w-52 rounded-xl border border-slate-200 bg-white/96 p-2 text-xs shadow-[0_12px_28px_rgba(15,23,42,0.1)]"
+                  className="absolute right-0 mt-2 w-52 rounded-xl border border-slate-300 bg-white p-2 text-xs shadow-[0_18px_40px_rgba(15,23,42,0.16)]"
                   onMouseEnter={openMeetingMenu}
                   onMouseLeave={scheduleCloseMeetingMenu}
                 >
@@ -589,7 +615,7 @@ export function AppHeader() {
               </button>
               {showUserMenu ? (
                 <div
-                  className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-slate-200 bg-white/96 p-2 text-xs shadow-[0_12px_28px_rgba(15,23,42,0.1)]"
+                  className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-slate-300 bg-white p-2 text-xs shadow-[0_18px_40px_rgba(15,23,42,0.16)]"
                   onMouseEnter={openUserMenu}
                   onMouseLeave={scheduleCloseUserMenu}
                 >
@@ -599,6 +625,13 @@ export function AppHeader() {
                     className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
                   >
                     Remote worker
+                  </Link>
+                  <Link
+                    href="/open-problems"
+                    onClick={() => setShowUserMenu(false)}
+                    className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
+                  >
+                    Open Problems
                   </Link>
                   <Link
                     href="/account"
@@ -695,6 +728,12 @@ export function AppHeader() {
               <div className="flex flex-col gap-2">
                 <Link href="/dashboard" onClick={() => setShowMobileMenu(false)} className="font-medium">
                   Dashboard
+                </Link>
+                <Link href="/presentation" onClick={() => setShowMobileMenu(false)} className="font-medium">
+                  Presentation
+                </Link>
+                <Link href="/open-problems" onClick={() => setShowMobileMenu(false)} className="font-medium">
+                  Open Problems
                 </Link>
                 <Link href="/dataspace" onClick={() => setShowMobileMenu(false)} className="font-medium">
                   Dataspaces

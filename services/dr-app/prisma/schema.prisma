@@ -67,6 +67,8 @@ model User {
   remoteWorkers      RemoteWorker[]
   templateAiConversations TemplateAiConversation[]
   aiAgentsCreated    AiAgent[]       @relation("AiAgentCreator")
+  openProblemsCreated OpenProblem[]  @relation("OpenProblemCreator")
+  openProblemJoins   OpenProblemJoin[]
 
   @@index([role])
   @@index([emailVerificationToken])
@@ -310,6 +312,52 @@ model MeetingParticipationStat {
   @@unique([meetingId, participantKey])
   @@index([meetingId])
   @@index([updatedAt])
+}
+
+model OpenProblem {
+  id          String               @id @default(cuid())
+  title       String
+  description String
+  status      String               @default("OPEN")
+  createdById String
+  dataspaceId String?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  createdBy   User                 @relation("OpenProblemCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  dataspace   Dataspace?           @relation(fields: [dataspaceId], references: [id], onDelete: SetNull)
+  messages    OpenProblemMessage[]
+  joins       OpenProblemJoin[]
+
+  @@index([createdById])
+  @@index([dataspaceId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model OpenProblemMessage {
+  id        String      @id @default(cuid())
+  problemId String
+  role      String
+  text      String
+  createdAt DateTime    @default(now())
+  problem   OpenProblem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@index([problemId])
+  @@index([createdAt])
+}
+
+model OpenProblemJoin {
+  id        String      @id @default(cuid())
+  problemId String
+  userId    String
+  createdAt DateTime    @default(now())
+  problem   OpenProblem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([problemId, userId])
+  @@index([problemId])
+  @@index([userId])
+  @@index([createdAt])
 }
 
 model MeetingGuestInvite {
@@ -720,6 +768,7 @@ model Dataspace {
   texts       Text[]
   meetings    Meeting[]
   plans       Plan[]
+  openProblems OpenProblem[]
   analyses    DataspaceAnalysis[]
 
   @@index([createdById])

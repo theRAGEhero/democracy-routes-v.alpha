@@ -120,6 +120,16 @@ export default async function Home() {
                   PoPP
                 </a>
               </div>
+              <div className="mt-3">
+                <a
+                  href="https://github.com/theRAGEhero/democracy-routes-v.alpha"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="inline-flex items-center text-sm font-semibold text-slate-600 hover:text-slate-900"
+                >
+                  GitHub repository →
+                </a>
+              </div>
             </div>
           </div>
         </div>

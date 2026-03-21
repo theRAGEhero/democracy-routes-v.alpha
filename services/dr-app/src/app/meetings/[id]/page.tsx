@@ -191,7 +191,7 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
   return (
     <div className="dataspace-theme dataspace-theme-tight" style={theme as CSSProperties}>
       <div className="relative left-1/2 right-1/2 w-screen -mx-[50vw] -my-6 h-[calc(100dvh-var(--app-header-h,0px))] overflow-hidden px-0">
-        <div className="grid h-full min-h-0 grid-rows-[auto,minmax(0,1fr),auto,auto] gap-2 overflow-hidden px-4 pb-2 pt-1">
+        <div className="grid h-full min-h-0 grid-rows-[auto,minmax(0,1fr)] gap-2 overflow-hidden px-4 pb-1 pt-1">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
@@ -276,7 +276,7 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
         initialRoundId={meeting.transcriptionRoundId ?? null}
       />
 
-      <div className="max-h-[18dvh] overflow-auto">
+      <div className="max-h-[10dvh] overflow-auto">
         <MeetingParticipation
           meetingId={meeting.id}
           isPublic={meeting.isPublic}

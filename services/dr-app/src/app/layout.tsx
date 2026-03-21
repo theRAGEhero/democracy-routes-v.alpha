@@ -1,15 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
-import { AppHeader } from "@/components/AppHeader";
-import { FeedbackButton } from "@/components/FeedbackButton";
-import { AppFooter } from "@/components/AppFooter";
-import { Suspense } from "react";
 import type { CSSProperties } from "react";
-import { FirstTimeTutorial } from "@/components/FirstTimeTutorial";
 import { getSiteSetting } from "@/lib/siteSettings";
 import { AnalyticsConsent } from "@/components/AnalyticsConsent";
 import { PwaRegister } from "@/components/PwaRegister";
+import { AppFrame } from "@/components/AppFrame";
 
 export const dynamic = "force-dynamic";
 
@@ -62,17 +58,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         }
       >
         <Providers>
-          <Suspense>
-            <AppHeader />
-          </Suspense>
-          <main className="mx-auto w-full max-w-[1400px] px-3 py-6 md:px-4">{children}</main>
-          <AppFooter />
-          <FirstTimeTutorial />
+          <AppFrame>{children}</AppFrame>
           <AnalyticsConsent enabled={shouldInject} snippet={analyticsSnippet} />
           <PwaRegister />
-          <Suspense>
-            <FeedbackButton />
-          </Suspense>
         </Providers>
       </body>
     </html>
