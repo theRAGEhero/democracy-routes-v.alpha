@@ -6,9 +6,8 @@ import { getSiteSetting } from "@/lib/siteSettings";
 import { AnalyticsConsent } from "@/components/AnalyticsConsent";
 import { PwaRegister } from "@/components/PwaRegister";
 import { AppFrame } from "@/components/AppFrame";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { getAppThemeBodyClass } from "@/lib/appTheme";
+import { getSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -39,9 +38,9 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const session = await getServerSession(authOptions);
   let shouldInject = false;
   let analyticsSnippet = "";
+  const sessionPromise = getSession();
   if (process.env.DATABASE_URL) {
     const [snippet, enabled] = await Promise.all([
       getSiteSetting("analyticsSnippet"),
@@ -50,6 +49,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     analyticsSnippet = snippet ?? "";
     shouldInject = enabled === "true" && Boolean(analyticsSnippet.trim());
   }
+  const session = await sessionPromise;
 
   return (
     <html lang="en">
@@ -62,7 +62,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           } as CSSProperties
         }
       >
-        <Providers>
+        <Providers session={session}>
           <AppFrame>{children}</AppFrame>
           <AnalyticsConsent enabled={shouldInject} snippet={analyticsSnippet} />
           <PwaRegister />
