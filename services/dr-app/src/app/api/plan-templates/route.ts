@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { blockTypeSchema } from "@/lib/blockType";
+import { normalizeBlockRecords } from "@/lib/blockType";
 
 const agreementDeadlineSchema = z
   .union([z.string(), z.number().int().min(0)])
@@ -69,7 +70,7 @@ const blockSchema = z.object({
   posterContent: z.string().trim().max(4000).optional().nullable(),
   embedUrl: z.string().trim().max(500).optional().nullable(),
   harmonicaUrl: z.string().trim().max(500).optional().nullable(),
-  matchingMode: z.enum(["polar", "anti"]).optional().nullable(),
+  matchingMode: z.enum(["polar", "anti", "random"]).optional().nullable(),
   meditationAnimationId: z.string().optional().nullable(),
   meditationAudioUrl: z.string().optional().nullable()
 });
@@ -118,10 +119,12 @@ export async function GET() {
   });
 
   const parsed = templates.map((template: (typeof templates)[number]) => {
-    let blocks = [];
+    let blocks: Array<z.infer<typeof blockSchema>> = [];
     let settings = null;
     try {
-      blocks = JSON.parse(template.blocksJson);
+      blocks = normalizeBlockRecords(
+        JSON.parse(template.blocksJson) as Array<z.infer<typeof blockSchema>>
+      ) as Array<z.infer<typeof blockSchema>>;
     } catch (error) {
       blocks = [];
     }

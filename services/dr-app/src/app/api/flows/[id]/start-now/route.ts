@@ -8,6 +8,7 @@ import {
   type PlanBlockType
 } from "@/lib/planSchedule";
 import { normalizeMatchingMode } from "@/lib/matchingMode";
+import { normalizeBlockType } from "@/lib/blockType";
 
 export async function POST(
   _request: Request,
@@ -48,8 +49,8 @@ export async function POST(
 
   const normalizedBlocks: PlanBlockInput[] = (plan.blocks ?? []).reduce(
     (acc: PlanBlockInput[], block: (typeof plan.blocks)[number]) => {
-      const type = block.type as PlanBlockType;
-      if (!["START", "PARTICIPANTS", "PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING", "BREAK", "HARMONICA", "DEMBRANE", "DELIBERAIDE", "POLIS", "AGORACITIZENS", "NEXUSPOLITICS", "SUFFRAGO"].includes(type)) {
+      const type = normalizeBlockType(block.type) as PlanBlockType | null;
+      if (!type || !["START", "PARTICIPANTS", "DISCUSSION", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "GROUPING", "BREAK", "HARMONICA", "DEMBRANE", "DELIBERAIDE", "POLIS", "AGORACITIZENS", "NEXUSPOLITICS", "SUFFRAGO"].includes(type)) {
         return acc;
       }
       acc.push({

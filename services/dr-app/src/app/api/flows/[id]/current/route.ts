@@ -10,6 +10,7 @@ import {
 } from "@/lib/planSchedule";
 import { normalizeMatchingMode } from "@/lib/matchingMode";
 import crypto from "crypto";
+import { normalizeBlockType } from "@/lib/blockType";
 
 function generateRoomId(language: string, transcriptionProvider: string) {
   const providerLabel =
@@ -57,7 +58,7 @@ function getFormBlockByRound(
     if (block.type === "FORM") {
       pendingForm = { id: block.id };
     }
-    if (block.type === "PAIRING") {
+    if (block.type === "DISCUSSION") {
       roundCounter += 1;
       if (roundCounter === roundNumber) {
         return pendingForm;
@@ -189,8 +190,8 @@ export async function GET(
 
   const normalizedBlocks: PlanBlockInput[] = (plan.blocks ?? []).reduce(
     (acc: PlanBlockInput[], block: (typeof plan.blocks)[number]) => {
-      const type = block.type as PlanBlockType;
-      if (!["START", "PARTICIPANTS", "PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING", "BREAK", "HARMONICA", "DEMBRANE", "DELIBERAIDE", "POLIS", "AGORACITIZENS", "NEXUSPOLITICS", "SUFFRAGO"].includes(type)) {
+      const type = normalizeBlockType(block.type) as PlanBlockType | null;
+      if (!type || !["START", "PARTICIPANTS", "DISCUSSION", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "GROUPING", "BREAK", "HARMONICA", "DEMBRANE", "DELIBERAIDE", "POLIS", "AGORACITIZENS", "NEXUSPOLITICS", "SUFFRAGO"].includes(type)) {
         return acc;
       }
       acc.push({
@@ -228,10 +229,10 @@ export async function GET(
   const elapsed = nowMs - plan.startAt.getTime();
   const currentSegment = getSegmentAtTime(schedule.segments, nowMs);
   const currentRoundIndex =
-    currentSegment?.type === "PAIRING"
+    currentSegment?.type === "DISCUSSION"
       ? currentSegment?.roundNumber ?? 1
       : currentSegment?.roundAfter ?? 1;
-  const roundBlocks = normalizedBlocks.filter((block) => block.type === "PAIRING");
+  const roundBlocks = normalizedBlocks.filter((block) => block.type === "DISCUSSION");
 
   let status: "pending" | "active" | "done" = "pending";
   if (elapsed >= 0 && nowMs < schedule.totalEndMs) {
@@ -243,7 +244,7 @@ export async function GET(
   const currentRound = Math.min(Math.max(currentRoundIndex, 1), plan.roundsCount);
   let currentRoundMeetings: Array<{ roomId: string; meetingId: string }> = [];
 
-  if (status === "active" && currentSegment?.type === "PAIRING") {
+  if (status === "active" && currentSegment?.type === "DISCUSSION") {
     const formBlock = getFormBlockByRound(plan.blocks, currentRound);
     const roundMax =
       roundBlocks[currentRound - 1]?.roundMaxParticipants ?? plan.maxParticipantsPerRoom;
@@ -432,7 +433,7 @@ export async function GET(
     isBreak: boolean;
   } | null = null;
 
-  if (status === "active" && currentSegment?.type === "PAIRING") {
+  if (status === "active" && currentSegment?.type === "DISCUSSION") {
     const meetingIdByRoom = new Map(
       currentRoundMeetings.map((item: (typeof currentRoundMeetings)[number]) => [
         item.roomId,
@@ -468,7 +469,7 @@ export async function GET(
     serverNow: now.toISOString(),
     status,
     currentRound,
-    segmentType: currentSegment?.type ?? "PAIRING",
+    segmentType: currentSegment?.type ?? "DISCUSSION",
     meditationIndex: currentSegment?.meditationIndex ?? null,
     roundAfter: currentSegment?.roundAfter ?? null,
     segmentStartsAt: currentSegment?.startAtMs

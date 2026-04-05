@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Script from "next/script";
 import { MEDITATION_ANIMATIONS } from "@/lib/meditation";
 import { buildDefaultTemplateDraft, type TemplateBlock, type TemplateBlockType, type TemplateDraft } from "@/lib/templateDraft";
+import { compileTemplateDraft, type TemplateCompileResult } from "@/lib/templateCompile";
 import { postClientLog } from "@/lib/clientLogs";
 
 type TemplateSummary = {
@@ -98,7 +99,7 @@ type NodeData = {
   posterId?: string | null;
   embedUrl?: string | null;
   harmonicaUrl?: string | null;
-  matchingMode?: "polar" | "anti";
+  matchingMode?: "polar" | "anti" | "random";
   formQuestion?: string | null;
   formChoices?: Array<{ key: string; label: string }>;
   meditationAnimationId?: string | null;
@@ -123,7 +124,7 @@ const MODULES: Array<{ type: BlockType; label: string; description: string; colo
     icon: "M4 18h16v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2Zm8-8a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"
   },
   {
-    type: "PAIRING",
+    type: "DISCUSSION",
     label: "Discussion",
     description: "Split people into small-group calls or rounds for timed discussion.",
     color: "bg-amber-100 text-amber-900",
@@ -165,9 +166,9 @@ const MODULES: Array<{ type: BlockType; label: string; description: string; colo
     icon: "M7 7l-4 3 4 3M17 7l4 3-4 3M10 17l4-10"
   },
   {
-    type: "MATCHING",
-    label: "Matching",
-    description: "Trigger AI or rule-based rematching between rounds or group transitions.",
+    type: "GROUPING",
+    label: "Grouping",
+    description: "Form rooms for the next discussion block, using random or signal-based grouping logic.",
     color: "bg-rose-100 text-rose-900",
     icon: "M5 12h6M13 12h6M8 9l3 3-3 3"
   },
@@ -239,13 +240,13 @@ const MODULES: Array<{ type: BlockType; label: string; description: string; colo
 const DEFAULT_DURATIONS: Record<BlockType, number> = {
   START: 60,
   PARTICIPANTS: 90,
-  PAIRING: 600,
+  DISCUSSION: 600,
   PAUSE: 300,
   PROMPT: 120,
   NOTES: 120,
   FORM: 120,
   EMBED: 180,
-  MATCHING: 60,
+  GROUPING: 60,
   BREAK: 300,
   RECORD: 120,
   HARMONICA: 90,
@@ -311,6 +312,7 @@ function buildNodeHtml(
     posters: Poster[];
     audioFiles: Array<{ name: string; url: string }>;
     aiAgents: AiAgentOption[];
+    liveAiSupported: boolean;
   }
 ) {
   const module = MODULES.find((item) => item.type === type);
@@ -333,7 +335,8 @@ function buildNodeHtml(
     })
     .join("");
 
-  const matchingMode = data.matchingMode === "anti" ? "anti" : "polar";
+  const matchingMode =
+    data.matchingMode === "anti" ? "anti" : data.matchingMode === "random" ? "random" : "polar";
   const choicesText = (data.formChoices ?? []).map((choice) => choice.label).join("\n");
   const participantMode = data.participantMode ?? "manual_selected";
   const participantUsersText = (data.participantUserIds ?? []).join("\n");
@@ -343,8 +346,9 @@ function buildNodeHtml(
   const allowStartBeforeFull = data.allowStartBeforeFull ? "checked" : "";
   const aiAgentsEnabled = Boolean(data.aiAgentsEnabled);
   const selectedAiAgentIds = data.aiAgentIds ?? [];
-  const aiAgentsMarkup =
-    options.aiAgents.length === 0
+  const aiAgentsMarkup = !options.liveAiSupported
+    ? `<div class="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-3 py-2 text-[11px] text-slate-500">AI participants are available only with Deepgram Live transcription.</div>`
+    : options.aiAgents.length === 0
       ? `<div class="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-3 py-2 text-[11px] text-slate-500">No AI agents available yet.</div>`
       : options.aiAgents
           .map((agent) => {
@@ -525,17 +529,21 @@ function buildNodeHtml(
             : ""
         }
         ${
-          type === "PAIRING"
+          type === "DISCUSSION"
             ? `<label class="dr-node-label">
                 Max participants
                 <input class="dr-input dr-node-input" type="number" min="2" data-field="roundMaxParticipants" value="${data.roundMaxParticipants ?? ""}" />
               </label>
-              <label class="dr-node-label dr-node-checkbox">
-                <input type="checkbox" data-field="aiAgentsEnabled" ${aiAgentsEnabled ? "checked" : ""} />
-                <span>Enable AI participants</span>
-              </label>
               ${
-                aiAgentsEnabled
+                options.liveAiSupported
+                  ? `<label class="dr-node-label dr-node-checkbox">
+                       <input type="checkbox" data-field="aiAgentsEnabled" ${aiAgentsEnabled ? "checked" : ""} />
+                       <span>Enable AI participants</span>
+                     </label>`
+                  : `<div class="dr-node-label"><span>AI participants</span></div>`
+              }
+              ${
+                options.liveAiSupported && aiAgentsEnabled
                   ? `<div class="dr-node-label">
                       <span>Assigned AI agents</span>
                       <div class="mt-2 space-y-2">${aiAgentsMarkup}</div>
@@ -556,7 +564,7 @@ function buildNodeHtml(
                       Round override prompt
                       <textarea class="dr-input dr-node-textarea" data-field="aiAgentPromptOverride" placeholder="Optional round-specific instruction for selected AI agents">${escapeHtml(data.aiAgentPromptOverride ?? "")}</textarea>
                     </label>`
-                  : ""
+                  : `<div class="dr-node-label"><div class="mt-2 space-y-2">${aiAgentsMarkup}</div></div>`
               }`
             : ""
         }
@@ -595,13 +603,17 @@ function buildNodeHtml(
             : ""
         }
         ${
-          type === "MATCHING"
+          type === "GROUPING"
             ? `<label class="dr-node-label">
                 Mode
                 <select class="dr-input dr-node-input" data-field="matchingMode">
                   <option value="polar" ${matchingMode === "polar" ? "selected" : ""}>Polarize</option>
                   <option value="anti" ${matchingMode === "anti" ? "selected" : ""}>Anti-polarize</option>
+                  <option value="random" ${matchingMode === "random" ? "selected" : ""}>Random</option>
                 </select>
+                <div class="mt-2 text-[11px] leading-4 text-slate-500">
+                  Creates rooms for the next Discussion block using that round's room size.
+                </div>
               </label>`
             : ""
         }
@@ -691,12 +703,12 @@ function nodeDataFromBlock(block: any): NodeData {
   };
 }
 
-function buildBlockFromNode(type: BlockType, data: NodeData) {
+function buildBlockFromNode(type: BlockType, data: NodeData, liveAiSupported: boolean) {
   const rawDuration = Number(data.durationSeconds || DEFAULT_DURATIONS[type]);
   const durationSeconds = Number.isFinite(rawDuration) ? Math.max(1, Math.round(rawDuration)) : DEFAULT_DURATIONS[type];
   const rawMax = data.roundMaxParticipants ?? null;
   const roundMaxParticipants =
-    type === "PAIRING" && typeof rawMax === "number" && rawMax >= 2 ? Math.round(rawMax) : null;
+    type === "DISCUSSION" && typeof rawMax === "number" && rawMax >= 2 ? Math.round(rawMax) : null;
   return {
     type,
     durationSeconds,
@@ -720,16 +732,20 @@ function buildBlockFromNode(type: BlockType, data: NodeData) {
     participantQuery: data.participantQuery ?? null,
     participantNote: data.participantNote ?? null,
     roundMaxParticipants,
-    aiAgentsEnabled: type === "PAIRING" ? Boolean(data.aiAgentsEnabled) : null,
-    aiAgentIds: type === "PAIRING" && data.aiAgentsEnabled ? data.aiAgentIds ?? [] : [],
-    aiAgentIntervalSeconds: type === "PAIRING" && data.aiAgentsEnabled ? data.aiAgentIntervalSeconds ?? 60 : null,
-    aiAgentCooldownSeconds: type === "PAIRING" && data.aiAgentsEnabled ? data.aiAgentCooldownSeconds ?? 120 : null,
-    aiAgentMaxReplies: type === "PAIRING" && data.aiAgentsEnabled ? data.aiAgentMaxReplies ?? 5 : null,
-    aiAgentPromptOverride: type === "PAIRING" && data.aiAgentsEnabled ? data.aiAgentPromptOverride ?? null : null,
+    aiAgentsEnabled: type === "DISCUSSION" && liveAiSupported ? Boolean(data.aiAgentsEnabled) : null,
+    aiAgentIds: type === "DISCUSSION" && liveAiSupported && data.aiAgentsEnabled ? data.aiAgentIds ?? [] : [],
+    aiAgentIntervalSeconds:
+      type === "DISCUSSION" && liveAiSupported && data.aiAgentsEnabled ? data.aiAgentIntervalSeconds ?? 60 : null,
+    aiAgentCooldownSeconds:
+      type === "DISCUSSION" && liveAiSupported && data.aiAgentsEnabled ? data.aiAgentCooldownSeconds ?? 120 : null,
+    aiAgentMaxReplies:
+      type === "DISCUSSION" && liveAiSupported && data.aiAgentsEnabled ? data.aiAgentMaxReplies ?? 5 : null,
+    aiAgentPromptOverride:
+      type === "DISCUSSION" && liveAiSupported && data.aiAgentsEnabled ? data.aiAgentPromptOverride ?? null : null,
     posterId: data.posterId ?? null,
     embedUrl: data.embedUrl ?? null,
     harmonicaUrl: data.harmonicaUrl ?? null,
-    matchingMode: data.matchingMode ?? (type === "MATCHING" ? "polar" : null),
+    matchingMode: data.matchingMode ?? (type === "GROUPING" ? "polar" : null),
     formQuestion: data.formQuestion ?? null,
     formChoices: data.formChoices ?? [],
     posterTitle: data.posterTitle ?? null,
@@ -745,7 +761,7 @@ function buildDefaultData(type: BlockType): NodeData {
     startMode: type === "START" ? "specific_datetime" : undefined,
     selectionRule: type === "START" ? "random" : undefined,
     participantMode: type === "PARTICIPANTS" ? "manual_selected" : undefined,
-    matchingMode: type === "MATCHING" ? "polar" : undefined
+    matchingMode: type === "GROUPING" ? "polar" : undefined
   };
 }
 
@@ -823,8 +839,10 @@ export function ModularBuilderClient({
   const [detailsCollapsed, setDetailsCollapsed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [compileReport, setCompileReport] = useState<TemplateCompileResult | null>(null);
+  const [compileModalOpen, setCompileModalOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState(
-    "Design a 90-minute citizen assembly template to deliberate on a civic issue. Include context setting, small-group pairing, data capture, and a closing summary."
+    "Design a 90-minute citizen assembly template to deliberate on a civic issue. Include context setting, small-group discussion, data capture, and a closing summary."
   );
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -906,6 +924,11 @@ export function ModularBuilderClient({
   useEffect(() => {
     if (!workspaceMode || !draft) return;
     if (!drawflowReady || !editorReady || !editorRef.current) return;
+    if (emittedDraftSignatureRef.current && emittedDraftSignatureRef.current === externalDraftSignature) {
+      externalDraftSignatureRef.current = externalDraftSignature;
+      appliedExternalDraftSignatureRef.current = externalDraftSignature;
+      return;
+    }
     if (externalDraftSignatureRef.current === externalDraftSignature) return;
     externalDraftSignatureRef.current = externalDraftSignature;
     appliedExternalDraftSignatureRef.current = externalDraftSignature;
@@ -977,6 +1000,10 @@ export function ModularBuilderClient({
   }, []);
 
   useEffect(() => {
+    refreshAllNodeHtml();
+  }, [provider]);
+
+  useEffect(() => {
     if (!workspaceMode || !onDraftChange) return;
     if (!drawflowReady || !editorReady || !editorRef.current) return;
     if (appliedExternalDraftSignatureRef.current !== externalDraftSignature) return;
@@ -1023,7 +1050,16 @@ export function ModularBuilderClient({
     editor.start();
     editor.on("nodeCreated", (id: number) => {
       const node = editor.getNodeFromId(id);
-      updateNodeHtml(id, node?.name, node?.data);
+      updateNodeHtml(id, node?.name, node?.data, provider === "DEEPGRAMLIVE");
+    });
+    editor.on("connectionCreated", () => {
+      setEditorVersion((prev) => prev + 1);
+    });
+    editor.on("connectionRemoved", () => {
+      setEditorVersion((prev) => prev + 1);
+    });
+    editor.on("nodeMoved", () => {
+      setEditorVersion((prev) => prev + 1);
     });
     editorRef.current = editor;
     setEditorReady(true);
@@ -1038,9 +1074,9 @@ export function ModularBuilderClient({
     };
   }, [drawflowReady]);
 
-  function updateNodeHtml(id: number, type: BlockType, data: NodeData) {
+  function updateNodeHtml(id: number, type: BlockType, data: NodeData, liveAiSupported = provider === "DEEPGRAMLIVE") {
     if (!editorRef.current) return;
-    const html = buildNodeHtml(type, data, { posters, audioFiles, aiAgents });
+    const html = buildNodeHtml(type, data, { posters, audioFiles, aiAgents, liveAiSupported });
     const nodeEl = document.getElementById(`node-${id}`);
     if (nodeEl) {
       const content = nodeEl.querySelector(".drawflow_content_node");
@@ -1130,6 +1166,15 @@ export function ModularBuilderClient({
     applyEditorTransform(nextX, nextY, nextZoom);
   }
 
+  function scheduleFitView() {
+    if (typeof window === "undefined") return;
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        fitView();
+      });
+    });
+  }
+
   useEffect(() => {
     const container = drawflowRef.current;
     if (!container || !editorReady) return;
@@ -1172,8 +1217,9 @@ export function ModularBuilderClient({
     if (!editorRef.current) return;
     const exported = editorRef.current.export();
     const data = exported?.drawflow?.Home?.data ?? {};
+    const liveAiSupported = provider === "DEEPGRAMLIVE";
     Object.values(data).forEach((node: any) => {
-      updateNodeHtml(Number(node.id), node.name as BlockType, node.data as NodeData);
+      updateNodeHtml(Number(node.id), node.name as BlockType, node.data as NodeData, liveAiSupported);
     });
   }
 
@@ -1184,7 +1230,7 @@ export function ModularBuilderClient({
     const posX = clientX - rect.left;
     const posY = clientY - rect.top;
     const data = buildDefaultData(type);
-    const html = buildNodeHtml(type, data, { posters, audioFiles, aiAgents });
+    const html = buildNodeHtml(type, data, { posters, audioFiles, aiAgents, liveAiSupported: provider === "DEEPGRAMLIVE" });
     const nodeId = editor.addNode(type, 1, 1, posX, posY, type, data, html);
     setTimeout(() => updateNodeHtml(nodeId, type, data), 0);
     setEditorVersion((prev) => prev + 1);
@@ -1194,6 +1240,20 @@ export function ModularBuilderClient({
     if (!drawflowRef.current) return;
     const rect = drawflowRef.current.getBoundingClientRect();
     addNode(type, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }
+
+  function connectSequentialNodes(nodeIds: number[]) {
+    const editor = editorRef.current;
+    if (!editor || nodeIds.length < 2) return;
+    for (let index = 0; index < nodeIds.length - 1; index += 1) {
+      const fromId = nodeIds[index];
+      const toId = nodeIds[index + 1];
+      try {
+        editor.addConnection(fromId, toId, "output_1", "input_1");
+      } catch {
+        // Drawflow throws if a connection already exists or nodes are not ready yet.
+      }
+    }
   }
 
   function handleDrop(event: React.DragEvent) {
@@ -1315,7 +1375,7 @@ export function ModularBuilderClient({
     const blocks = chain.map((node: any) => {
       const type = node.name as BlockType;
       const data = node.data as NodeData;
-      return buildBlockFromNode(type, data);
+      return buildBlockFromNode(type, data, provider === "DEEPGRAMLIVE");
     });
 
     if (requireCompleteFields) {
@@ -1475,20 +1535,19 @@ export function ModularBuilderClient({
     resetEditor();
     const rect = drawflowRef.current?.getBoundingClientRect();
     const positions = getAutoLayoutPositions(nextDraft.blocks.length, rect?.width ?? 960);
-    let prevId: number | null = null;
+    const createdNodeIds: number[] = [];
     nextDraft.blocks.forEach((block, index) => {
       const type = block.type as BlockType;
       const data = nodeDataFromBlock(block);
       const position = positions[index] ?? { x: 80, y: 60 + index * 168 };
-      const html = buildNodeHtml(type, data, { posters, audioFiles, aiAgents });
+      const html = buildNodeHtml(type, data, { posters, audioFiles, aiAgents, liveAiSupported: provider === "DEEPGRAMLIVE" });
       const id = editorRef.current.addNode(type, 1, 1, position.x, position.y, type, data, html);
-      if (prevId) {
-        editorRef.current.addConnection(prevId, id, "output_1", "input_1");
-      }
-      prevId = id;
-      updateNodeHtml(id, type, data);
+      createdNodeIds.push(id);
+      updateNodeHtml(id, type, data, provider === "DEEPGRAMLIVE");
     });
+    connectSequentialNodes(createdNodeIds);
     setEditorVersion((prev) => prev + 1);
+    scheduleFitView();
   }
 
   function addPairingBlocks() {
@@ -1500,23 +1559,14 @@ export function ModularBuilderClient({
     const nodes = Object.values(data) as any[];
     const maxY = nodes.reduce((acc, node) => Math.max(acc, Number(node.pos_y ?? 0)), 0);
     let startY = nodes.length > 0 ? maxY + 140 : 80;
-    let prevId: number | null = null;
-    if (nodes.length > 0) {
-      const lastNode = nodes.reduce((acc, node) => (Number(node.pos_y ?? 0) > Number(acc.pos_y ?? 0) ? node : acc), nodes[0]);
-      prevId = Number(lastNode.id);
-    }
     const rect = drawflowRef.current?.getBoundingClientRect();
     const positions = getAutoLayoutPositions(count, rect?.width ?? 960, { startY });
     for (let index = 0; index < count; index += 1) {
       const position = positions[index] ?? { x: 120, y: startY + index * 168 };
       const data = { durationSeconds, matchingMode: undefined };
-      const html = buildNodeHtml("PAIRING", data, { posters, audioFiles, aiAgents });
-      const id = editorRef.current.addNode("PAIRING", 1, 1, position.x, position.y, "PAIRING", data, html);
-      if (prevId) {
-        editorRef.current.addConnection(prevId, id, "output_1", "input_1");
-      }
-      prevId = id;
-      updateNodeHtml(id, "PAIRING", data);
+      const html = buildNodeHtml("DISCUSSION", data, { posters, audioFiles, aiAgents, liveAiSupported: provider === "DEEPGRAMLIVE" });
+      const id = editorRef.current.addNode("DISCUSSION", 1, 1, position.x, position.y, "DISCUSSION", data, html);
+      updateNodeHtml(id, "DISCUSSION", data, provider === "DEEPGRAMLIVE");
     }
     setEditorVersion((prev) => prev + 1);
   }
@@ -1604,6 +1654,39 @@ export function ModularBuilderClient({
     }
   }
 
+  function handleCompileTemplate() {
+    setSaveError(null);
+    const build = buildWorkspaceDraft();
+    if (!build) {
+      setCompileReport({
+        ok: false,
+        errors: [{ severity: "error", message: "Template could not be compiled from the current canvas state." }],
+        warnings: [],
+        totalDurationMinutes: 0,
+        discussionRounds: 0,
+        segmentCount: 0
+      });
+      setCompileModalOpen(true);
+      return;
+    }
+    const result = compileTemplateDraft(build);
+    setCompileReport(result);
+    setCompileModalOpen(true);
+    void postClientLog({
+      level: result.ok ? "info" : "warn",
+      scope: "template_modular_builder",
+      message: "template_compile_run",
+      meta: {
+        templateId: currentTemplateId,
+        ok: result.ok,
+        errorCount: result.errors.length,
+        warningCount: result.warnings.length,
+        discussionRounds: result.discussionRounds,
+        segmentCount: result.segmentCount
+      }
+    });
+  }
+
   function loadTemplate(template: TemplateSummary) {
     setCurrentTemplateId(template.id);
     setTemplateName(template.name);
@@ -1633,18 +1716,17 @@ export function ModularBuilderClient({
     });
     const rect = drawflowRef.current?.getBoundingClientRect();
     const positions = getAutoLayoutPositions(nodes.length, rect?.width ?? 960);
-    let prevId: number | null = null;
+    const createdNodeIds: number[] = [];
     nodes.forEach((node, index) => {
       const position = positions[index] ?? { x: 80, y: 60 + index * 168 };
-      const html = buildNodeHtml(node.type, node.data, { posters, audioFiles, aiAgents });
+      const html = buildNodeHtml(node.type, node.data, { posters, audioFiles, aiAgents, liveAiSupported: provider === "DEEPGRAMLIVE" });
       const id = editorRef.current.addNode(node.type, 1, 1, position.x, position.y, node.type, node.data, html);
-      if (prevId) {
-        editorRef.current.addConnection(prevId, id, "output_1", "input_1");
-      }
-      prevId = id;
-      updateNodeHtml(id, node.type, node.data);
+      createdNodeIds.push(id);
+      updateNodeHtml(id, node.type, node.data, provider === "DEEPGRAMLIVE");
     });
+    connectSequentialNodes(createdNodeIds);
     setEditorVersion((prev) => prev + 1);
+    scheduleFitView();
   }
 
   function createNewTemplate() {
@@ -1888,7 +1970,8 @@ export function ModularBuilderClient({
       }
       updateNodeDataById(nodeId, { aiAgentIds: Array.from(current) });
     } else if (field === "matchingMode") {
-      const value = (target as HTMLSelectElement).value === "anti" ? "anti" : "polar";
+      const rawValue = (target as HTMLSelectElement).value;
+      const value = rawValue === "anti" ? "anti" : rawValue === "random" ? "random" : "polar";
       updateNodeDataById(nodeId, { matchingMode: value });
     } else if (field === "meditationAnimationId") {
       updateNodeDataById(nodeId, { meditationAnimationId: (target as HTMLSelectElement).value || null });
@@ -1960,7 +2043,7 @@ export function ModularBuilderClient({
   }
 
   return (
-    <div className={`flex min-h-[560px] flex-col gap-3 overflow-hidden ${workspaceMode ? "h-full" : "h-[calc(100dvh-96px)]"}`}>
+    <div className={`flex min-h-[560px] flex-col overflow-hidden ${workspaceMode ? "h-full gap-0" : "h-[calc(100dvh-96px)] gap-3"}`}>
       <Script
         src="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow@0.0.48/dist/drawflow.min.js"
         onLoad={() => setDrawflowReady(true)}
@@ -1993,6 +2076,13 @@ export function ModularBuilderClient({
               onClick={addPairingBlocks}
             >
               Add pairings
+            </button>
+            <button
+              type="button"
+              className="dr-button-outline px-2 py-1 text-[11px] sm:px-3 sm:text-xs"
+              onClick={handleCompileTemplate}
+            >
+              Compile template
             </button>
             <button
               type="button"
@@ -2241,7 +2331,7 @@ export function ModularBuilderClient({
                   </label>
                   <div className="grid grid-cols-2 gap-3">
                     <label className="text-[11px] font-medium text-slate-700">
-                      Minutes per pairing
+                      Minutes per discussion
                       <input
                         type="number"
                         min={1}
@@ -2271,6 +2361,13 @@ export function ModularBuilderClient({
                     />
                     Public
                   </label>
+                  <button
+                    type="button"
+                    onClick={handleCompileTemplate}
+                    className="dr-button-outline px-3 py-1 text-[11px]"
+                  >
+                    Compile template
+                  </button>
                   {saveError ? <p className="text-[11px] text-rose-600">{saveError}</p> : null}
                 </div>
               </div>
@@ -2457,6 +2554,73 @@ export function ModularBuilderClient({
                 className="dr-button px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {pauseAudioUploading ? "Uploading..." : "Upload and use"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {compileModalOpen && compileReport ? (
+        <div className="fixed inset-0 z-[139] flex items-center justify-center bg-slate-950/40 px-4">
+          <div className="w-full max-w-2xl rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_30px_80px_rgba(15,23,42,0.28)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Template compile
+                </p>
+                <h3 className="mt-1 text-lg font-semibold text-slate-900">
+                  {compileReport.ok ? "Template can run" : "Template has blocking issues"}
+                </h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  {compileReport.discussionRounds} discussion rounds · {compileReport.segmentCount} runtime segments · {compileReport.totalDurationMinutes} min total
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCompileModalOpen(false)}
+                className="rounded-full border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border border-rose-200 bg-rose-50/70 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">
+                  Errors
+                </p>
+                {compileReport.errors.length === 0 ? (
+                  <p className="mt-2 text-sm text-emerald-700">No blocking errors.</p>
+                ) : (
+                  <ul className="mt-2 space-y-2 text-sm text-rose-800">
+                    {compileReport.errors.map((issue, index) => (
+                      <li key={`compile-error-${index}`}>{issue.message}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+                  Warnings
+                </p>
+                {compileReport.warnings.length === 0 ? (
+                  <p className="mt-2 text-sm text-slate-600">No warnings.</p>
+                ) : (
+                  <ul className="mt-2 space-y-2 text-sm text-amber-900">
+                    {compileReport.warnings.map((issue, index) => (
+                      <li key={`compile-warning-${index}`}>{issue.message}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setCompileModalOpen(false)}
+                className="dr-button-outline px-4 py-2 text-sm"
+              >
+                Close
               </button>
             </div>
           </div>

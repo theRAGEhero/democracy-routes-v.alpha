@@ -5,7 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { getPlanViewer } from "@/lib/planGuests";
 import { getPlanRecapData, isPlanRecapError } from "@/lib/planRecap";
 import { buildPlanSegmentsFromBlocks, buildLegacySegments, type PlanBlockInput, type PlanBlockType } from "@/lib/planSchedule";
+import { logError, logInfo, logWarn } from "@/lib/logger";
 import crypto from "crypto";
+import { normalizeBlockType } from "@/lib/blockType";
 
 function generateRoomId(language: string, transcriptionProvider: string) {
   const providerLabel =
@@ -19,7 +21,7 @@ function generateRoomId(language: string, transcriptionProvider: string) {
 }
 
 const requestSchema = z.object({
-  mode: z.enum(["polar", "anti"]).default("polar")
+  mode: z.enum(["polar", "anti", "random"]).default("polar")
 });
 
 export async function POST(
@@ -41,6 +43,7 @@ export async function POST(
       roundDurationMinutes: true,
       title: true,
       startAt: true,
+      dataspaceId: true,
       language: true,
       transcriptionProvider: true,
       meditationEnabled: true,
@@ -81,6 +84,16 @@ export async function POST(
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
+  logInfo("flow_matching_run_started", {
+    planId: plan.id,
+    planTitle: plan.title,
+    actorId: viewer.user.id,
+    actorEmail: viewer.user.email,
+    dataspaceId: plan.dataspaceId ?? null,
+    mode: parsed.data.mode,
+    viewerIsGuest: viewer.isGuest
+  });
+
   let planRecap;
   try {
     planRecap = await getPlanRecapData(params.id, viewer);
@@ -117,6 +130,14 @@ export async function POST(
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
+    logWarn("flow_matching_run_failed", {
+      planId: plan.id,
+      actorId: viewer.user.id,
+      dataspaceId: plan.dataspaceId ?? null,
+      mode: parsed.data.mode,
+      responseStatus: response.status,
+      errorData
+    });
     return NextResponse.json(
       { error: "Failed to run matching", details: errorData },
       { status: response.status }
@@ -130,8 +151,8 @@ export async function POST(
 
   const normalizedBlocks: PlanBlockInput[] = (plan.blocks ?? []).reduce(
     (acc: PlanBlockInput[], block: (typeof plan.blocks)[number]) => {
-      const type = block.type as PlanBlockType;
-      if (!["START", "PARTICIPANTS", "PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING", "BREAK", "HARMONICA", "DEMBRANE", "DELIBERAIDE", "POLIS", "AGORACITIZENS", "NEXUSPOLITICS", "SUFFRAGO"].includes(type)) {
+      const type = normalizeBlockType(block.type) as PlanBlockType | null;
+      if (!type || !["START", "PARTICIPANTS", "DISCUSSION", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "GROUPING", "BREAK", "HARMONICA", "DEMBRANE", "DELIBERAIDE", "POLIS", "AGORACITIZENS", "NEXUSPOLITICS", "SUFFRAGO"].includes(type)) {
         return acc;
       }
       acc.push({
@@ -165,7 +186,7 @@ export async function POST(
   const currentSegment = schedule.segments.find(
     (segment) => segment.startAtMs <= nowMs && nowMs < segment.endAtMs
   );
-  const canApply = currentSegment?.type === "MATCHING" && currentSegment.blockId;
+  const canApply = currentSegment?.type === "GROUPING" && currentSegment.blockId;
 
   if (canApply && Array.isArray(payload?.rooms)) {
     const blocksById = new Map(plan.blocks.map((block) => [block.id, block]));
@@ -174,7 +195,7 @@ export async function POST(
     if (currentBlock) {
       const nextRound = plan.blocks
         .filter((block) => block.orderIndex > currentBlock.orderIndex)
-        .find((block) => block.type === "PAIRING" && block.roundNumber);
+        .find((block) => block.type === "DISCUSSION" && block.roundNumber);
       nextRoundNumber = nextRound?.roundNumber ?? null;
     }
 
@@ -245,9 +266,27 @@ export async function POST(
       !(error instanceof Prisma.PrismaClientKnownRequestError) ||
       !["P2021", "P2022"].includes(error.code)
     ) {
+      logError("flow_matching_run_persist_failed", error, {
+        planId: plan.id,
+        actorId: viewer.user.id,
+        dataspaceId: plan.dataspaceId ?? null,
+        mode: parsed.data.mode
+      });
       throw error;
     }
   }
+
+  logInfo("flow_matching_run_completed", {
+    planId: plan.id,
+    planTitle: plan.title,
+    actorId: viewer.user.id,
+    dataspaceId: plan.dataspaceId ?? null,
+    mode: parsed.data.mode,
+    canApply,
+    appliedRoundNumber,
+    appliedRoomIds,
+    roomCount: Array.isArray(payload?.rooms) ? payload.rooms.length : null
+  });
 
   return NextResponse.json({ ...payload, appliedRoundNumber, appliedRoomIds });
 }

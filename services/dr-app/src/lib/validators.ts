@@ -123,7 +123,7 @@ export const createPlanSchema = z.object({
         posterContent: z.string().trim().max(4000).optional().nullable(),
         embedUrl: z.string().trim().max(500).optional().nullable(),
         harmonicaUrl: z.string().trim().max(500).optional().nullable(),
-        matchingMode: z.enum(["polar", "anti"]).optional().nullable(),
+        matchingMode: z.enum(["polar", "anti", "random"]).optional().nullable(),
         meditationAnimationId: z.string().optional().nullable(),
         meditationAudioUrl: z.string().optional().nullable()
       })

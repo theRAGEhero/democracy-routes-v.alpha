@@ -62,7 +62,7 @@ const blockSchema = z.object({
   poster_content: z.string().optional(),
   embed_url: z.string().trim().max(500).optional().nullable(),
   harmonica_url: z.string().trim().max(500).optional().nullable(),
-  matching_mode: z.enum(["polar", "anti"]).optional().nullable(),
+  matching_mode: z.enum(["polar", "anti", "random"]).optional().nullable(),
   meditation_animation_id: z.string().optional().nullable(),
   meditation_audio_url: z.string().optional().nullable()
 });
@@ -105,7 +105,7 @@ function generateRoomId(language: string, transcriptionProvider: string) {
 }
 
 type WorkflowBlockInput = {
-  type: "START" | "PARTICIPANTS" | "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING" | "BREAK" | "HARMONICA" | "DEMBRANE" | "DELIBERAIDE" | "POLIS" | "AGORACITIZENS" | "NEXUSPOLITICS" | "SUFFRAGO";
+  type: "START" | "PARTICIPANTS" | "DISCUSSION" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "GROUPING" | "BREAK" | "HARMONICA" | "DEMBRANE" | "DELIBERAIDE" | "POLIS" | "AGORACITIZENS" | "NEXUSPOLITICS" | "SUFFRAGO";
   durationSeconds: number;
   roundMaxParticipants?: number | null;
   formQuestion?: string | null;
@@ -115,7 +115,7 @@ type WorkflowBlockInput = {
   posterContent?: string | null;
   embedUrl?: string | null;
   harmonicaUrl?: string | null;
-  matchingMode?: "polar" | "anti" | null;
+  matchingMode?: "polar" | "anti" | "random" | null;
   meditationAnimationId?: string | null;
   meditationAudioUrl?: string | null;
 };
@@ -124,7 +124,7 @@ function buildDefaultBlocks(roundsCount: number, roundDurationMinutes: number) {
   const blocks: WorkflowBlockInput[] = [];
   const roundDurationSeconds = roundDurationMinutes * 60;
   for (let round = 1; round <= roundsCount; round += 1) {
-    blocks.push({ type: "PAIRING", durationSeconds: roundDurationSeconds });
+    blocks.push({ type: "DISCUSSION", durationSeconds: roundDurationSeconds });
   }
   return blocks;
 }
@@ -329,7 +329,7 @@ export async function POST(request: Request) {
         }))
       : buildDefaultBlocks(parsed.data.rounds_count, parsed.data.round_duration_minutes);
 
-  const roundBlocks = blocksInput.filter((block) => block.type === "PAIRING");
+  const roundBlocks = blocksInput.filter((block) => block.type === "DISCUSSION");
   if (roundBlocks.length < 1) {
     return NextResponse.json({ error: "Add at least one round block." }, { status: 400 });
   }
@@ -423,7 +423,7 @@ export async function POST(request: Request) {
 
   let roundCounter = 0;
   const blocksData = resolvedBlocks.map((block, index) => {
-    if (block.type === "PAIRING") {
+    if (block.type === "DISCUSSION") {
       roundCounter += 1;
     }
     return {
@@ -439,7 +439,7 @@ export async function POST(request: Request) {
       matchingMode: block.matchingMode ?? null,
       meditationAnimationId: block.meditationAnimationId ?? null,
       meditationAudioUrl: block.meditationAudioUrl ?? null,
-      roundNumber: block.type === "PAIRING" ? roundCounter : null
+      roundNumber: block.type === "DISCUSSION" ? roundCounter : null
     };
   });
 

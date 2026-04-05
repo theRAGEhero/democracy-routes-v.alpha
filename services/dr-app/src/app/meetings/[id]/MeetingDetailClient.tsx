@@ -53,13 +53,20 @@ export function MeetingDetailClient({
   const [postCallPanelExpanded, setPostCallPanelExpanded] = useState(false);
   const [postCallPanelTouched, setPostCallPanelTouched] = useState(false);
   const router = useRouter();
+  const livePanelAvailable = liveTranscriptionEnabled && isActive;
+  const finalizedPanelAvailable =
+    (liveTranscriptionEnabled && !isActive) ||
+    (postCallTranscriptEnabled && postCallPanelAvailable);
   const sidePanelVisible = liveTranscriptionEnabled ? liveTranscriptVisible : postCallPanelExpanded;
-  const transcriptPanelOpen =
-    liveTranscriptionEnabled
+  const transcriptPanelOpen = liveTranscriptionEnabled
+    ? finalizedPanelAvailable || livePanelAvailable
       ? liveTranscriptVisible
-      : postCallTranscriptEnabled && postCallPanelAvailable && postCallPanelExpanded;
-  const sidePanelLabel = liveTranscriptionEnabled ? "transcript" : "post-call transcription";
-  const sidePanelToggleDisabled = liveTranscriptionEnabled ? !isActive : !postCallPanelAvailable;
+      : false
+    : finalizedPanelAvailable && postCallPanelExpanded;
+  const sidePanelLabel = livePanelAvailable ? "transcript" : "transcription";
+  const sidePanelToggleDisabled = liveTranscriptionEnabled
+    ? !livePanelAvailable && !finalizedPanelAvailable
+    : !finalizedPanelAvailable;
 
   useEffect(() => {
     if (typeof window !== "undefined" && window.innerWidth < 1024) {
@@ -200,7 +207,7 @@ export function MeetingDetailClient({
         {transcriptPanelOpen ? (
           <>
             <div className="order-2 hidden min-h-0 lg:block lg:w-[360px] xl:w-[400px] 2xl:w-[440px]">
-              {liveTranscriptionEnabled ? (
+              {livePanelAvailable ? (
                 <LiveTranscriptPanel
                   meetingId={meetingId}
                   enabled={liveTranscriptionEnabled}
@@ -215,14 +222,16 @@ export function MeetingDetailClient({
                   initialRoundId={initialRoundId ?? null}
                   variant="sidebar"
                   autoRefresh
-                  title="Post-call transcription"
-                  subtitle={`${providerLabel} · After call`}
-                  onActivityChange={setPostCallPanelAvailable}
+                  title={liveTranscriptionEnabled ? "Meeting transcription" : "Post-call transcription"}
+                  subtitle={
+                    liveTranscriptionEnabled ? `${providerLabel} · Finalized transcript` : `${providerLabel} · After call`
+                  }
+                  onActivityChange={liveTranscriptionEnabled ? undefined : setPostCallPanelAvailable}
                 />
               )}
             </div>
             <div className="order-3 min-h-0 lg:hidden">
-              {liveTranscriptionEnabled ? (
+              {livePanelAvailable ? (
                 <LiveTranscriptPanel
                   meetingId={meetingId}
                   enabled={liveTranscriptionEnabled}
@@ -237,10 +246,12 @@ export function MeetingDetailClient({
                   initialRoundId={initialRoundId ?? null}
                   variant="sidebar"
                   autoRefresh
-                  title="Post-call transcription"
-                  subtitle={`${providerLabel} · After call`}
+                  title={liveTranscriptionEnabled ? "Meeting transcription" : "Post-call transcription"}
+                  subtitle={
+                    liveTranscriptionEnabled ? `${providerLabel} · Finalized transcript` : `${providerLabel} · After call`
+                  }
                   className="max-h-[36dvh]"
-                  onActivityChange={setPostCallPanelAvailable}
+                  onActivityChange={liveTranscriptionEnabled ? undefined : setPostCallPanelAvailable}
                 />
               )}
             </div>

@@ -3,14 +3,14 @@ import { z } from "zod";
 export const CANONICAL_BLOCK_TYPES = [
   "START",
   "PARTICIPANTS",
-  "PAIRING",
+  "DISCUSSION",
   "PAUSE",
   "PROMPT",
   "NOTES",
   "RECORD",
   "FORM",
   "EMBED",
-  "MATCHING",
+  "GROUPING",
   "BREAK",
   "HARMONICA",
   "DEMBRANE",
@@ -26,8 +26,24 @@ export type CanonicalBlockType = (typeof CANONICAL_BLOCK_TYPES)[number];
 export function normalizeBlockType(value: unknown): CanonicalBlockType | null {
   const raw = String(value || "").trim().toUpperCase();
   if (!raw) return null;
-  if (raw === "DISCUSSION") return "PAIRING";
+  if (raw === "PAIRING") return "DISCUSSION";
+  if (raw === "MATCHING") return "GROUPING";
   return (CANONICAL_BLOCK_TYPES as readonly string[]).includes(raw) ? (raw as CanonicalBlockType) : null;
+}
+
+export function normalizeBlockRecord<T extends { type: unknown }>(block: T): (Omit<T, "type"> & { type: CanonicalBlockType }) | null {
+  const type = normalizeBlockType(block.type);
+  if (!type) return null;
+  return {
+    ...block,
+    type
+  };
+}
+
+export function normalizeBlockRecords<T extends { type: unknown }>(blocks: T[]) {
+  return blocks
+    .map((block) => normalizeBlockRecord(block))
+    .filter((block): block is Omit<T, "type"> & { type: CanonicalBlockType } => Boolean(block));
 }
 
 export const blockTypeSchema = z.preprocess(

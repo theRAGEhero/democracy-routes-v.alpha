@@ -20,7 +20,7 @@ type MatchingResult = {
 type Props = {
   planId: string;
   canRun: boolean;
-  mode: "polar" | "anti";
+  mode: "polar" | "anti" | "random";
 };
 
 export function MatchingPanel({ planId, canRun, mode }: Props) {
@@ -28,7 +28,12 @@ export function MatchingPanel({ planId, canRun, mode }: Props) {
   const [result, setResult] = useState<MatchingResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const modeLabel = useMemo(
-    () => (mode === "anti" ? "De-polarizing (contrast)" : "Polarizing (similar)"),
+    () =>
+      mode === "anti"
+        ? "De-polarizing (contrast)"
+        : mode === "random"
+          ? "Random"
+          : "Polarizing (similar)",
     [mode]
   );
 

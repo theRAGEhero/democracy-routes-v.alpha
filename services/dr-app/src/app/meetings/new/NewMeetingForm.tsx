@@ -38,6 +38,26 @@ type AiAgentOption = {
   color: string;
 };
 
+const TRANSCRIPTION_PROVIDER_GROUPS = [
+  {
+    key: "live",
+    title: "Live transcription",
+    description: "Transcription happens during the meeting.",
+    providers: [["DEEPGRAMLIVE", "Deepgram Live"]]
+  },
+  {
+    key: "post",
+    title: "Post-call transcription",
+    description: "The meeting is recorded and processed after the call ends.",
+    providers: [
+      ["DEEPGRAM", "Deepgram"],
+      ["VOSK", "Vosk"],
+      ["WHISPERREMOTE", "Whisper Remote"],
+      ["AUTOREMOTE", "Auto Remote"]
+    ]
+  }
+] as const;
+
 function normalizeFormError(payload: any, fallback: string) {
   if (!payload) return fallback;
   if (typeof payload.error === "string") return payload.error;
@@ -105,14 +125,15 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
   const [timezone, setTimezone] = useState("");
   const [includeMyself, setIncludeMyself] = useState(true);
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
-  const resolvedTimezone = useMemo(
-    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
-    []
-  );
+  const [resolvedTimezone, setResolvedTimezone] = useState("UTC");
   const dataspaceIds = useMemo(
     () => new Set(dataspaces.map((space) => space.id)),
     [dataspaces]
   );
+
+  useEffect(() => {
+    setResolvedTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+  }, []);
 
   useEffect(() => {
     if (!initialMeeting) return;
@@ -475,36 +496,45 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
 
           <div>
             <p className="text-sm font-medium text-slate-800">Transcription engine</p>
-            <div className="mt-2 grid gap-2">
-              {[
-                ["DEEPGRAMLIVE", "Deepgram Live"],
-                ["DEEPGRAM", "Deepgram"],
-                ["VOSK", "Vosk"],
-                ["WHISPERREMOTE", "Whisper Remote"],
-                ["AUTOREMOTE", "Auto Remote"]
-              ].map(([value, label]) => (
-                <label
-                  key={value}
-                  className={`flex items-center justify-between gap-3 rounded-2xl border px-3 py-2 text-sm transition ${
-                    provider === value
-                      ? "border-slate-900 bg-slate-900 text-white"
-                      : "border-slate-200 bg-slate-50/70 text-slate-700 hover:bg-white"
-                  }`}
+            <div className="mt-2 space-y-3">
+              {TRANSCRIPTION_PROVIDER_GROUPS.map((group) => (
+                <div
+                  key={group.key}
+                  className="rounded-2xl border border-slate-200 bg-slate-50/60 p-3"
                 >
-                  <span className="font-medium">{label}</span>
-                  <input
-                    type="radio"
-                    name="provider"
-                    value={value}
-                    checked={provider === value}
-                    onChange={(event) => setProvider(event.target.value)}
-                    className="h-4 w-4"
-                  />
-                </label>
+                  <div className="mb-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      {group.title}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">{group.description}</p>
+                  </div>
+                  <div className="grid gap-2">
+                    {group.providers.map(([value, label]) => (
+                      <label
+                        key={value}
+                        className={`flex items-center justify-between gap-3 rounded-2xl border px-3 py-2 text-sm transition ${
+                          provider === value
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-200 bg-white/85 text-slate-700 hover:bg-white"
+                        }`}
+                      >
+                        <span className="font-medium">{label}</span>
+                        <input
+                          type="radio"
+                          name="provider"
+                          value={value}
+                          checked={provider === value}
+                          onChange={(event) => setProvider(event.target.value)}
+                          className="h-4 w-4"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
             <p className="mt-2 text-xs text-slate-500">
-              Whisper Remote and Auto Remote record the meeting and process it after the call.
+              Live transcription is available only with Deepgram Live. All other options process the meeting after the call.
             </p>
           </div>
 

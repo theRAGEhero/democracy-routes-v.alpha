@@ -272,11 +272,11 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
   const enabledAgents = effectiveAiAgentIds.length
     ? await prisma.aiAgent.findMany({
-        where: {
+      where: {
           id: { in: effectiveAiAgentIds },
           enabled: true
         },
-        select: { id: true }
+        select: { id: true, defaultIntervalSeconds: true }
       })
     : [];
 
@@ -288,7 +288,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     await prisma.meetingAiAgent.createMany({
       data: enabledAgents.map((agent) => ({
         meetingId: meeting.id,
-        agentId: agent.id
+        agentId: agent.id,
+        intervalSeconds: Math.max(15, agent.defaultIntervalSeconds || 60)
       }))
     });
   }

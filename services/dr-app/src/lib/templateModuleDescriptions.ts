@@ -8,7 +8,7 @@ export const DEFAULT_TEMPLATE_MODULE_DESCRIPTIONS: Record<TemplateBlockType, str
     "Defines how a template begins: fixed date and time, manual organizer start, participant threshold, or randomized participant selection conditions.",
   PARTICIPANTS:
     "Defines who should join: manually selected users, whole dataspaces, random extraction from dataspaces, or AI-guided matching from user profiles.",
-  PAIRING:
+  DISCUSSION:
     "Creates a discussion round by splitting participants into small groups or rooms for time-boxed conversations.",
   PAUSE:
     "Creates a timed pause block, optionally with meditation visuals or audio.",
@@ -22,8 +22,8 @@ export const DEFAULT_TEMPLATE_MODULE_DESCRIPTIONS: Record<TemplateBlockType, str
     "Collects structured answers through a question and predefined response choices.",
   EMBED:
     "Embeds an external URL such as a video, whiteboard, or other media tool inside the template flow.",
-  MATCHING:
-    "Runs AI-supported rematching logic, typically polarizing or depolarizing participants based on previous conversation content.",
+  GROUPING:
+    "Forms rooms for the next discussion round, using random, polarizing, or depolarizing regrouping depending on the selected mode.",
   BREAK:
     "Adds a simple timed break between active phases.",
   HARMONICA:
@@ -47,8 +47,12 @@ export function normalizeTemplateModuleDescriptions(
 ): Record<TemplateBlockType, string> {
   const next = { ...DEFAULT_TEMPLATE_MODULE_DESCRIPTIONS };
   if (!value || typeof value !== "object") return next;
+  const source = value as Record<string, unknown>;
   for (const type of TEMPLATE_BLOCK_TYPES) {
-    const candidate = (value as Record<string, unknown>)[type];
+    const candidate =
+      type === "GROUPING"
+        ? source.GROUPING ?? source.MATCHING
+        : source[type];
     if (typeof candidate === "string" && candidate.trim()) {
       next[type] = candidate.trim().slice(0, 1200);
     }

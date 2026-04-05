@@ -9,13 +9,13 @@ import type { TemplateBlock, TemplateBlockType, TemplateDraft } from "@/lib/temp
 const BASIC_MODULES: Array<{ type: TemplateBlockType; label: string }> = [
   { type: "START", label: "Start" },
   { type: "PARTICIPANTS", label: "Participants" },
-  { type: "PAIRING", label: "Discussion" },
+  { type: "DISCUSSION", label: "Discussion" },
   { type: "PAUSE", label: "Pause" },
   { type: "PROMPT", label: "Prompt" },
   { type: "NOTES", label: "Notes" },
   { type: "FORM", label: "Form" },
   { type: "EMBED", label: "Embed" },
-  { type: "MATCHING", label: "Matching" },
+  { type: "GROUPING", label: "Grouping" },
   { type: "BREAK", label: "Break" },
   { type: "RECORD", label: "Record" }
 ];
@@ -33,13 +33,13 @@ const PARTICIPATION_PLATFORMS: Array<{ type: TemplateBlockType; label: string }>
 const DEFAULT_DURATIONS: Record<TemplateBlockType, number> = {
   START: 60,
   PARTICIPANTS: 90,
-  PAIRING: 600,
+  DISCUSSION: 600,
   PAUSE: 300,
   PROMPT: 120,
   NOTES: 120,
   FORM: 120,
   EMBED: 180,
-  MATCHING: 60,
+  GROUPING: 60,
   BREAK: 300,
   RECORD: 120,
   HARMONICA: 90,
@@ -72,7 +72,7 @@ function createBlock(type: TemplateBlockType): TemplateBlock {
     startMode: type === "START" ? "specific_datetime" : undefined,
     selectionRule: type === "START" ? "random" : undefined,
     participantMode: type === "PARTICIPANTS" ? "manual_selected" : undefined,
-    roundMaxParticipants: type === "PAIRING" ? null : undefined,
+    roundMaxParticipants: type === "DISCUSSION" ? null : undefined,
     formQuestion: type === "FORM" ? "" : undefined,
     formChoices:
       type === "FORM"
@@ -83,7 +83,7 @@ function createBlock(type: TemplateBlockType): TemplateBlock {
         : undefined,
     embedUrl: type === "EMBED" ? "" : undefined,
     harmonicaUrl: type === "HARMONICA" ? "" : undefined,
-    matchingMode: type === "MATCHING" ? "polar" : undefined,
+    matchingMode: type === "GROUPING" ? "polar" : undefined,
     meditationAnimationId: type === "PAUSE" ? MEDITATION_ANIMATIONS[0]?.id ?? null : undefined,
     meditationAudioUrl: type === "PAUSE" ? null : undefined
   };
@@ -608,7 +608,7 @@ export function StructuredTemplateEditor({ draft, posters, audioFiles, onChange 
                 </>
               ) : null}
 
-              {block.type === "PAIRING" ? (
+              {block.type === "DISCUSSION" ? (
                 <>
                   <label className="text-xs font-medium text-slate-700">
                     Max participants
@@ -799,16 +799,26 @@ export function StructuredTemplateEditor({ draft, posters, audioFiles, onChange 
                 </label>
               ) : null}
 
-              {block.type === "MATCHING" ? (
+              {block.type === "GROUPING" ? (
                 <label className="text-xs font-medium text-slate-700">
-                  Matching mode
+                  Grouping mode
                   <select
                     value={block.matchingMode ?? "polar"}
-                    onChange={(event) => updateBlock(index, { matchingMode: event.target.value === "anti" ? "anti" : "polar" })}
+                    onChange={(event) =>
+                      updateBlock(index, {
+                        matchingMode:
+                          event.target.value === "anti"
+                            ? "anti"
+                            : event.target.value === "random"
+                              ? "random"
+                              : "polar"
+                      })
+                    }
                     className="dr-input mt-1 w-full"
                   >
                     <option value="polar">Polarizing</option>
                     <option value="anti">Depolarizing</option>
+                    <option value="random">Random</option>
                   </select>
                 </label>
               ) : null}

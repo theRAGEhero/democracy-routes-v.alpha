@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { buildDefaultTemplateDraft, type TemplateBlock, type TemplateDraft } from "@/lib/templateDraft";
+import { compileTemplateDraft, type TemplateCompileResult } from "@/lib/templateCompile";
 import { ModularBuilderClient } from "@/app/modular/ModularBuilderClient";
-import { StructuredTemplateEditor } from "@/app/templates/workspace/StructuredTemplateEditor";
 import { postClientLog } from "@/lib/clientLogs";
 
-type WorkspaceMode = "modular" | "structured";
+type WorkspaceMode = "modular";
 type AiMessage = {
   id: string;
   role: "user" | "assistant" | "system";
@@ -150,7 +150,7 @@ export function TemplateWorkspaceClient({
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(initialTemplate?.updatedAt ?? null);
   const [lastSavedSignature, setLastSavedSignature] = useState(initialSavedSignature);
   const [aiPrompt, setAiPrompt] = useState(
-    "Design a 90-minute citizen assembly template to deliberate on a civic issue. Include context setting, small-group pairing, data capture, and a closing summary."
+    "Design a 90-minute citizen assembly template to deliberate on a civic issue. Include context setting, small-group discussion, data capture, and a closing summary."
   );
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -168,6 +168,12 @@ export function TemplateWorkspaceClient({
   const [isMobile, setIsMobile] = useState(false);
   const [mobileAiOpen, setMobileAiOpen] = useState(false);
   const [aiMessages, setAiMessages] = useState<AiMessage[]>([AI_INTRO_MESSAGE]);
+  const [pendingExitHref, setPendingExitHref] = useState<string | null>(null);
+  const [pendingExitExternal, setPendingExitExternal] = useState(false);
+  const [exitPromptOpen, setExitPromptOpen] = useState(false);
+  const [exitSaving, setExitSaving] = useState(false);
+  const [compileReport, setCompileReport] = useState<TemplateCompileResult | null>(null);
+  const [compileModalOpen, setCompileModalOpen] = useState(false);
   const lastLoadedRouteTemplateIdRef = useRef<string | null>(initialTemplateId ?? null);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queuedAutosaveRef = useRef(false);
@@ -299,6 +305,32 @@ export function TemplateWorkspaceClient({
   }, [isDirty, saving]);
 
   useEffect(() => {
+    if (typeof document === "undefined") return;
+    const handleDocumentClick = (event: MouseEvent) => {
+      if (!isDirty || saving) return;
+      if (event.defaultPrevented) return;
+      if (event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const anchor = target.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) return;
+      const href = anchor.getAttribute("href");
+      if (!href || href.startsWith("#") || href.startsWith("javascript:")) return;
+      const currentUrl = new URL(window.location.href);
+      const destination = new URL(anchor.href, window.location.href);
+      if (destination.href === currentUrl.href) return;
+      if (destination.pathname === currentUrl.pathname && destination.search === currentUrl.search) return;
+      event.preventDefault();
+      setPendingExitHref(destination.href);
+      setPendingExitExternal(destination.origin !== currentUrl.origin);
+      setExitPromptOpen(true);
+    };
+    document.addEventListener("click", handleDocumentClick, true);
+    return () => document.removeEventListener("click", handleDocumentClick, true);
+  }, [isDirty, saving]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     const media = window.matchMedia("(max-width: 1023px)");
     const sync = () => setIsMobile(media.matches);
@@ -310,7 +342,7 @@ export function TemplateWorkspaceClient({
   useEffect(() => {
     const nextMode = searchParams?.get("mode");
     if (nextMode === "ai" || nextMode === "modular" || nextMode === "structured") {
-      const normalizedMode: WorkspaceMode = nextMode === "structured" ? "structured" : "modular";
+      const normalizedMode: WorkspaceMode = "modular";
       setMode(normalizedMode);
       if (nextMode === "ai") {
         setAiCollapsed(false);
@@ -640,6 +672,41 @@ export function TemplateWorkspaceClient({
     await performSave("manual");
   }
 
+  function closeExitPrompt() {
+    setExitPromptOpen(false);
+    setPendingExitHref(null);
+    setPendingExitExternal(false);
+    setExitSaving(false);
+  }
+
+  function continuePendingExit() {
+    if (!pendingExitHref) {
+      closeExitPrompt();
+      return;
+    }
+    const href = pendingExitHref;
+    const isExternal = pendingExitExternal;
+    closeExitPrompt();
+    if (isExternal) {
+      window.location.assign(href);
+      return;
+    }
+    const currentOrigin = typeof window !== "undefined" ? window.location.origin : "";
+    const destination = new URL(href, currentOrigin || "http://localhost");
+    router.push(`${destination.pathname}${destination.search}${destination.hash}`);
+  }
+
+  async function saveAndExit() {
+    if (exitSaving) return;
+    setExitSaving(true);
+    const saved = await performSave("manual");
+    if (!saved) {
+      setExitSaving(false);
+      return;
+    }
+    continuePendingExit();
+  }
+
   const handleDraftChange = useCallback((nextDraft: TemplateDraft) => {
     setDraft((prev) => {
       const prevSignature = serializeDraft(prev);
@@ -663,6 +730,25 @@ export function TemplateWorkspaceClient({
             label: lastSavedAt ? `Saved ${new Date(lastSavedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Saved",
             className: "border-emerald-200 bg-emerald-50 text-emerald-700"
           };
+
+  function handleCompileTemplate() {
+    const result = compileTemplateDraft(draft);
+    setCompileReport(result);
+    setCompileModalOpen(true);
+    void postClientLog({
+      level: result.ok ? "info" : "warn",
+      scope: "template_workspace",
+      message: "template_workspace_compile_run",
+      meta: {
+        templateId: currentTemplateId,
+        ok: result.ok,
+        errorCount: result.errors.length,
+        warningCount: result.warnings.length,
+        discussionRounds: result.discussionRounds,
+        segmentCount: result.segmentCount
+      }
+    });
+  }
 
   async function runAi(nextMode: "generate" | "modify") {
     setAiLoading(true);
@@ -1095,9 +1181,9 @@ export function TemplateWorkspaceClient({
   }
 
   return (
-    <div className={`flex min-h-[calc(100dvh-28px)] flex-col gap-3 ${isMobile ? "px-0 pb-24" : "overflow-y-auto lg:h-[calc(100dvh-96px)] lg:min-h-[620px] lg:overflow-hidden"}`}>
-      <div className={`sticky top-0 z-20 ${isMobile ? "border-b border-slate-200/80 bg-[#f7f7f3]/95 px-3 py-2 backdrop-blur" : ""}`}>
-        <div className={`dr-card flex flex-wrap items-center justify-between gap-3 ${isMobile ? "rounded-[24px] px-3 py-2 shadow-[0_18px_40px_rgba(15,23,42,0.08)]" : "px-4 py-2"}`}>
+    <div className={`flex h-full min-h-0 flex-col ${isMobile ? "pb-24" : "overflow-hidden"}`}>
+      <div className={`sticky top-0 z-20 ${isMobile ? "border-b border-slate-200/80 bg-[#f7f7f3]/95 px-0 py-0 backdrop-blur" : ""}`}>
+        <div className={`dr-card flex flex-wrap items-center justify-between gap-3 rounded-none border-x-0 border-t-0 ${isMobile ? "px-3 py-2 shadow-none" : "px-4 py-2"}`}>
           <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
           {editingTitle ? (
             <input
@@ -1168,24 +1254,19 @@ export function TemplateWorkspaceClient({
                 >
                   AI
                 </button>
+                <button type="button" className="dr-button-outline px-3 py-1 text-xs" onClick={handleCompileTemplate}>
+                  Compile
+                </button>
                 <button type="button" className="dr-button px-3 py-1 text-xs" onClick={handleSave} disabled={saving}>
                   {saving ? "Saving..." : "Save"}
                 </button>
               </>
             ) : (
               <>
-                {(["modular", "structured"] as WorkspaceMode[]).map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => updateMode(item)}
-                    className={
-                      mode === item ? "dr-button px-3 py-1 text-xs" : "dr-button-outline px-3 py-1 text-xs"
-                    }
-                  >
-                    {item === "modular" ? "Modular Builder" : "Structured Builder"}
-                  </button>
-                ))}
+                <span className="dr-button px-3 py-1 text-xs">Modular Builder</span>
+                <button type="button" className="dr-button-outline px-3 py-1 text-xs" onClick={handleCompileTemplate}>
+                  Compile template
+                </button>
                 <button type="button" className="dr-button px-3 py-1 text-xs" onClick={handleSave} disabled={saving}>
                   {saving ? "Saving..." : "Save template"}
                 </button>
@@ -1411,27 +1492,113 @@ export function TemplateWorkspaceClient({
         </div>
       ) : null}
 
+      {exitPromptOpen ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/45 px-4 py-6">
+          <div className="dr-card w-full max-w-md p-5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+              Unsaved changes
+            </p>
+            <h2 className="mt-2 text-xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
+              Save template before leaving?
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-slate-600">
+              If you leave this page now, the current unsaved template draft will be lost.
+            </p>
+            {saveError ? <p className="mt-3 text-sm text-rose-600">{saveError}</p> : null}
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={saveAndExit}
+                className="dr-button px-3 py-1 text-xs"
+                disabled={exitSaving || saving}
+              >
+                {exitSaving || saving ? "Saving..." : "Save and leave"}
+              </button>
+              <button
+                type="button"
+                onClick={continuePendingExit}
+                className="dr-button-outline px-3 py-1 text-xs"
+              >
+                Leave without saving
+              </button>
+              <button
+                type="button"
+                onClick={closeExitPrompt}
+                className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900"
+              >
+                Stay here
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {compileModalOpen && compileReport ? (
+        <div className="fixed inset-0 z-[71] flex items-center justify-center bg-slate-950/45 px-4 py-6">
+          <div className="dr-card w-full max-w-2xl p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                  Template compile
+                </p>
+                <h2 className="mt-2 text-xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
+                  {compileReport.ok ? "Template can run" : "Template has blocking issues"}
+                </h2>
+                <p className="mt-2 text-sm text-slate-600">
+                  {compileReport.discussionRounds} discussion rounds · {compileReport.segmentCount} runtime segments · {compileReport.totalDurationMinutes} min total
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCompileModalOpen(false)}
+                className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border border-rose-200 bg-rose-50/70 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">Errors</p>
+                {compileReport.errors.length === 0 ? (
+                  <p className="mt-2 text-sm text-emerald-700">No blocking errors.</p>
+                ) : (
+                  <ul className="mt-2 space-y-2 text-sm text-rose-800">
+                    {compileReport.errors.map((issue, index) => (
+                      <li key={`workspace-compile-error-${index}`}>{issue.message}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Warnings</p>
+                {compileReport.warnings.length === 0 ? (
+                  <p className="mt-2 text-sm text-slate-600">No warnings.</p>
+                ) : (
+                  <ul className="mt-2 space-y-2 text-sm text-amber-900">
+                    {compileReport.warnings.map((issue, index) => (
+                      <li key={`workspace-compile-warning-${index}`}>{issue.message}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div
-        className={`grid flex-1 min-h-0 gap-2 ${isMobile ? "grid-cols-1 px-2" : aiCollapsed ? "xl:grid-cols-[minmax(0,1fr),56px]" : "xl:grid-cols-[minmax(0,1fr),minmax(280px,320px)]"}`}
+        className={`grid flex-1 min-h-0 gap-0 ${isMobile ? "grid-cols-1 px-0" : aiCollapsed ? "xl:grid-cols-[minmax(0,1fr),56px]" : "xl:grid-cols-[minmax(0,1fr),minmax(280px,320px)]"}`}
       >
         <div className="flex min-h-0 flex-col gap-3">
           <div className="min-h-0 flex-1">
-            {mode === "modular" ? (
-              <ModularBuilderClient
-                workspaceMode
-                draft={draft}
-                onDraftChange={handleDraftChange}
-                templates={templatesState}
-                dataspaces={dataspaces}
-              />
-            ) : (
-              <StructuredTemplateEditor
-                draft={draft}
-                posters={posters}
-                audioFiles={audioFiles}
-                onChange={handleDraftChange}
-              />
-            )}
+            <ModularBuilderClient
+              workspaceMode
+              draft={draft}
+              onDraftChange={handleDraftChange}
+              templates={templatesState}
+              dataspaces={dataspaces}
+            />
           </div>
         </div>
 
@@ -1442,18 +1609,9 @@ export function TemplateWorkspaceClient({
         <>
           <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-3 pb-[calc(env(safe-area-inset-bottom)+10px)]">
             <div className="pointer-events-auto flex w-full max-w-md items-center justify-between gap-2 rounded-full border border-slate-200/90 bg-white/96 p-2 shadow-[0_22px_50px_rgba(15,23,42,0.18)] backdrop-blur">
-              {(["modular", "structured"] as WorkspaceMode[]).map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => updateMode(item)}
-                  className={`flex-1 rounded-full px-3 py-2 text-[11px] font-semibold ${
-                    mode === item ? "bg-slate-900 text-white" : "text-slate-600"
-                  }`}
-                >
-                  {item === "modular" ? "Modular" : "Structured"}
-                </button>
-              ))}
+              <span className="flex-1 rounded-full bg-slate-900 px-3 py-2 text-center text-[11px] font-semibold text-white">
+                Modular
+              </span>
             </div>
           </div>
 

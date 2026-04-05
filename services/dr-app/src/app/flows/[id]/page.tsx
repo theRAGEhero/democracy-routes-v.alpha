@@ -7,7 +7,6 @@ import { ParticipantViewClient } from "@/app/flows/[id]/ParticipantViewClient";
 import { PlanParticipation } from "@/app/flows/[id]/PlanParticipation";
 import { PlanAnalysisPanel } from "@/app/flows/[id]/PlanAnalysisPanel";
 import { StartNowButton } from "@/app/flows/[id]/StartNowButton";
-import { MatchingPanel } from "@/app/flows/[id]/MatchingPanel";
 import {
   buildLegacySegments,
   buildPlanSegmentsFromBlocks,
@@ -19,6 +18,7 @@ import { normalizeCallBaseUrl } from "@/lib/callUrl";
 import { buildVideoAccessToken } from "@/lib/videoAccess";
 import Link from "next/link";
 import { DEFAULT_DATASPACE_COLOR, getDataspaceTheme } from "@/lib/dataspaceColor";
+import { normalizeBlockType } from "@/lib/blockType";
 
 export default async function PlanParticipantPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -61,7 +61,7 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
   });
 
   if (!plan) {
-    return <p className="text-sm text-slate-600">Template not found.</p>;
+    return <p className="text-sm text-slate-600">Flow not found.</p>;
   }
 
   let latestAnalysis: {
@@ -110,8 +110,8 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
 
   const normalizedBlocks: PlanBlockInput[] = (plan.blocks ?? []).reduce(
     (acc: PlanBlockInput[], block: (typeof plan.blocks)[number]) => {
-      const type = block.type as PlanBlockType;
-      if (!["PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "HARMONICA", "MATCHING"].includes(type)) {
+      const type = normalizeBlockType(block.type) as PlanBlockType | null;
+      if (!type || !["DISCUSSION", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "HARMONICA", "GROUPING"].includes(type)) {
         return acc;
       }
         acc.push({
@@ -141,10 +141,6 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
           meditationDurationMinutes: plan.meditationDurationMinutes
         });
   const { totalEndMs } = schedule;
-  const matchingMode =
-    normalizedBlocks.find((block) => block.type === "MATCHING")?.matchingMode === "anti"
-      ? "anti"
-      : "polar";
   const isOwner = plan.createdById === session.user.id;
   const canEdit = (isAdmin || isOwner) && Date.now() <= totalEndMs;
   const canStartNow = (isAdmin || isOwner) && plan.startAt.getTime() > Date.now();
@@ -289,15 +285,15 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
-            Template Participant View
+            Flow Execution
           </h1>
-          <p className="text-sm text-slate-600">Personalized call link and pairing status.</p>
+          <p className="text-sm text-slate-600">Live participant view, runtime status, and room access.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {canStartNow ? <StartNowButton planId={plan.id} /> : null}
           {canEdit ? (
             <Link href={`/flows/${plan.id}/edit`} className="dr-button-outline px-3 py-1 text-xs">
-              Edit plan
+              Flow settings
             </Link>
           ) : null}
         </div>
@@ -349,7 +345,6 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
         callDisplayName={participantCallDisplayName}
         canSkip={isOwner}
       />
-      <MatchingPanel planId={plan.id} canRun={isAdmin || isOwner} mode={matchingMode} />
       <PlanAnalysisPanel
         planId={plan.id}
         initialAnalysis={
@@ -365,7 +360,7 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
       />
       {plan.isPublic ? (
         <div className="dr-card p-6">
-          <h2 className="text-sm font-semibold uppercase text-slate-500">Template rules</h2>
+          <h2 className="text-sm font-semibold uppercase text-slate-500">Flow settings</h2>
           {plan.description ? (
             <p className="mt-2 text-sm text-slate-700">{plan.description}</p>
           ) : null}

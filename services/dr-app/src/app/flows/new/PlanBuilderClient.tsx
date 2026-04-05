@@ -49,7 +49,7 @@ type Props = {
     participantIds: string[];
     blocks?: Array<{
       id: string;
-      type: "START" | "PARTICIPANTS" | "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING" | "BREAK" | "HARMONICA" | "DEMBRANE" | "DELIBERAIDE" | "POLIS" | "AGORACITIZENS" | "NEXUSPOLITICS" | "SUFFRAGO";
+      type: "START" | "PARTICIPANTS" | "DISCUSSION" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "GROUPING" | "BREAK" | "HARMONICA" | "DEMBRANE" | "DELIBERAIDE" | "POLIS" | "AGORACITIZENS" | "NEXUSPOLITICS" | "SUFFRAGO";
       durationSeconds: number;
       roundNumber: number | null;
       roundMaxParticipants?: number | null;
@@ -58,7 +58,7 @@ type Props = {
       posterId: string | null;
       embedUrl?: string | null;
       harmonicaUrl?: string | null;
-      matchingMode?: "polar" | "anti" | null;
+      matchingMode?: "polar" | "anti" | "random" | null;
       meditationAnimationId?: string | null;
       meditationAudioUrl?: string | null;
     }>;
@@ -77,7 +77,7 @@ function toLocalTimeInput(date: Date) {
 
 type PlanBlockDraft = {
   id: string;
-  type: "START" | "PARTICIPANTS" | "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING" | "BREAK" | "HARMONICA" | "DEMBRANE" | "DELIBERAIDE" | "POLIS" | "AGORACITIZENS" | "NEXUSPOLITICS" | "SUFFRAGO";
+  type: "START" | "PARTICIPANTS" | "DISCUSSION" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "GROUPING" | "BREAK" | "HARMONICA" | "DEMBRANE" | "DELIBERAIDE" | "POLIS" | "AGORACITIZENS" | "NEXUSPOLITICS" | "SUFFRAGO";
   durationSeconds: number;
   roundMaxParticipants?: number | null;
   formQuestion?: string | null;
@@ -85,7 +85,7 @@ type PlanBlockDraft = {
   posterId?: string | null;
   embedUrl?: string | null;
   harmonicaUrl?: string | null;
-  matchingMode?: "polar" | "anti" | null;
+  matchingMode?: "polar" | "anti" | "random" | null;
   meditationAnimationId?: string | null;
   meditationAudioUrl?: string | null;
 };
@@ -116,7 +116,7 @@ type PlanTemplate = {
     capacity?: number | null;
   } | null;
   blocks: Array<{
-    type: "START" | "PARTICIPANTS" | "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING" | "BREAK" | "HARMONICA" | "DEMBRANE" | "DELIBERAIDE" | "POLIS" | "AGORACITIZENS" | "NEXUSPOLITICS" | "SUFFRAGO";
+    type: "START" | "PARTICIPANTS" | "DISCUSSION" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "GROUPING" | "BREAK" | "HARMONICA" | "DEMBRANE" | "DELIBERAIDE" | "POLIS" | "AGORACITIZENS" | "NEXUSPOLITICS" | "SUFFRAGO";
     durationSeconds: number;
     roundMaxParticipants?: number | null;
     formQuestion?: string | null;
@@ -124,7 +124,7 @@ type PlanTemplate = {
     posterId?: string | null;
     embedUrl?: string | null;
     harmonicaUrl?: string | null;
-    matchingMode?: "polar" | "anti" | null;
+    matchingMode?: "polar" | "anti" | "random" | null;
     meditationAnimationId?: string | null;
     meditationAudioUrl?: string | null;
   }>;
@@ -239,7 +239,7 @@ function defaultRoundBlocks(config: {
   for (let round = 0; round < config.roundsCount; round += 1) {
     blocks.push({
       id: makeId(),
-      type: "PAIRING",
+      type: "DISCUSSION",
       durationSeconds: roundSeconds,
       roundMaxParticipants: null
     });
@@ -283,7 +283,7 @@ function legacyBlocksFromPlan(config: {
   for (let round = 0; round < config.roundsCount; round += 1) {
     blocks.push({
       id: makeId(),
-      type: "PAIRING",
+      type: "DISCUSSION",
       durationSeconds: roundSeconds,
       roundMaxParticipants: null
     });
@@ -567,11 +567,11 @@ export function PlanBuilderClient({
 
   useEffect(() => {
     if (planBlocks.length === 0) return;
-    const roundCount = planBlocks.filter((block) => block.type === "PAIRING").length;
+    const roundCount = planBlocks.filter((block) => block.type === "DISCUSSION").length;
     if (roundCount > 0 && roundCount !== roundsCount) {
       setRoundsCount(roundCount);
     }
-    const firstRound = planBlocks.find((block) => block.type === "PAIRING");
+    const firstRound = planBlocks.find((block) => block.type === "DISCUSSION");
     if (firstRound) {
       const minutes = Math.max(1, Math.round(firstRound.durationSeconds / 60));
       if (minutes !== roundDurationMinutes) {
@@ -1061,14 +1061,14 @@ export function PlanBuilderClient({
     const defaults: Record<PlanBlockDraft["type"], number> = {
       START: 60,
       PARTICIPANTS: 90,
-      PAIRING: roundDurationMinutes * 60,
+      DISCUSSION: roundDurationMinutes * 60,
       PAUSE: 5 * 60,
       PROMPT: 30,
       NOTES: 300,
       RECORD: 180,
       FORM: 120,
       EMBED: 180,
-      MATCHING: 60,
+      GROUPING: 60,
       BREAK: 300,
       HARMONICA: 90,
       DEMBRANE: 90,
@@ -1084,13 +1084,13 @@ export function PlanBuilderClient({
         id: makeId(),
         type,
         durationSeconds: defaults[type],
-        roundMaxParticipants: type === "PAIRING" ? null : null,
+        roundMaxParticipants: type === "DISCUSSION" ? null : null,
         formQuestion: type === "FORM" ? "" : null,
         formChoices: type === "FORM" ? defaultFormChoices() : null,
         posterId: null,
         embedUrl: type === "EMBED" ? "" : null,
         harmonicaUrl: type === "HARMONICA" ? "" : null,
-        matchingMode: type === "MATCHING" ? "polar" : null,
+        matchingMode: type === "GROUPING" ? "polar" : null,
         meditationAnimationId:
           type === "PAUSE" ? defaultMeditationAnimationId || null : null,
         meditationAudioUrl: type === "PAUSE" ? defaultMeditationAudioUrl || null : null
@@ -1102,7 +1102,7 @@ export function PlanBuilderClient({
     setRoundDurationMinutes(nextMinutes);
     setPlanBlocks((prev) =>
       prev.map((block) =>
-        block.type === "PAIRING"
+        block.type === "DISCUSSION"
           ? { ...block, durationSeconds: Math.max(10, nextMinutes * 60) }
           : block
       )
@@ -1113,14 +1113,14 @@ export function PlanBuilderClient({
     const clamped = Math.max(1, nextCount);
     setRoundsCount(clamped);
     setPlanBlocks((prev) => {
-      const currentRounds = prev.filter((block) => block.type === "PAIRING");
+      const currentRounds = prev.filter((block) => block.type === "DISCUSSION");
       const delta = clamped - currentRounds.length;
       if (delta === 0) return prev;
       if (delta < 0) {
         let toRemove = Math.abs(delta);
         const next: PlanBlockDraft[] = [];
         for (const block of prev) {
-          if (block.type === "PAIRING" && toRemove > 0) {
+          if (block.type === "DISCUSSION" && toRemove > 0) {
             toRemove -= 1;
             continue;
           }
@@ -1130,7 +1130,7 @@ export function PlanBuilderClient({
       }
       const additions = Array.from({ length: delta }, () => ({
         id: makeId(),
-        type: "PAIRING" as const,
+        type: "DISCUSSION" as const,
         durationSeconds: Math.max(10, roundDurationMinutes * 60),
         roundMaxParticipants: null,
         posterId: null
@@ -1209,7 +1209,7 @@ export function PlanBuilderClient({
             }
         : block
     );
-    const roundBlocks = normalizedBlocks.filter((block) => block.type === "PAIRING");
+    const roundBlocks = normalizedBlocks.filter((block) => block.type === "DISCUSSION");
     const meditationBlocks = normalizedBlocks.filter((block) => block.type === "PAUSE");
     const firstMeditationBlock = meditationBlocks[0] ?? null;
     const missingEmbed = normalizedBlocks.some(
@@ -1437,7 +1437,7 @@ export function PlanBuilderClient({
 
         <div className="grid gap-4 md:grid-cols-4">
           <div>
-            <label className="text-sm font-medium">Minutes per pairing</label>
+            <label className="text-sm font-medium">Minutes per discussion</label>
             <input
               type="number"
               min={1}
@@ -1640,8 +1640,8 @@ export function PlanBuilderClient({
                           Drag
                         </span>
                         <span className="text-xs font-semibold uppercase text-slate-500">
-                          {block.type === "PAIRING"
-                            ? `Pairing ${planBlocks.slice(0, index + 1).filter((item) => item.type === "PAIRING").length}`
+                          {block.type === "DISCUSSION"
+                            ? `Discussion ${planBlocks.slice(0, index + 1).filter((item) => item.type === "DISCUSSION").length}`
                             : block.type === "START"
                               ? "Start"
                             : block.type === "PARTICIPANTS"
@@ -1656,8 +1656,8 @@ export function PlanBuilderClient({
                                     ? "Form"
                                     : block.type === "EMBED"
                                       ? "Embed"
-                                      : block.type === "MATCHING"
-                                        ? "Matching"
+                                      : block.type === "GROUPING"
+                                        ? "Grouping"
                                         : block.type === "HARMONICA"
                                           ? "Harmonica"
                                           : ["DEMBRANE", "DELIBERAIDE", "POLIS", "AGORACITIZENS", "NEXUSPOLITICS", "SUFFRAGO"].includes(block.type)
@@ -1670,7 +1670,7 @@ export function PlanBuilderClient({
                             updateBlock(block.id, {
                               type: event.target.value as PlanBlockDraft["type"],
                               roundMaxParticipants:
-                                event.target.value === "PAIRING"
+                                event.target.value === "DISCUSSION"
                                   ? block.roundMaxParticipants ?? null
                                   : null,
                               formQuestion:
@@ -1686,7 +1686,7 @@ export function PlanBuilderClient({
                               harmonicaUrl:
                                 event.target.value === "HARMONICA" ? block.harmonicaUrl ?? "" : null,
                               matchingMode:
-                                event.target.value === "MATCHING"
+                                event.target.value === "GROUPING"
                                   ? block.matchingMode ?? "polar"
                                   : null,
                               meditationAnimationId:
@@ -1701,14 +1701,14 @@ export function PlanBuilderClient({
                           }
                           className="dr-input h-8 rounded px-2 text-xs"
                         >
-                          <option value="PAIRING">Pairing</option>
+                          <option value="DISCUSSION">Discussion</option>
                           <option value="START">Start</option>
                           <option value="PARTICIPANTS">Participants</option>
                           <option value="PAUSE">Pause</option>
                           <option value="PROMPT">Prompt</option>
                           <option value="NOTES">Notes</option>
                           <option value="EMBED">Embed</option>
-                          <option value="MATCHING">Matching</option>
+                          <option value="GROUPING">Grouping</option>
                           <option value="BREAK">Break</option>
                           <option value="HARMONICA">Harmonica</option>
                           <option value="DEMBRANE">Dembrane</option>
@@ -1730,7 +1730,7 @@ export function PlanBuilderClient({
                             value={minutes}
                             onChange={(event) => {
                               const nextMinutes = Number(event.target.value);
-                              const minSeconds = block.type === "PAIRING" ? 10 : 1;
+                              const minSeconds = block.type === "DISCUSSION" ? 10 : 1;
                               updateBlock(block.id, {
                                 durationSeconds: Math.max(
                                   minSeconds,
@@ -1750,7 +1750,7 @@ export function PlanBuilderClient({
                             value={seconds}
                             onChange={(event) => {
                               const nextSeconds = Math.min(59, Math.max(0, Number(event.target.value)));
-                              const minSeconds = block.type === "PAIRING" ? 10 : 1;
+                              const minSeconds = block.type === "DISCUSSION" ? 10 : 1;
                               updateBlock(block.id, {
                                 durationSeconds: Math.max(minSeconds, minutes * 60 + nextSeconds)
                               });
@@ -1769,7 +1769,7 @@ export function PlanBuilderClient({
                         </button>
                       </div>
                     </div>
-                    {block.type === "PAIRING" ? (
+                    {block.type === "DISCUSSION" ? (
                       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-600">
                         <label className="flex items-center gap-1">
                           Max participants
@@ -1954,23 +1954,24 @@ export function PlanBuilderClient({
                         ) : null}
                       </div>
                     ) : null}
-                    {block.type === "MATCHING" ? (
+                    {block.type === "GROUPING" ? (
                       <div className="mt-3 space-y-2">
                         <label className="text-xs font-semibold uppercase text-slate-500">
-                          Matching mode
+                          Grouping mode
                         </label>
                         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
                           <select
                             value={block.matchingMode ?? "polar"}
                             onChange={(event) =>
                               updateBlock(block.id, {
-                                matchingMode: event.target.value as "polar" | "anti"
+                                matchingMode: event.target.value as "polar" | "anti" | "random"
                               })
                             }
                             className="dr-input h-8 rounded px-2 text-xs"
                           >
                             <option value="polar">Polarize (similar)</option>
                             <option value="anti">Anti-polarize (contrast)</option>
+                            <option value="random">Random</option>
                           </select>
                           <span className="text-[11px] text-slate-500">
                             Uses transcripts to reshape groups when this block starts.
@@ -2047,8 +2048,8 @@ export function PlanBuilderClient({
           </div>
 
           <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-600">
-            <button type="button" onClick={() => addBlock("PAIRING")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
-              + Pairing
+            <button type="button" onClick={() => addBlock("DISCUSSION")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
+              + Discussion
             </button>
             <button type="button" onClick={() => addBlock("PAUSE")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
               + Pause
@@ -2062,8 +2063,8 @@ export function PlanBuilderClient({
             <button type="button" onClick={() => addBlock("EMBED")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
               + Embed
             </button>
-            <button type="button" onClick={() => addBlock("MATCHING")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
-              + Matching
+            <button type="button" onClick={() => addBlock("GROUPING")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
+              + Grouping
             </button>
             <button type="button" onClick={() => addBlock("START")} className="rounded-full border border-slate-200 bg-white px-3 py-1 hover:text-slate-900">
               + Start

@@ -43,6 +43,12 @@ const POLL_MS = 2000;
 
 function formatSpeaker(speaker?: number | string) {
   if (speaker === undefined || speaker === null || speaker === "") return "Speaker";
+  if (typeof speaker === "string") {
+    const trimmed = speaker.trim();
+    if (!trimmed) return "Speaker";
+    if (/^speaker[\s_-]?\d+$/i.test(trimmed)) return `Speaker ${trimmed.replace(/^speaker[\s_-]?/i, "")}`;
+    return trimmed;
+  }
   return `Speaker ${speaker}`;
 }
 

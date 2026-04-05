@@ -45,7 +45,6 @@ function formatDuration(totalSeconds: number) {
 function buildTemplateLinks(templateId: string) {
   return {
     use: `/flows/new?templateId=${templateId}`,
-    structured: `/flows/new?templateId=${templateId}&customize=1`,
     modular: `/templates/workspace?mode=modular&templateId=${templateId}`
   };
 }
@@ -72,7 +71,7 @@ function TemplateCard({ flow }: { flow: TemplateSummary }) {
           {formatDuration(flow.totalSeconds)} total
         </span>
         <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1">
-          {(flow.types.PAIRING ?? flow.types.ROUND ?? 0)} discussions
+          {(flow.types.DISCUSSION ?? flow.types.ROUND ?? 0)} discussions
         </span>
         {(flow.types.PAUSE ?? flow.types.MEDITATION) ? (
           <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1">
@@ -105,11 +104,8 @@ function TemplateCard({ flow }: { flow: TemplateSummary }) {
         <Link href={links.use} className="dr-button px-4 py-2 text-sm">
           Use this template
         </Link>
-        <Link href={links.structured} className="dr-button-outline px-4 py-2 text-sm">
-          Structured
-        </Link>
         <Link href={links.modular} className="dr-button-outline px-4 py-2 text-sm">
-          Modular
+          Customize template
         </Link>
       </div>
     </div>
@@ -127,7 +123,7 @@ export function TemplatesLibraryClient({ templates, currentUserId }: Props) {
       id: "assistant-intro",
       role: "assistant",
       content:
-        "Tell me what kind of session you want to run. I can point you to an existing template, or tell you when it is better to start fresh in Structured or Modular Builder.",
+        "Tell me what kind of session you want to run. I can point you to an existing template, or tell you when it is better to start fresh in the Modular Builder.",
       recommendations: [],
       suggestStartFresh: false,
       freshReason: null
@@ -240,7 +236,7 @@ export function TemplatesLibraryClient({ templates, currentUserId }: Props) {
                 <h2 className="mt-1 text-lg font-semibold text-slate-900">Template helper</h2>
                 <p className="mt-1 text-sm text-slate-600">
                   Ask for a starting point. The assistant can recommend an existing template or tell
-                  you when to start fresh in Structured or Modular Builder.
+                  you when to start fresh in the Modular Builder.
                 </p>
               </div>
               <button
@@ -262,9 +258,6 @@ export function TemplatesLibraryClient({ templates, currentUserId }: Props) {
         ) : (
           <>
             <div className="mt-4 flex flex-wrap gap-2 text-xs">
-              <Link href="/flows/new?mode=template" className="dr-button-outline px-3 py-2">
-                Start in Structured
-              </Link>
               <Link href="/templates/workspace?mode=modular" className="dr-button-outline px-3 py-2">
                 Start in Modular
               </Link>
@@ -308,13 +301,10 @@ export function TemplatesLibraryClient({ templates, currentUserId }: Props) {
                                 <p className="mt-2 text-xs text-slate-600">{recommendation.reason}</p>
                                 <div className="mt-3 flex flex-wrap gap-2 text-xs">
                                   <Link href={links.use} className="dr-button px-3 py-2 text-xs">
-                                    Use
-                                  </Link>
-                                  <Link href={links.structured} className="dr-button-outline px-3 py-2 text-xs">
-                                    Structured
+                                    Use template
                                   </Link>
                                   <Link href={links.modular} className="dr-button-outline px-3 py-2 text-xs">
-                                    Modular
+                                    Customize
                                   </Link>
                                 </div>
                               </div>
@@ -328,9 +318,6 @@ export function TemplatesLibraryClient({ templates, currentUserId }: Props) {
                           <p className="font-semibold">Start fresh</p>
                           <p className="mt-1">{message.freshReason || "A new template is likely the better fit."}</p>
                           <div className="mt-3 flex flex-wrap gap-2">
-                            <Link href="/flows/new?mode=template" className="dr-button-outline px-3 py-2 text-xs">
-                              Structured Builder
-                            </Link>
                             <Link
                               href="/templates/workspace?mode=modular"
                               className="dr-button-outline px-3 py-2 text-xs"
@@ -429,7 +416,7 @@ export function TemplatesLibraryClient({ templates, currentUserId }: Props) {
                   </button>
                 ))}
               </div>
-              <Link href="/flows/new?mode=template" className="dr-button px-4 py-2 text-sm">
+              <Link href="/templates/workspace?mode=modular" className="dr-button px-4 py-2 text-sm">
                 New template
               </Link>
             </div>

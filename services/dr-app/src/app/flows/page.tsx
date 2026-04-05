@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { TemplatesLibraryClient } from "./TemplatesLibraryClient";
+import { normalizeBlockRecords } from "@/lib/blockType";
 
 type TemplateBlock = {
   type: string;
@@ -34,7 +35,7 @@ export default async function PlansLibraryPage() {
   const parsed = flows.map((flow) => {
     let blocks: TemplateBlock[] = [];
     try {
-      blocks = JSON.parse(flow.blocksJson);
+      blocks = normalizeBlockRecords(JSON.parse(flow.blocksJson)) as TemplateBlock[];
     } catch {
       blocks = [];
     }

@@ -29,7 +29,7 @@ type Props = {
 };
 
 export function DataspaceRelatedTabs({ dataspaceId, plans, openProblems }: Props) {
-  const [activeTab, setActiveTab] = useState<"templates" | "open-problems" | "analytics">("templates");
+  const [activeTab, setActiveTab] = useState<"templates" | "open-problems" | "analytics">("analytics");
   const [problems, setProblems] = useState(openProblems);
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);

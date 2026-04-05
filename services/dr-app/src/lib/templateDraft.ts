@@ -1,14 +1,14 @@
 export const TEMPLATE_BLOCK_TYPES = [
   "START",
   "PARTICIPANTS",
-  "PAIRING",
+  "DISCUSSION",
   "PAUSE",
   "PROMPT",
   "NOTES",
   "RECORD",
   "FORM",
   "EMBED",
-  "MATCHING",
+  "GROUPING",
   "BREAK",
   "HARMONICA",
   "DEMBRANE",
@@ -68,7 +68,7 @@ export type TemplateBlock = {
   posterContent?: string | null;
   embedUrl?: string | null;
   harmonicaUrl?: string | null;
-  matchingMode?: "polar" | "anti" | null;
+  matchingMode?: "polar" | "anti" | "random" | null;
   meditationAnimationId?: string | null;
   meditationAudioUrl?: string | null;
 };

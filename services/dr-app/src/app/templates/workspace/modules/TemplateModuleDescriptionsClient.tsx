@@ -6,13 +6,18 @@ import { TEMPLATE_BLOCK_TYPES } from "@/lib/templateDraft";
 type Props = {
   initialDescriptions: Record<string, string>;
   defaults: Record<string, string>;
+  initialInstructions: string;
+  instructionDefaults: string;
 };
 
 export function TemplateModuleDescriptionsClient({
   initialDescriptions,
-  defaults
+  defaults,
+  initialInstructions,
+  instructionDefaults
 }: Props) {
   const [descriptions, setDescriptions] = useState<Record<string, string>>(initialDescriptions);
+  const [instructions, setInstructions] = useState(initialInstructions);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +41,10 @@ export function TemplateModuleDescriptionsClient({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(descriptions)
+        body: JSON.stringify({
+          descriptions,
+          instructions
+        })
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
@@ -47,6 +55,7 @@ export function TemplateModuleDescriptionsClient({
         );
       }
       setDescriptions(payload?.descriptions ?? descriptions);
+      setInstructions(payload?.instructions ?? instructions);
       setStatus("Saved");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Unable to save module descriptions.");
@@ -60,6 +69,10 @@ export function TemplateModuleDescriptionsClient({
       ...current,
       [type]: defaults[type] || current[type] || ""
     }));
+  }
+
+  function restoreInstructionDefault() {
+    setInstructions(instructionDefaults);
   }
 
   return (
@@ -93,6 +106,39 @@ export function TemplateModuleDescriptionsClient({
           </button>
         </div>
       </div>
+
+      <section className="dr-card p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Template AI instructions</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              This is the global instruction text injected into the Template AI system prompt before it
+              generates or modifies templates.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={restoreInstructionDefault}
+            className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            Restore default
+          </button>
+        </div>
+
+        <textarea
+          value={instructions}
+          onChange={(event) => setInstructions(event.target.value)}
+          rows={14}
+          className="mt-4 w-full rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-400 focus:bg-white"
+        />
+
+        <details className="mt-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-3 text-xs text-slate-600">
+          <summary className="cursor-pointer font-semibold text-slate-700">
+            Show default instructions
+          </summary>
+          <p className="mt-2 whitespace-pre-wrap">{instructionDefaults}</p>
+        </details>
+      </section>
 
       <div className="grid gap-4 xl:grid-cols-2">
         {modules.map((module) => (

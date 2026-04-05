@@ -114,6 +114,34 @@ export async function maybeRunMeetingAiAgents(meetingId: string) {
     return { ok: false as const, reason: "no_enabled_agent" as const };
   }
 
+  const latestRun = await prisma.meetingAiAgentRun.findFirst({
+    where: {
+      meetingId,
+      agentId: assignment.agentId,
+      NOT: {
+        status: "SKIPPED",
+        reasonSkipped: "interval_not_elapsed"
+      }
+    },
+    orderBy: { evaluatedAt: "desc" }
+  });
+
+  if (latestRun) {
+    const intervalMs = Math.max(15, assignment.intervalSeconds || assignment.agent.defaultIntervalSeconds || 60) * 1000;
+    const elapsed = Date.now() - new Date(latestRun.evaluatedAt).getTime();
+    if (elapsed < intervalMs) {
+      await prisma.meetingAiAgentRun.create({
+        data: {
+          meetingId,
+          agentId: assignment.agentId,
+          status: "SKIPPED",
+          reasonSkipped: "interval_not_elapsed"
+        }
+      });
+      return { ok: false as const, reason: "interval_not_elapsed" as const };
+    }
+  }
+
   const transcriptText = String(meeting.transcript?.transcriptText || "").trim();
   const transcriptWindow = trimTranscriptWindow(transcriptText, 4000);
   if (transcriptWindow.length < Math.max(120, assignment.minTranscriptChars || 240)) {

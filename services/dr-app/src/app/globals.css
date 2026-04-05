@@ -368,7 +368,7 @@ iframe {
   }
 }
 
-.dr-node-card[data-type="PAIRING"] {
+.dr-node-card[data-type="DISCUSSION"] {
   color: #d97706;
 }
 
@@ -392,7 +392,7 @@ iframe {
   color: #ea580c;
 }
 
-.dr-node-card[data-type="MATCHING"] {
+.dr-node-card[data-type="GROUPING"] {
   color: #e11d48;
 }
 

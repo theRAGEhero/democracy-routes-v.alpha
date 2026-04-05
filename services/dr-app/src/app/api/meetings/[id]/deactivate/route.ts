@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { ensureMeetingAiSummary } from "@/lib/meetingAiSummary";
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   const session = await getSession();
@@ -34,6 +35,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
     where: { id: meeting.id },
     data: { isActive: false }
   });
+
+  void ensureMeetingAiSummary(meeting.id).catch(() => null);
 
   return NextResponse.json({ message: "Meeting deactivated" });
 }

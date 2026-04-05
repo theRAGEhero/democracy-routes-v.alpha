@@ -7,19 +7,19 @@ const PRESETS = [
     id: "conflict-mediation",
     label: "Conflict mediation",
     prompt:
-      "Design a 45-minute conflict mediation template for 12 participants. Include a warm-up prompt, structured pairing, a note capture step, and a closing reflection."
+      "Design a 45-minute conflict mediation template for 12 participants. Include a warm-up prompt, structured discussion, a note capture step, and a closing reflection."
   },
   {
     id: "citizen-assembly",
     label: "Citizen assembly",
     prompt:
-      "Design a 90-minute citizen assembly template to deliberate on a civic issue. Include context setting, small-group pairing, data capture, and a closing summary."
+      "Design a 90-minute citizen assembly template to deliberate on a civic issue. Include context setting, small-group discussion, data capture, and a closing summary."
   },
   {
     id: "deliberation",
     label: "Deliberation",
     prompt:
-      "Create a structured deliberation template with 3 rounds of pairing, short pauses, and a final notes block to capture commitments."
+      "Create a structured deliberation template with 3 rounds of discussion, short pauses, and a final notes block to capture commitments."
   },
   {
     id: "strategy",
@@ -38,14 +38,14 @@ const PRESETS = [
 const MODULES = [
   "START",
   "PARTICIPANTS",
-  "PAIRING",
+  "DISCUSSION",
   "PAUSE",
   "PROMPT",
   "NOTES",
   "RECORD",
   "FORM",
   "EMBED",
-  "MATCHING",
+  "GROUPING",
   "BREAK",
   "HARMONICA",
   "DEMBRANE",
@@ -65,7 +65,7 @@ type Block = {
   posterId?: string | null;
   embedUrl?: string | null;
   harmonicaUrl?: string | null;
-  matchingMode?: "polar" | "anti" | null;
+  matchingMode?: "polar" | "anti" | "random" | null;
   meditationAnimationId?: string | null;
   meditationAudioUrl?: string | null;
 };
@@ -318,7 +318,7 @@ export function TemplateAiClient() {
                       <p className="mt-1 text-xs text-slate-500">Harmonica: {block.harmonicaUrl}</p>
                     ) : null}
                     {block.matchingMode ? (
-                      <p className="mt-1 text-xs text-slate-500">Matching: {block.matchingMode}</p>
+                      <p className="mt-1 text-xs text-slate-500">Grouping: {block.matchingMode}</p>
                     ) : null}
                   </div>
                 ))}

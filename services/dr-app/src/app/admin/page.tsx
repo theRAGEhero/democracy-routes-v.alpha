@@ -339,7 +339,7 @@ export default async function AdminHomePage({
     { href: "/admin/analytics", label: "Analytics" },
     { href: "/admin/ai-agents", label: "AI agents" },
     { href: "/admin/remote-workers", label: "Remote workers" },
-    { href: "/flows/new?mode=template", label: "Create template" },
+    { href: "/templates/workspace?mode=modular", label: "Create template" },
     { href: "/tutorial", label: "Tutorial" }
   ];
 

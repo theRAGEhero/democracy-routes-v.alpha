@@ -47,7 +47,7 @@ const templateBlocks = [
   },
   {
     title: "Matching",
-    body: "Re-group participants using polarizing or anti-polarizing logic."
+    body: "Re-group participants using polarizing, depolarizing, or random logic."
   },
   {
     title: "Prompt or Note",

@@ -2893,7 +2893,12 @@ async function joinRoom() {
         if (transcriptFinalItems.length === beforeCount) {
           return;
         }
-        const speaker = payload.data?.speakerId ?? payload.data?.mappedPeerId ?? payload.data?.peerId ?? "speaker";
+        const speaker =
+          payload.data?.mappedPeerId ??
+          payload.data?.mappedPeerName ??
+          payload.data?.speakerId ??
+          payload.data?.peerId ??
+          "speaker";
         const time = typeof payload.data?.time === "number" ? payload.data.time : Date.now();
         const labeled = `[${language}] ${resolveTranscriptSourceName(payload.data || {})}: ${text}`;
         await postLiveTranscriptLine(labeled, speaker, time);

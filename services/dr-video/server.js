@@ -1026,6 +1026,25 @@ function mapDiarizedSpeakerToPeer(session, speakerInfo) {
     return { mappedPeerId: null, mappedPeerName: null, mappingConfidence: 0, mappingMethod: "none" };
   }
 
+  const room = rooms.get(session.roomId);
+  const connectedPeers = room
+    ? Array.from(room.peers.values()).filter((peer) => peer && peer.connected !== false)
+    : [];
+  if (connectedPeers.length === 1) {
+    const onlyPeer = connectedPeers[0];
+    if (onlyPeer?.id) {
+      if (onlyPeer.name) {
+        session.peerNameById[onlyPeer.id] = onlyPeer.name;
+      }
+      return {
+        mappedPeerId: onlyPeer.id,
+        mappedPeerName: onlyPeer.name || null,
+        mappingConfidence: 1,
+        mappingMethod: "single_participant"
+      };
+    }
+  }
+
   const segStartMs = session.startedAtMs + startSec * 1000;
   const segEndMs = session.startedAtMs + endSec * 1000;
   trimPeerSpeechWindows(session, Date.now());

@@ -37,6 +37,29 @@ function normalizeLineKey(line: LiveLine) {
   return `${line.speaker ?? "unknown"}::${line.time ?? "na"}::${line.text}`;
 }
 
+function extractSpeakerFromLabeledText(text: string) {
+  const match = String(text || "").match(/^\[[^\]]+\]\s+([^:]+):\s/);
+  return match?.[1]?.trim() || null;
+}
+
+function normalizeLiveLineSpeaker(line: LiveLine) {
+  const rawSpeaker = line.speaker;
+  const speakerText = typeof rawSpeaker === "string" ? rawSpeaker.trim() : rawSpeaker;
+  if (
+    typeof speakerText === "string" &&
+    /^speaker[_-]/i.test(speakerText)
+  ) {
+    const extracted = extractSpeakerFromLabeledText(line.text);
+    if (extracted) {
+      return {
+        ...line,
+        speaker: extracted
+      };
+    }
+  }
+  return line;
+}
+
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
@@ -100,8 +123,11 @@ export async function GET(
 
   try {
     const payload = JSON.parse(meeting.transcript.transcriptJson) as TranscriptPayload;
+    const lines = Array.isArray(payload.liveLines)
+      ? payload.liveLines.map(normalizeLiveLineSpeaker)
+      : [];
     return NextResponse.json({
-      lines: payload.liveLines ?? [],
+      lines,
       agentMessages: meeting.aiAgentMessages.map((message) => ({
         id: message.id,
         text: message.text,

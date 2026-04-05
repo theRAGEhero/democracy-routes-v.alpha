@@ -10,6 +10,7 @@ import {
   type PlanBlockType
 } from "@/lib/planSchedule";
 import { normalizeMatchingMode } from "@/lib/matchingMode";
+import { normalizeBlockType } from "@/lib/blockType";
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
@@ -18,7 +19,7 @@ export default async function DashboardPage() {
     return null;
   }
 
-  const [meetings, dataspaces, invites, flows, texts, dataspaceMembers, meetingMembers, meetingInvites, planParticipants, planPairs] =
+  const [meetings, dataspaces, invites, flows, texts, openProblems, dataspaceMembers, meetingMembers, meetingInvites, planParticipants, planPairs] =
     await Promise.all([
     prisma.meeting.findMany({
       where: {
@@ -50,7 +51,10 @@ export default async function DashboardPage() {
       where: { userId: session.user.id, status: "PENDING" },
       include: {
         meeting: {
-          include: { createdBy: { select: { email: true } } }
+          include: {
+            createdBy: { select: { email: true } },
+            dataspace: { select: { id: true, personalOwnerId: true } }
+          }
         }
       },
       orderBy: { createdAt: "desc" }
@@ -124,6 +128,23 @@ export default async function DashboardPage() {
       where: { createdById: session.user.id },
       orderBy: { updatedAt: "desc" },
       include: {
+        dataspace: { select: { id: true, name: true, personalOwnerId: true, color: true } }
+      }
+    }),
+    prisma.openProblem.findMany({
+      where: {
+        status: "OPEN",
+        OR: [
+          { createdById: session.user.id },
+          { joins: { some: { userId: session.user.id } } },
+          { dataspaceId: null },
+          { dataspace: { members: { some: { userId: session.user.id } } } }
+        ]
+      },
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      include: {
+        createdBy: { select: { email: true } },
+        joins: { select: { userId: true } },
         dataspace: { select: { id: true, name: true, personalOwnerId: true, color: true } }
       }
     }),
@@ -244,8 +265,8 @@ export default async function DashboardPage() {
     .map((plan: (typeof flows)[number]) => {
       const normalizedBlocks: PlanBlockInput[] = (plan.blocks ?? []).reduce(
         (acc: PlanBlockInput[], block: (typeof plan.blocks)[number]) => {
-        const type = block.type as PlanBlockType;
-        if (!["START", "PARTICIPANTS", "PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING", "BREAK", "HARMONICA", "DEMBRANE", "DELIBERAIDE", "POLIS", "AGORACITIZENS", "NEXUSPOLITICS", "SUFFRAGO"].includes(type)) {
+        const type = normalizeBlockType(block.type) as PlanBlockType | null;
+        if (!type || !["START", "PARTICIPANTS", "DISCUSSION", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "GROUPING", "BREAK", "HARMONICA", "DEMBRANE", "DELIBERAIDE", "POLIS", "AGORACITIZENS", "NEXUSPOLITICS", "SUFFRAGO"].includes(type)) {
           return acc;
         }
         acc.push({
@@ -333,6 +354,27 @@ export default async function DashboardPage() {
       dataspaceColor: text.dataspace?.color ?? null
     };
   });
+
+  const openProblemRows = openProblems.map((problem: (typeof openProblems)[number]) => ({
+    id: problem.id,
+    title: problem.title,
+    description: problem.description,
+    updatedLabel: formatDateTime(problem.updatedAt),
+    createdByEmail: problem.createdBy.email,
+    joinCount: problem.joins.length,
+    joinedByMe: problem.joins.some((join: (typeof problem.joins)[number]) => join.userId === session.user.id),
+    createdByMe: problem.createdById === session.user.id,
+    href: `/open-problems`,
+    dataspaceLabel:
+      problem.dataspace?.personalOwnerId === session.user.id
+        ? "My Data Space"
+        : problem.dataspace?.name ?? "No dataspace",
+    dataspaceKey:
+      problem.dataspace?.personalOwnerId === session.user.id
+        ? "personal"
+        : problem.dataspace?.id ?? "none",
+    dataspaceColor: problem.dataspace?.color ?? null
+  }));
 
   const meetingJoinMap = new Map(
     rows.map((row: (typeof rows)[number]) => [
@@ -482,7 +524,11 @@ export default async function DashboardPage() {
       scheduledStartAt: invite.meeting.scheduledStartAt
         ? invite.meeting.scheduledStartAt.toISOString()
         : null,
-      timezone: invite.meeting.timezone ?? null
+      timezone: invite.meeting.timezone ?? null,
+      dataspaceKey:
+        invite.meeting.dataspace?.personalOwnerId === session.user.id
+          ? "personal"
+          : invite.meeting.dataspace?.id ?? "none"
     }));
 
   const dataspaceOptions = [
@@ -504,6 +550,7 @@ export default async function DashboardPage() {
         meetingRows={rows}
         planRows={planRows}
         textRows={textRows}
+        openProblemRows={openProblemRows}
         dataspaceOptions={dataspaceOptions}
         recentItems={recentItems.map((item) => ({
           ...item,

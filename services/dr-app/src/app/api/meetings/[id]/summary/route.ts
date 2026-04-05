@@ -138,11 +138,13 @@ export async function GET(request: Request, { params }: { params: { id: string }
     meeting.aiSummary?.status === "DONE" &&
     Boolean(transcriptHash) &&
     meeting.aiSummary?.sourceTranscriptHash === transcriptHash;
+  const isConcluded =
+    !meeting.isActive || (meeting.expiresAt ? meeting.expiresAt.getTime() < Date.now() : false);
 
   if (
     auto &&
     transcriptText &&
-    meeting.transcriptionProvider !== "DEEPGRAMLIVE" &&
+    (meeting.transcriptionProvider !== "DEEPGRAMLIVE" || isConcluded) &&
     (!meeting.aiSummary || !meeting.aiSummary.sourceTranscriptHash || meeting.aiSummary.sourceTranscriptHash !== transcriptHash)
   ) {
     void ensureMeetingAiSummary(meeting.id).catch(() => null);

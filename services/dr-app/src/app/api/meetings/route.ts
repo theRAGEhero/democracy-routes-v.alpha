@@ -224,13 +224,14 @@ export async function POST(request: Request) {
         id: { in: effectiveAiAgentIds },
         enabled: true
       },
-      select: { id: true }
+      select: { id: true, defaultIntervalSeconds: true }
     });
     if (enabledAgents.length > 0) {
       await prisma.meetingAiAgent.createMany({
         data: enabledAgents.map((agent) => ({
           meetingId: meeting.id,
-          agentId: agent.id
+          agentId: agent.id,
+          intervalSeconds: Math.max(15, agent.defaultIntervalSeconds || 60)
         }))
       });
     }

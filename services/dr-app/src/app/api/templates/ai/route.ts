@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { getRequestId, logError, logInfo, logWarn } from "@/lib/logger";
 import { TEMPLATE_BLOCK_TYPES } from "@/lib/templateDraft";
+import { getTemplateAiInstructions } from "@/lib/templateAiInstructions";
 import { getTemplateModuleDescriptions } from "@/lib/templateModuleDescriptions";
 
 const agreementDeadlineSchema = z
@@ -66,7 +67,7 @@ const blockSchema = z.object({
   posterContent: z.string().trim().max(4000).optional().nullable(),
   embedUrl: z.string().trim().max(500).optional().nullable(),
   harmonicaUrl: z.string().trim().max(500).optional().nullable(),
-  matchingMode: z.enum(["polar", "anti"]).optional().nullable(),
+  matchingMode: z.enum(["polar", "anti", "random"]).optional().nullable(),
   meditationAnimationId: z.string().optional().nullable(),
   meditationAudioUrl: z.string().optional().nullable()
 });
@@ -120,6 +121,7 @@ function buildSystemPrompt(
   draft?: z.infer<typeof templateSchema>,
   messages: Array<z.infer<typeof messageSchema>> = [],
   moduleDescriptions: Record<string, string> = {},
+  globalInstructions = "",
   compact = false,
   skeleton = false
 ) {
@@ -137,14 +139,14 @@ function buildSystemPrompt(
     `Available modules, meanings, and fields:\n` +
     `- START: ${moduleDescriptions.START || ""} Fields: durationSeconds, startMode ("specific_datetime" | "when_x_join" | "organizer_manual" | "when_x_join_and_datetime" | "random_selection_among_x"), startDate, startTime, timezone, requiredParticipants, agreementRequired, agreementDeadline, minimumParticipants, allowStartBeforeFull, poolSize, selectedParticipants, selectionRule ("random"), note\n` +
     `- PARTICIPANTS: ${moduleDescriptions.PARTICIPANTS || ""} Fields: durationSeconds, participantMode ("manual_selected" | "dataspace_invite_all" | "dataspace_random" | "ai_search_users"), participantUserIds, participantDataspaceIds, participantCount, participantQuery, participantNote\n` +
-    `- PAIRING: ${moduleDescriptions.PAIRING || ""} Fields: durationSeconds, roundMaxParticipants (2-12)\n` +
+    `- DISCUSSION: ${moduleDescriptions.DISCUSSION || ""} Fields: durationSeconds, roundMaxParticipants (2-12)\n` +
     `- PAUSE: ${moduleDescriptions.PAUSE || ""} Fields: durationSeconds, meditationAnimationId, meditationAudioUrl\n` +
     `- PROMPT: ${moduleDescriptions.PROMPT || ""} Fields: durationSeconds, either posterId OR posterTitle + posterContent for a text prompt\n` +
     `- NOTES: ${moduleDescriptions.NOTES || ""} Fields: durationSeconds\n` +
     `- RECORD: ${moduleDescriptions.RECORD || ""} Fields: durationSeconds\n` +
     `- FORM: ${moduleDescriptions.FORM || ""} Fields: durationSeconds, formQuestion, formChoices (array of {key, label})\n` +
     `- EMBED: ${moduleDescriptions.EMBED || ""} Fields: durationSeconds, embedUrl\n` +
-    `- MATCHING: ${moduleDescriptions.MATCHING || ""} Fields: durationSeconds, matchingMode ("polar" or "anti")\n` +
+    `- GROUPING: ${moduleDescriptions.GROUPING || ""} Fields: durationSeconds, matchingMode ("polar" | "anti" | "random")\n` +
     `- BREAK: ${moduleDescriptions.BREAK || ""} Fields: durationSeconds\n` +
     `- HARMONICA: ${moduleDescriptions.HARMONICA || ""} Fields: durationSeconds, harmonicaUrl\n` +
     `- DEMBRANE: ${moduleDescriptions.DEMBRANE || ""} Fields: durationSeconds\n` +
@@ -156,27 +158,7 @@ function buildSystemPrompt(
 
   return `You are an assistant that outputs a single JSON object describing a Democracy Routes template.\n\n` +
     moduleSection +
-    `Template-level settings:\n` +
-    `- settings.syncMode: "SERVER" or "CLIENT"\n` +
-    `- settings.maxParticipantsPerRoom: integer 2-12\n` +
-    `- settings.allowOddGroup: boolean\n` +
-    `- settings.language: usually "EN" or "IT"\n` +
-    `- settings.transcriptionProvider: "DEEPGRAM", "DEEPGRAMLIVE", "VOSK", or "WHISPERREMOTE"\n` +
-    `- settings.timezone: timezone string or null\n` +
-    `- settings.dataspaceId: string or null\n` +
-    `- settings.requiresApproval: boolean\n` +
-    `- settings.capacity: integer or null\n\n` +
-    `Output requirements:\n` +
-    `- Output ONLY valid JSON with keys: assistantMessage, template.\n` +
-    `- assistantMessage must be a concise, plain-language reply to the user about what changed or what was generated.\n` +
-    `- template must contain keys: name, description, isPublic, settings, blocks.\n` +
-    `- Keep free-text fields short. Prefer null over long prose when details are not essential.\n` +
-    `- Keep notes to at most one short sentence.\n` +
-    `- Use the minimum fields needed for each block type.\n` +
-    `- For PROMPT blocks, prefer direct text prompts using posterTitle + posterContent unless a known posterId already exists.\n` +
-    `- durationSeconds must be between 30 and 7200.\n` +
-    `- blocks must be a single linear sequence, max 24 blocks.\n` +
-    `- Do not include markdown or explanations.\n\n` +
+    `${globalInstructions.trim()}\n\n` +
     (compact
       ? `Compact mode:\n- Reduce verbosity aggressively.\n- Use 6-10 blocks unless the request clearly requires more.\n- Keep form choices short and limited.\n- Avoid optional fields unless necessary.\n\n`
       : "") +
@@ -316,6 +298,7 @@ async function generateTemplateEnvelope(args: {
   draft?: z.infer<typeof templateSchema>;
   messages: Array<z.infer<typeof messageSchema>>;
   moduleDescriptions: Record<string, string>;
+  globalInstructions: string;
   compact?: boolean;
   skeleton?: boolean;
 }) {
@@ -336,6 +319,7 @@ async function generateTemplateEnvelope(args: {
                   args.draft,
                   args.messages,
                   args.moduleDescriptions,
+                  args.globalInstructions,
                   Boolean(args.compact),
                   Boolean(args.skeleton)
                 )
@@ -416,7 +400,10 @@ export async function POST(request: Request) {
   const draft = parsed.data.draft;
   const templateId = parsed.data.templateId;
   const messages = parsed.data.messages;
-  const moduleDescriptions = await getTemplateModuleDescriptions();
+  const [moduleDescriptions, globalInstructions] = await Promise.all([
+    getTemplateModuleDescriptions(),
+    getTemplateAiInstructions()
+  ]);
   const startedAt = Date.now();
   let activeModel = stableTemplateModel;
   const startCompact = shouldStartCompact(prompt, draft);
@@ -438,6 +425,7 @@ export async function POST(request: Request) {
       draft,
       messages,
       moduleDescriptions,
+      globalInstructions,
       compact: startCompact,
       skeleton: startCompact
     });
@@ -461,6 +449,7 @@ export async function POST(request: Request) {
           draft,
           messages,
           moduleDescriptions,
+          globalInstructions,
           compact: startCompact,
           skeleton: startCompact
         });
@@ -500,6 +489,7 @@ export async function POST(request: Request) {
         draft,
         messages,
         moduleDescriptions,
+        globalInstructions,
         compact: true
       });
       if (!generation.ok) {
@@ -529,6 +519,7 @@ export async function POST(request: Request) {
         draft,
         messages,
         moduleDescriptions,
+        globalInstructions,
         compact: true,
         skeleton: true
       });

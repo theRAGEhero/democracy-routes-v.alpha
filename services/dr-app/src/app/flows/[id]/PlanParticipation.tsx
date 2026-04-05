@@ -80,7 +80,7 @@ export function PlanParticipation({
     setLoading(false);
 
     if (!response.ok) {
-      setError(payload?.error ?? "Unable to join plan");
+      setError(payload?.error ?? "Unable to join flow");
       return;
     }
     setStatus(payload?.status ?? "APPROVED");
@@ -100,11 +100,11 @@ export function PlanParticipation({
     setLoading(false);
 
     if (!response.ok) {
-      setError(payload?.error ?? "Unable to leave plan");
+      setError(payload?.error ?? "Unable to leave flow");
       return;
     }
     setStatus(null);
-    setMessage("You left the plan.");
+    setMessage("You left the flow.");
   }
 
   async function handleApprove(requestId: string) {
@@ -165,7 +165,7 @@ export function PlanParticipation({
     <div className="dr-card p-6">
       <div className="flex flex-wrap items-center gap-3">
         <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold uppercase text-white">
-          Public plan
+          Public flow
         </span>
         {requiresApproval ? (
           <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
@@ -185,9 +185,9 @@ export function PlanParticipation({
 
       <div className="mt-4">
         {!isDataspaceMember ? (
-          <p className="text-sm text-slate-600">Only dataspace members can participate.</p>
+          <p className="text-sm text-slate-600">Only dataspace members can participate in this flow.</p>
         ) : isFixedParticipant ? (
-          <p className="text-sm text-slate-600">You are already part of this plan.</p>
+          <p className="text-sm text-slate-600">You are already part of this flow.</p>
         ) : status === "PENDING" ? (
           <div className="flex flex-wrap items-center gap-3">
             <p className="text-sm text-slate-600">Request pending approval.</p>

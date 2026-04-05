@@ -1,14 +1,14 @@
 export type PlanBlockType =
   | "START"
   | "PARTICIPANTS"
-  | "PAIRING"
+  | "DISCUSSION"
   | "PAUSE"
   | "PROMPT"
   | "NOTES"
   | "RECORD"
   | "FORM"
   | "EMBED"
-  | "MATCHING"
+  | "GROUPING"
   | "BREAK"
   | "HARMONICA"
   | "DEMBRANE"
@@ -59,7 +59,7 @@ export type PlanBlockInput = {
   posterId?: string | null;
   embedUrl?: string | null;
   harmonicaUrl?: string | null;
-  matchingMode?: "polar" | "anti" | null;
+  matchingMode?: "polar" | "anti" | "random" | null;
 };
 
 export type PlanSegment = {
@@ -107,7 +107,7 @@ export function buildLegacySegments(config: LegacyPlanConfig) {
 
   for (let round = 1; round <= config.roundsCount; round += 1) {
     segments.push({
-      type: "PAIRING",
+      type: "DISCUSSION",
       roundNumber: round,
       startAtMs: cursor,
       endAtMs: cursor + roundDurationMs
@@ -150,7 +150,7 @@ export function buildPlanSegmentsFromBlocks(startAt: Date, blocks: PlanBlockInpu
   let lastRoundNumber = 0;
 
   const roundNumbers = blocks
-    .filter((block) => block.type === "PAIRING" && block.roundNumber)
+    .filter((block) => block.type === "DISCUSSION" && block.roundNumber)
     .map((block) => block.roundNumber as number);
 
   blocks.forEach((block) => {
@@ -161,11 +161,11 @@ export function buildPlanSegmentsFromBlocks(startAt: Date, blocks: PlanBlockInpu
     if (block.type === "RECORD") {
       recordIndex += 1;
     }
-    if (block.type === "PAIRING" && block.roundNumber) {
+    if (block.type === "DISCUSSION" && block.roundNumber) {
       lastRoundNumber = block.roundNumber;
     }
     const nextRoundNumber =
-      block.type !== "PAIRING"
+      block.type !== "DISCUSSION"
         ? roundNumbers.find((round) => round > lastRoundNumber) ?? null
         : null;
 
@@ -175,7 +175,7 @@ export function buildPlanSegmentsFromBlocks(startAt: Date, blocks: PlanBlockInpu
       roundNumber: block.roundNumber ?? null,
       meditationIndex: block.type === "PAUSE" ? meditationIndex : undefined,
       recordIndex: block.type === "RECORD" ? recordIndex : undefined,
-      roundAfter: block.type !== "PAIRING" ? nextRoundNumber : null,
+      roundAfter: block.type !== "DISCUSSION" ? nextRoundNumber : null,
       posterId: block.posterId ?? null,
       startAtMs: cursor,
       endAtMs: cursor + durationMs

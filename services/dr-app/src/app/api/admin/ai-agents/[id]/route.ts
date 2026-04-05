@@ -13,6 +13,7 @@ const agentSchema = z.object({
   systemPrompt: z.string().trim().min(1).max(12000),
   instructionPrompt: z.string().trim().max(12000).optional().nullable(),
   model: z.string().trim().min(1).max(120),
+  defaultIntervalSeconds: z.number().int().min(15).max(3600).default(60),
   enabled: z.boolean().default(true)
 });
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 const DEFAULT_PROMPT =
   "Analyze this dataspace activity across templates and meetings. Highlight key themes, agreements, disagreements, and notable quotes.";
@@ -271,6 +272,7 @@ export function DataspaceAnalysisPanel({ dataspaceId }: DataspaceAnalysisPanelPr
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
   const [history, setHistory] = useState<
     Array<{
       id: string;
@@ -280,6 +282,11 @@ export function DataspaceAnalysisPanel({ dataspaceId }: DataspaceAnalysisPanelPr
       createdAt: string;
     }>
   >([]);
+
+  useEffect(() => {
+    setIsMounted(true);
+    return () => setIsMounted(false);
+  }, []);
 
   const handleAnalyze = async () => {
     const trimmedPrompt = prompt.trim();
@@ -491,115 +498,118 @@ export function DataspaceAnalysisPanel({ dataspaceId }: DataspaceAnalysisPanelPr
 
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
-      {historyOpen ? (
-        <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 px-3 py-3 sm:px-5 sm:py-5"
-          onClick={() => setHistoryOpen(false)}
-        >
-          <div
-            className="flex h-[94vh] w-[96vw] max-w-[1500px] flex-col overflow-hidden rounded-[2rem] border border-white/70 bg-[var(--surface-soft)] shadow-[0_40px_120px_rgba(15,23,42,0.34)]"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200/80 bg-white/70 px-6 py-5 backdrop-blur">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
-                  Dataspace analysis history
-                </p>
-                <h3
-                  className="mt-1 text-2xl font-semibold text-slate-900"
-                  style={{ fontFamily: "var(--font-serif)" }}
-                >
-                  Previous runs
-                </h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  Saved analysis prompts and results for this dataspace.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setHistoryOpen(false)}
-                className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 hover:text-slate-900"
+      {historyOpen && isMounted
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/60 px-3 py-3 sm:px-5 sm:py-5"
+              onClick={() => setHistoryOpen(false)}
+            >
+              <div
+                className="flex h-[94vh] w-[96vw] max-w-[1500px] flex-col overflow-hidden rounded-[2rem] border border-white/70 bg-[var(--surface-soft)] shadow-[0_40px_120px_rgba(15,23,42,0.34)]"
+                onClick={(event) => event.stopPropagation()}
               >
-                Close
-              </button>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,rgba(255,255,255,0.55),rgba(248,250,252,0.82))] px-5 py-5 sm:px-6">
-              {historyLoading ? <p className="text-sm text-slate-500">Loading previous analyses...</p> : null}
-              {historyError ? <p className="text-sm text-red-600">{historyError}</p> : null}
-              {!historyLoading && !historyError && history.length === 0 ? (
-                <p className="text-sm text-slate-500">No saved analysis runs yet.</p>
-              ) : null}
-              {!historyLoading && !historyError && history.length > 0 ? (
-                <div className="space-y-4">
-                  {history.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className="rounded-[1.6rem] border border-slate-200 bg-white/85 p-5 shadow-[0_18px_45px_rgba(15,23,42,0.08)]"
+                <div className="flex items-start justify-between gap-4 border-b border-slate-200/80 bg-white/70 px-6 py-5 backdrop-blur">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+                      Dataspace analysis history
+                    </p>
+                    <h3
+                      className="mt-1 text-2xl font-semibold text-slate-900"
+                      style={{ fontFamily: "var(--font-serif)" }}
                     >
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            {entry.provider}
-                          </p>
-                          <p className="mt-1 text-xs text-slate-500">
-                            {new Date(entry.createdAt).toLocaleString()}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          className="dr-button-outline px-3 py-1 text-xs"
-                          onClick={() => {
-                            setPrompt(entry.prompt);
-                            setProvider(entry.provider === "ollama" ? "ollama" : "gemini");
-                            setCreatedAt(entry.createdAt);
-                            setMessages([
-                              {
-                                id: `history-user-${entry.id}`,
-                                role: "user",
-                                content: entry.prompt,
-                                createdAt: entry.createdAt
-                              },
-                              {
-                                id: `history-assistant-${entry.id}`,
-                                role: "assistant",
-                                content: entry.analysis,
-                                createdAt: entry.createdAt,
-                                provider: entry.provider === "ollama" ? "ollama" : "gemini"
-                              }
-                            ]);
-                            setHistoryOpen(false);
-                          }}
-                        >
-                          Load into panel
-                        </button>
-                      </div>
-                      <div className="mt-5 space-y-4">
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            Prompt
-                          </p>
-                          <div className="mt-2 rounded-2xl border border-slate-200 bg-slate-50/85 px-4 py-3 text-sm text-slate-700">
-                            {entry.prompt}
-                          </div>
-                        </div>
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            Analysis
-                          </p>
-                          <div className="mt-2 rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-700 shadow-inner space-y-3">
-                          {renderMarkdownBlocks(entry.analysis)}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                      Previous runs
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Saved analysis prompts and results for this dataspace.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryOpen(false)}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 hover:text-slate-900"
+                  >
+                    Close
+                  </button>
                 </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      ) : null}
+
+                <div className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,rgba(255,255,255,0.55),rgba(248,250,252,0.82))] px-5 py-5 sm:px-6">
+                  {historyLoading ? <p className="text-sm text-slate-500">Loading previous analyses...</p> : null}
+                  {historyError ? <p className="text-sm text-red-600">{historyError}</p> : null}
+                  {!historyLoading && !historyError && history.length === 0 ? (
+                    <p className="text-sm text-slate-500">No saved analysis runs yet.</p>
+                  ) : null}
+                  {!historyLoading && !historyError && history.length > 0 ? (
+                    <div className="space-y-4">
+                      {history.map((entry) => (
+                        <div
+                          key={entry.id}
+                          className="rounded-[1.6rem] border border-slate-200 bg-white/85 p-5 shadow-[0_18px_45px_rgba(15,23,42,0.08)]"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                {entry.provider}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {new Date(entry.createdAt).toLocaleString()}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              className="dr-button-outline px-3 py-1 text-xs"
+                              onClick={() => {
+                                setPrompt(entry.prompt);
+                                setProvider(entry.provider === "ollama" ? "ollama" : "gemini");
+                                setCreatedAt(entry.createdAt);
+                                setMessages([
+                                  {
+                                    id: `history-user-${entry.id}`,
+                                    role: "user",
+                                    content: entry.prompt,
+                                    createdAt: entry.createdAt
+                                  },
+                                  {
+                                    id: `history-assistant-${entry.id}`,
+                                    role: "assistant",
+                                    content: entry.analysis,
+                                    createdAt: entry.createdAt,
+                                    provider: entry.provider === "ollama" ? "ollama" : "gemini"
+                                  }
+                                ]);
+                                setHistoryOpen(false);
+                              }}
+                            >
+                              Load into panel
+                            </button>
+                          </div>
+                          <div className="mt-5 space-y-4">
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                Prompt
+                              </p>
+                              <div className="mt-2 rounded-2xl border border-slate-200 bg-slate-50/85 px-4 py-3 text-sm text-slate-700">
+                                {entry.prompt}
+                              </div>
+                            </div>
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                                Analysis
+                              </p>
+                              <div className="mt-2 space-y-3 rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-700 shadow-inner">
+                                {renderMarkdownBlocks(entry.analysis)}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { TemplateWorkspaceClient } from "@/app/templates/workspace/TemplateWorkspaceClient";
 import type { TemplateBlock, TemplateDraftSettings } from "@/lib/templateDraft";
+import { normalizeBlockRecords } from "@/lib/blockType";
 
 type PageProps = {
   searchParams?: { mode?: string; templateId?: string };
@@ -13,6 +14,15 @@ export default async function TemplateWorkspacePage({ searchParams }: PageProps)
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     redirect("/login");
+  }
+
+  if (searchParams?.mode === "structured") {
+    const params = new URLSearchParams();
+    params.set("mode", "modular");
+    if (searchParams?.templateId) {
+      params.set("templateId", searchParams.templateId);
+    }
+    redirect(`/templates/workspace?${params.toString()}`);
   }
 
   const [templates, dataspaces] = await Promise.all([
@@ -42,7 +52,7 @@ export default async function TemplateWorkspacePage({ searchParams }: PageProps)
     let blocks: TemplateBlock[] = [];
     let settings: TemplateDraftSettings | null = null;
     try {
-      blocks = JSON.parse(template.blocksJson) as TemplateBlock[];
+      blocks = normalizeBlockRecords(JSON.parse(template.blocksJson) as TemplateBlock[]) as TemplateBlock[];
     } catch {
       blocks = [];
     }
@@ -63,13 +73,10 @@ export default async function TemplateWorkspacePage({ searchParams }: PageProps)
     };
   });
 
-  const initialMode =
-    searchParams?.mode === "structured"
-      ? "structured"
-      : "modular";
+  const initialMode = "modular";
 
   return (
-    <div className="mx-auto h-[calc(100dvh-64px)] w-full max-w-[1440px] overflow-hidden px-2 pb-3 pt-2 sm:px-3">
+    <div className="h-[calc(100dvh-64px)] w-full overflow-hidden px-0 pb-0 pt-0">
       <TemplateWorkspaceClient
         templates={parsedTemplates}
         dataspaces={dataspaces}

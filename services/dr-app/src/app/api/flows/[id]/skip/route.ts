@@ -9,6 +9,8 @@ import {
   type PlanBlockType
 } from "@/lib/planSchedule";
 import { normalizeMatchingMode } from "@/lib/matchingMode";
+import { logInfo, logWarn } from "@/lib/logger";
+import { normalizeBlockType } from "@/lib/blockType";
 
 export async function POST(
   _request: Request,
@@ -24,6 +26,8 @@ export async function POST(
     select: {
       id: true,
       createdById: true,
+      title: true,
+      dataspaceId: true,
       startAt: true,
       roundsCount: true,
       roundDurationMinutes: true,
@@ -62,8 +66,8 @@ export async function POST(
 
   const normalizedBlocks: PlanBlockInput[] = (plan.blocks ?? []).reduce(
     (acc: PlanBlockInput[], block: (typeof plan.blocks)[number]) => {
-      const type = block.type as PlanBlockType;
-      if (!["START", "PARTICIPANTS", "PAIRING", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "MATCHING", "BREAK", "HARMONICA", "DEMBRANE", "DELIBERAIDE", "POLIS", "AGORACITIZENS", "NEXUSPOLITICS", "SUFFRAGO"].includes(type)) {
+      const type = normalizeBlockType(block.type) as PlanBlockType | null;
+      if (!type || !["START", "PARTICIPANTS", "DISCUSSION", "PAUSE", "PROMPT", "NOTES", "RECORD", "FORM", "EMBED", "GROUPING", "BREAK", "HARMONICA", "DEMBRANE", "DELIBERAIDE", "POLIS", "AGORACITIZENS", "NEXUSPOLITICS", "SUFFRAGO"].includes(type)) {
         return acc;
       }
       acc.push({
@@ -99,16 +103,42 @@ export async function POST(
   const nowMs = Date.now();
   const elapsed = nowMs - plan.startAt.getTime();
   if (elapsed < 0 || nowMs >= schedule.totalEndMs) {
+    logWarn("flow_skip_rejected", {
+      planId: plan.id,
+      planTitle: plan.title,
+      actorId: session.user.id,
+      dataspaceId: plan.dataspaceId ?? null,
+      reason: "not_active",
+      elapsedMs: elapsed,
+      totalEndMs: schedule.totalEndMs,
+      nowMs
+    });
     return NextResponse.json({ error: "Template is not active." }, { status: 400 });
   }
 
   const currentSegment = getSegmentAtTime(schedule.segments, nowMs);
   if (!currentSegment?.endAtMs) {
+    logWarn("flow_skip_rejected", {
+      planId: plan.id,
+      planTitle: plan.title,
+      actorId: session.user.id,
+      dataspaceId: plan.dataspaceId ?? null,
+      reason: "no_active_segment",
+      nowMs
+    });
     return NextResponse.json({ error: "No active segment." }, { status: 400 });
   }
 
   const remainingMs = Math.max(0, currentSegment.endAtMs - nowMs);
   if (remainingMs === 0) {
+    logInfo("flow_skip_noop", {
+      planId: plan.id,
+      planTitle: plan.title,
+      actorId: session.user.id,
+      dataspaceId: plan.dataspaceId ?? null,
+      skippedType: currentSegment.type,
+      blockId: currentSegment.blockId ?? null
+    });
     return NextResponse.json({ status: "noop" });
   }
 
@@ -118,6 +148,18 @@ export async function POST(
   await prisma.plan.update({
     where: { id: plan.id },
     data: { startAt: newStartAt }
+  });
+
+  logInfo("flow_skip_completed", {
+    planId: plan.id,
+    planTitle: plan.title,
+    actorId: session.user.id,
+    dataspaceId: plan.dataspaceId ?? null,
+    skippedType: currentSegment.type,
+    blockId: currentSegment.blockId ?? null,
+    remainingMs,
+    previousStartAt: plan.startAt.toISOString(),
+    newStartAt: newStartAt.toISOString()
   });
 
   return NextResponse.json({

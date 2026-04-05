@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 const DEFAULT_PROMPT =
-  "Analyze the plan recap and highlight key themes, agreements, disagreements, and notable quotes.";
+  "Analyze the flow recap and highlight key themes, agreements, disagreements, and notable quotes.";
 
 type PlanAnalysisPanelProps = {
   planId: string;
@@ -198,7 +198,7 @@ export function PlanAnalysisPanel({ planId, initialAnalysis }: PlanAnalysisPanel
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.error ?? "Unable to analyze plan.");
+        throw new Error(payload?.error ?? "Unable to analyze flow.");
       }
 
       const payload = await response.json();
@@ -217,7 +217,7 @@ export function PlanAnalysisPanel({ planId, initialAnalysis }: PlanAnalysisPanel
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-            Template analysis
+            Flow analysis
           </p>
           <h2
             className="text-lg font-semibold text-slate-900"
@@ -226,7 +226,7 @@ export function PlanAnalysisPanel({ planId, initialAnalysis }: PlanAnalysisPanel
             Analysis Prompt
           </h2>
           <p className="text-sm text-slate-600">
-            Shape the AI focus and guide the highlights you want to see.
+            Shape the AI focus and guide the highlights you want to see for this execution.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

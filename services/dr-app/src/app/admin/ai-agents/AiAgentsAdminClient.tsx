@@ -12,6 +12,7 @@ type AiAgent = {
   systemPrompt: string;
   instructionPrompt: string | null;
   model: string;
+  defaultIntervalSeconds: number;
   enabled: boolean;
   createdAt: string | Date;
   updatedAt: string | Date;
@@ -56,6 +57,7 @@ type AgentDraft = {
   systemPrompt: string;
   instructionPrompt: string;
   model: string;
+  defaultIntervalSeconds: number;
   enabled: boolean;
 };
 
@@ -68,6 +70,7 @@ const EMPTY_DRAFT: AgentDraft = {
   systemPrompt: "",
   instructionPrompt: "",
   model: "gemini-2.5-flash",
+  defaultIntervalSeconds: 60,
   enabled: true
 };
 
@@ -154,6 +157,7 @@ export function AiAgentsAdminClient({ initialAgents, initialRuns }: Props) {
       systemPrompt: agent.systemPrompt,
       instructionPrompt: agent.instructionPrompt ?? "",
       model: agent.model,
+      defaultIntervalSeconds: agent.defaultIntervalSeconds ?? 60,
       enabled: agent.enabled
     });
     setError(null);
@@ -256,6 +260,9 @@ export function AiAgentsAdminClient({ initialAgents, initialRuns }: Props) {
                     <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
                       <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1">{agent.slug}</span>
                       <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1">{agent.model}</span>
+                      <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1">
+                        Every {agent.defaultIntervalSeconds}s
+                      </span>
                     </div>
                   </div>
                   <div className="flex flex-col gap-2">
@@ -424,6 +431,26 @@ export function AiAgentsAdminClient({ initialAgents, initialRuns }: Props) {
                 />
               </label>
             </div>
+
+            <label className="text-sm font-medium text-slate-700">
+              Default interval seconds
+              <input
+                type="number"
+                min={15}
+                max={3600}
+                value={draft.defaultIntervalSeconds}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    defaultIntervalSeconds: event.target.value ? Number(event.target.value) : 60
+                  }))
+                }
+                className="dr-input mt-1 w-full"
+              />
+              <span className="mt-1 block text-xs font-normal text-slate-500">
+                Minimum time between agent evaluations unless a meeting-specific override is used.
+              </span>
+            </label>
 
             <label className="text-sm font-medium text-slate-700">
               Description

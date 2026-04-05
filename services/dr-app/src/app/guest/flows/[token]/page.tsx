@@ -188,7 +188,7 @@ export default async function GuestPlanPage({ params }: { params: { token: strin
         meditationAudioUrl={plan.meditationAudioUrl}
         blocks={plan.blocks.map((block: (typeof plan.blocks)[number]) => ({
           id: block.id,
-          type: block.type as "START" | "PARTICIPANTS" | "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING" | "BREAK" | "HARMONICA" | "DEMBRANE" | "DELIBERAIDE" | "POLIS" | "AGORACITIZENS" | "NEXUSPOLITICS" | "SUFFRAGO",
+          type: block.type as "START" | "PARTICIPANTS" | "DISCUSSION" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "GROUPING" | "BREAK" | "HARMONICA" | "DEMBRANE" | "DELIBERAIDE" | "POLIS" | "AGORACITIZENS" | "NEXUSPOLITICS" | "SUFFRAGO",
           durationSeconds: block.durationSeconds,
           roundNumber: block.roundNumber,
           formQuestion: block.formQuestion ?? null,

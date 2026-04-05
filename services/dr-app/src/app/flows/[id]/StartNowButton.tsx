@@ -13,13 +13,13 @@ export function StartNowButton({ planId }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const handleStartNow = async () => {
-    if (!confirm("Start this plan now?")) return;
+    if (!confirm("Start this flow now?")) return;
     setError(null);
     setLoading(true);
     const response = await fetch(`/api/flows/${planId}/start-now`, { method: "POST" });
     const payload = await response.json().catch(() => null);
     if (!response.ok) {
-      setError(payload?.error ?? "Unable to start plan.");
+      setError(payload?.error ?? "Unable to start flow.");
       setLoading(false);
       return;
     }

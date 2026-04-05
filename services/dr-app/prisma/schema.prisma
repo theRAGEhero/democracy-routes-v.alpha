@@ -227,6 +227,7 @@ model AiAgent {
   systemPrompt      String
   instructionPrompt String?
   model             String   @default("gemini-2.5-flash")
+  defaultIntervalSeconds Int @default(60)
   enabled           Boolean  @default(true)
   createdById       String?
   createdAt         DateTime @default(now())

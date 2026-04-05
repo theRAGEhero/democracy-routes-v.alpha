@@ -24,6 +24,8 @@ const DEFAULT_SETTINGS = {
     "Polarizing mode: group participants who already show aligned concerns, compatible priorities, and similar desired outcomes. The goal is to deepen convergence, sharpen common proposals, and help people who are already close move faster toward shared conclusions.",
   antiPrompt:
     "Depolarizing mode: create constructive diversity. Put participants with different framings, concerns, or goals together so they can encounter disagreement productively. Avoid chaotic combinations. Aim for rooms where differences are meaningful but still discussable.",
+  randomPrompt:
+    "Random mode: shuffle participants fairly and create rooms without using transcript similarity or contrast logic. Keep room sizes close to the requested group size and avoid special treatment unless needed for an odd final room.",
   rulePrompt:
     "Use transcript evidence where available. Prefer concise, human-readable reasons. Avoid empty rooms. Keep room sizes close to the requested group size. Do not isolate one participant unless necessary. If evidence is thin, still return a reasonable grouping and say that the evidence is limited.",
   outputPrompt:
@@ -101,6 +103,7 @@ function normalizeSettings(input = {}) {
     basePrompt: String(input.basePrompt || DEFAULT_SETTINGS.basePrompt).trim().slice(0, 8000),
     polarPrompt: String(input.polarPrompt || DEFAULT_SETTINGS.polarPrompt).trim().slice(0, 8000),
     antiPrompt: String(input.antiPrompt || DEFAULT_SETTINGS.antiPrompt).trim().slice(0, 8000),
+    randomPrompt: String(input.randomPrompt || DEFAULT_SETTINGS.randomPrompt).trim().slice(0, 8000),
     rulePrompt: String(input.rulePrompt || DEFAULT_SETTINGS.rulePrompt).trim().slice(0, 8000),
     outputPrompt: String(input.outputPrompt || DEFAULT_SETTINGS.outputPrompt).trim().slice(0, 4000),
     transcriptCharsPerMeeting,
@@ -162,6 +165,30 @@ function buildFallbackRooms(participants, groupSize) {
   return rooms;
 }
 
+function shuffleList(items) {
+  const list = [...items];
+  for (let i = list.length - 1; i > 0; i -= 1) {
+    const j = crypto.randomInt(0, i + 1);
+    [list[i], list[j]] = [list[j], list[i]];
+  }
+  return list;
+}
+
+function buildRandomRooms(participants, groupSize) {
+  const shuffled = shuffleList(participants);
+  const rooms = [];
+  for (let i = 0; i < shuffled.length; i += groupSize) {
+    const slice = shuffled.slice(i, i + groupSize);
+    if (slice.length > 0) {
+      rooms.push({
+        participants: slice,
+        reason: "Randomized regrouping for the next discussion round."
+      });
+    }
+  }
+  return rooms;
+}
+
 async function callGemini(prompt) {
   if (!GEMINI_API_KEY) {
     throw new Error("GEMINI_API_KEY not configured");
@@ -206,8 +233,14 @@ function buildPrompt({ plan, recap, mode, groupSize, settings }) {
     .join("\n\n");
 
   const participants = Array.isArray(recap.participants) ? recap.participants : [];
-  const modeInstruction = mode === "anti" ? settings.antiPrompt : settings.polarPrompt;
-  const modeLabel = mode === "anti" ? "anti-polarizing" : "polarizing";
+  const modeInstruction =
+    mode === "anti"
+      ? settings.antiPrompt
+      : mode === "random"
+        ? settings.randomPrompt
+        : settings.polarPrompt;
+  const modeLabel =
+    mode === "anti" ? "anti-polarizing" : mode === "random" ? "random" : "polarizing";
 
   return [
     settings.basePrompt,
@@ -589,6 +622,13 @@ function renderConsoleHtml() {
               Use this when you want to mix people with different views in a constructive way, so disagreement becomes productive and participants can better understand tensions across positions.
             </div>
           </div>
+          <div class="mode-card">
+            <div class="mode-label">Mode</div>
+            <div class="mode-title">Random</div>
+            <div class="mode-copy">
+              Use this when you want simple fair reshuffling with no transcript-based similarity or contrast logic. It is useful for clean remix rounds.
+            </div>
+          </div>
         </div>
         <form id="settingsForm" class="stack">
           <label>
@@ -609,6 +649,11 @@ function renderConsoleHtml() {
           <label>
             Depolarizing instructions
             <textarea name="antiPrompt"></textarea>
+          </label>
+
+          <label>
+            Random instructions
+            <textarea name="randomPrompt"></textarea>
           </label>
 
           <label>
@@ -804,7 +849,7 @@ app.post("/api/match", async (req, res) => {
   const body = req.body || {};
   const plan = body.plan || {};
   const recap = body.recap || {};
-  const mode = body.mode === "anti" ? "anti" : "polar";
+  const mode = body.mode === "anti" ? "anti" : body.mode === "random" ? "random" : "polar";
   const participants = recap.participants || [];
   const settings = await readSettings();
   const groupSize = Number(body.groupSize || plan.maxParticipantsPerRoom || settings.defaultGroupSize || 2);
@@ -820,9 +865,16 @@ app.post("/api/match", async (req, res) => {
   let promptText = "";
 
   try {
-    promptText = buildPrompt({ plan, recap, mode, groupSize, settings });
-    const responseText = await callGemini(promptText);
-    result = parseGeminiRooms(responseText);
+    if (mode === "random") {
+      result = {
+        summary: "Participants were randomly regrouped for the next round.",
+        rooms: buildRandomRooms(participants, groupSize)
+      };
+    } else {
+      promptText = buildPrompt({ plan, recap, mode, groupSize, settings });
+      const responseText = await callGemini(promptText);
+      result = parseGeminiRooms(responseText);
+    }
   } catch (err) {
     error = err?.message || "Unknown error";
     result = {
@@ -835,7 +887,7 @@ app.post("/api/match", async (req, res) => {
     id: runId,
     planId: plan.id || null,
     createdAt: nowIso(),
-    mode: mode === "anti" ? "anti-polarizing" : "polarizing",
+    mode: mode === "anti" ? "anti-polarizing" : mode === "random" ? "random" : "polarizing",
     groupSize,
     summary: result.summary,
     rooms: result.rooms,

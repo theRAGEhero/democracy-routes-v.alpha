@@ -18,7 +18,8 @@ export async function GET() {
       username: true,
       description: true,
       color: true,
-      model: true
+      model: true,
+      defaultIntervalSeconds: true
     }
   });
 

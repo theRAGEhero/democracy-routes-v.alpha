@@ -207,8 +207,11 @@ export async function ensureMeetingAiSummary(meetingId: string) {
     return { ok: false as const, reason: "missing_transcript" as const };
   }
 
-  if (meeting.transcriptionProvider === "DEEPGRAMLIVE") {
-    return { ok: false as const, reason: "live_provider_excluded" as const };
+  const isConcluded =
+    !meeting.isActive || (meeting.expiresAt ? meeting.expiresAt.getTime() < Date.now() : false);
+
+  if (meeting.transcriptionProvider === "DEEPGRAMLIVE" && !isConcluded) {
+    return { ok: false as const, reason: "live_meeting_not_concluded" as const };
   }
 
   const transcriptHash = computeTranscriptHash(

@@ -269,12 +269,20 @@ export default async function Home() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <Link href="/login" className="dr-button px-5 py-2 text-sm">
-              Log in
-            </Link>
-            <Link href="/register" className="dr-button-outline px-5 py-2 text-sm">
-              Create account
-            </Link>
+            {session?.user ? (
+              <Link href="/dashboard" className="dr-button px-5 py-2 text-sm">
+                Open app
+              </Link>
+            ) : (
+              <>
+                <Link href="/login" className="dr-button px-5 py-2 text-sm">
+                  Log in
+                </Link>
+                <Link href="/register" className="dr-button-outline px-5 py-2 text-sm">
+                  Create account
+                </Link>
+              </>
+            )}
           </div>
         </div>
         <div className="mt-6 flex items-center gap-4 border-t border-slate-200/70 pt-5 text-xs text-slate-500">

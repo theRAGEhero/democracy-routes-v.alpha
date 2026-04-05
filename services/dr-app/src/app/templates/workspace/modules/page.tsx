@@ -5,6 +5,10 @@ import {
   DEFAULT_TEMPLATE_MODULE_DESCRIPTIONS,
   getTemplateModuleDescriptions
 } from "@/lib/templateModuleDescriptions";
+import {
+  DEFAULT_TEMPLATE_AI_INSTRUCTIONS,
+  getTemplateAiInstructions
+} from "@/lib/templateAiInstructions";
 import { TemplateModuleDescriptionsClient } from "./TemplateModuleDescriptionsClient";
 
 export default async function TemplateModuleDescriptionsPage() {
@@ -17,11 +21,14 @@ export default async function TemplateModuleDescriptionsPage() {
   }
 
   const descriptions = await getTemplateModuleDescriptions();
+  const instructions = await getTemplateAiInstructions();
 
   return (
     <TemplateModuleDescriptionsClient
       initialDescriptions={descriptions}
       defaults={DEFAULT_TEMPLATE_MODULE_DESCRIPTIONS}
+      initialInstructions={instructions}
+      instructionDefaults={DEFAULT_TEMPLATE_AI_INSTRUCTIONS}
     />
   );
 }

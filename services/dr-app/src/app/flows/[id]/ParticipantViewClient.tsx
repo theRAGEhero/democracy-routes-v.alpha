@@ -7,7 +7,7 @@ import { RecordRoundEmbed } from "@/app/flows/[id]/RecordRoundEmbed";
 import { buildLegacySegments, buildPlanSegmentsFromBlocks, getSegmentAtTime } from "@/lib/planSchedule";
 import { renderPosterHtml } from "@/lib/poster";
 import { buildCallJoinUrl, buildDisplayName } from "@/lib/callUrl";
-import { logClientWarn } from "@/lib/clientLog";
+import { logClientInfo, logClientWarn } from "@/lib/clientLog";
 import { CallFrame } from "@/components/CallFrame";
 
 type RoundAssignment = {
@@ -36,7 +36,7 @@ type Props = {
   meditationAudioUrl?: string | null;
   blocks: Array<{
     id: string;
-    type: "START" | "PARTICIPANTS" | "PAIRING" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "MATCHING" | "BREAK" | "HARMONICA" | "DEMBRANE" | "DELIBERAIDE" | "POLIS" | "AGORACITIZENS" | "NEXUSPOLITICS" | "SUFFRAGO";
+    type: "START" | "PARTICIPANTS" | "DISCUSSION" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "GROUPING" | "BREAK" | "HARMONICA" | "DEMBRANE" | "DELIBERAIDE" | "POLIS" | "AGORACITIZENS" | "NEXUSPOLITICS" | "SUFFRAGO";
     durationSeconds: number;
     roundNumber: number | null;
     formQuestion?: string | null;
@@ -45,7 +45,7 @@ type Props = {
     meditationAudioUrl?: string | null;
     embedUrl?: string | null;
     harmonicaUrl?: string | null;
-    matchingMode?: "polar" | "anti" | null;
+    matchingMode?: "polar" | "anti" | "random" | null;
     poster: { id: string; title: string; content: string } | null;
   }>;
   roundGroups: Array<{
@@ -202,6 +202,8 @@ export function ParticipantViewClient({
   const [meditationMuted, setMeditationMuted] = useState(false);
   const [skipLoading, setSkipLoading] = useState(false);
   const autoMatchingRef = useRef<Set<string>>(new Set());
+  const lastExecutionLogSignatureRef = useRef<string | null>(null);
+  const lastExecutionWarnSignatureRef = useRef<string | null>(null);
   const withGuestToken = (url: string) => {
     if (!guestToken) return url;
     const separator = url.includes("?") ? "&" : "?";
@@ -383,7 +385,7 @@ export function ParticipantViewClient({
   const elapsed = effectiveNow - startTime;
   const currentSegment = getSegmentAtTime(schedule.segments, effectiveNow);
   const currentRoundIndex =
-    currentSegment?.type === "PAIRING"
+    currentSegment?.type === "DISCUSSION"
       ? currentSegment?.roundNumber ?? 1
       : currentSegment?.roundAfter ?? 1;
 
@@ -514,15 +516,129 @@ export function ParticipantViewClient({
     : "min-h-[72vh] h-[72vh]";
 
   useEffect(() => {
+    if (now === null) return;
+
+    const executionSignature = JSON.stringify({
+      status,
+      segmentType: currentSegment?.type ?? null,
+      blockId: currentSegment?.blockId ?? null,
+      roundNumber: currentSegment?.roundNumber ?? null,
+      roundAfter: currentSegment?.roundAfter ?? null,
+      assignmentRoomId: assignment?.roomId ?? null,
+      assignmentIsBreak: assignment?.isBreak ?? null,
+      meetingId: currentMeetingId ?? null,
+      canJoinCall,
+      syncMode
+    });
+
+    if (lastExecutionLogSignatureRef.current === executionSignature) {
+      return;
+    }
+    lastExecutionLogSignatureRef.current = executionSignature;
+
+    void logClientInfo("flow_execution", "flow_execution_state_changed", {
+      planId,
+      planTitle,
+      userEmail,
+      syncMode,
+      status,
+      segmentType: currentSegment?.type ?? null,
+      blockId: currentSegment?.blockId ?? null,
+      roundNumber: currentSegment?.roundNumber ?? null,
+      roundAfter: currentSegment?.roundAfter ?? null,
+      currentRound,
+      assignmentRoomId: assignment?.roomId ?? null,
+      assignmentIsBreak: assignment?.isBreak ?? null,
+      meetingId: currentMeetingId ?? null,
+      canJoinCall,
+      effectiveNow,
+      segmentStartsAt: currentSegment?.startAtMs
+        ? new Date(currentSegment.startAtMs).toISOString()
+        : null,
+      segmentEndsAt: currentSegment?.endAtMs
+        ? new Date(currentSegment.endAtMs).toISOString()
+        : null,
+      secondsLeft
+    });
+  }, [
+    now,
+    status,
+    currentSegment?.type,
+    currentSegment?.blockId,
+    currentSegment?.roundNumber,
+    currentSegment?.roundAfter,
+    assignment?.roomId,
+    assignment?.isBreak,
+    currentMeetingId,
+    canJoinCall,
+    syncMode,
+    planId,
+    planTitle,
+    userEmail,
+    currentRound,
+    effectiveNow,
+    secondsLeft
+  ]);
+
+  useEffect(() => {
+    if (now === null) return;
+    if (!(status === "active" && currentSegment?.type === "DISCUSSION" && !assignment)) {
+      lastExecutionWarnSignatureRef.current = null;
+      return;
+    }
+
+    const warnSignature = JSON.stringify({
+      status,
+      segmentType: currentSegment.type,
+      blockId: currentSegment.blockId ?? null,
+      currentRound
+    });
+    if (lastExecutionWarnSignatureRef.current === warnSignature) {
+      return;
+    }
+    lastExecutionWarnSignatureRef.current = warnSignature;
+
+    void logClientWarn("flow_execution", "flow_execution_pairing_without_assignment", {
+      planId,
+      planTitle,
+      userEmail,
+      currentRound,
+      blockId: currentSegment.blockId ?? null,
+      effectiveNow
+    });
+  }, [
+    now,
+    status,
+    currentSegment?.type,
+    currentSegment?.blockId,
+    assignment,
+    currentRound,
+    planId,
+    planTitle,
+    userEmail,
+    effectiveNow
+  ]);
+
+  useEffect(() => {
     if (!canSkip) return;
-    if (status !== "active" || currentSegment?.type !== "MATCHING") return;
+    if (status !== "active" || currentSegment?.type !== "GROUPING") return;
     const blockId = currentSegment.blockId ?? `segment-${currentSegment.startAtMs}`;
     if (autoMatchingRef.current.has(blockId)) return;
     autoMatchingRef.current.add(blockId);
-    const mode = currentBlock?.matchingMode === "anti" ? "anti" : "polar";
+    const mode =
+      currentBlock?.matchingMode === "anti"
+        ? "anti"
+        : currentBlock?.matchingMode === "random"
+          ? "random"
+          : "polar";
     const runMatching = async () => {
       try {
-        await fetch(withGuestToken(`/api/flows/${planId}/matching/run`), {
+        void logClientInfo("flow_execution", "flow_execution_matching_autorun_started", {
+          planId,
+          blockId,
+          mode
+        });
+        const response = await fetch(withGuestToken(`/api/flows/${planId}/matching/run`), {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -530,8 +646,26 @@ export function ParticipantViewClient({
           },
           body: JSON.stringify({ mode })
         });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          void logClientWarn("flow_execution", "flow_execution_matching_autorun_failed", {
+            planId,
+            blockId,
+            mode,
+            responseStatus: response.status,
+            payload
+          });
+          return;
+        }
+        void logClientInfo("flow_execution", "flow_execution_matching_autorun_completed", {
+          planId,
+          blockId,
+          mode,
+          appliedRoundNumber: payload?.appliedRoundNumber ?? null,
+          roomCount: Array.isArray(payload?.rooms) ? payload.rooms.length : null
+        });
       } catch (error) {
-        logClientWarn("matching-auto-run-failed", "auto-run failed", {
+        logClientWarn("flow_execution", "flow_execution_matching_autorun_failed", {
           planId,
           blockId,
           error: error instanceof Error ? error.message : String(error)
@@ -848,11 +982,22 @@ export function ParticipantViewClient({
         </div>
       )}
     </div>
+  ) : status === "pending" ? (
+    <div
+      className={`flex items-center justify-center rounded-3xl border border-white/10 bg-slate-950/70 px-6 py-10 text-center text-slate-200 ${experienceContainerClass}`}
+    >
+      <div>
+        <p className="text-lg">Waiting for the plan to start.</p>
+        <p className="mt-2 text-sm text-slate-400">
+          Starts in {formatCountdownHuman(Math.max(0, Math.floor((startTime - effectiveNow) / 1000)))}
+        </p>
+      </div>
+    </div>
   ) : assignment?.isBreak ? (
     <div
       className={`flex items-center justify-center rounded-3xl border border-white/10 bg-slate-950/70 px-6 py-10 text-center text-slate-200 ${experienceContainerClass}`}
     >
-      <p className="text-lg">This pairing is a break for you.</p>
+      <p className="text-lg">This discussion round is a break for you.</p>
     </div>
   ) : status === "done" ? (
     <div
@@ -860,13 +1005,7 @@ export function ParticipantViewClient({
     >
       <p className="text-lg">Template finished.</p>
     </div>
-  ) : (
-    <div
-      className={`flex items-center justify-center rounded-3xl border border-white/10 bg-slate-950/70 px-6 py-10 text-center text-slate-200 ${experienceContainerClass}`}
-    >
-      <p className="text-lg">Waiting for the plan to start.</p>
-    </div>
-  );
+  ) : null;
 
 
   useEffect(() => {
@@ -1111,7 +1250,7 @@ export function ParticipantViewClient({
               {status === "active" && currentSegment?.type === "RECORD"
                 ? `Record ${recordIndex || ""}`.trim()
                 : null}
-              {status === "active" && currentSegment?.type === "PAIRING"
+              {status === "active" && currentSegment?.type === "DISCUSSION"
                 ? `Discussion ${currentRound} of ${roundsCount}`
                 : null}
               {status === "done" && "Finished"}
@@ -1131,7 +1270,7 @@ export function ParticipantViewClient({
               {currentSegment?.type === "EMBED" ? "Focus" : null}
               {currentSegment?.type === "HARMONICA" ? "Focus" : null}
               {currentSegment?.type === "RECORD" ? "Solo" : null}
-              {currentSegment?.type === "PAIRING" ? (assignment ? assignment.partnerLabel : "-") : null}
+              {currentSegment?.type === "DISCUSSION" ? (assignment ? assignment.partnerLabel : "-") : null}
             </span>
             {status === "pending" ? (
               <span className="text-slate-500">
@@ -1187,7 +1326,7 @@ export function ParticipantViewClient({
           <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
             <span className="font-semibold text-slate-700">Experience</span>
             <span className="text-slate-700">
-              {currentSegment?.type === "PAIRING"
+              {currentSegment?.type === "DISCUSSION"
                 ? "Discussion call"
                 : currentSegment?.type === "START"
                   ? "Start"
@@ -1219,7 +1358,7 @@ export function ParticipantViewClient({
               {currentSegment?.type === "EMBED" ? "Focus" : null}
               {currentSegment?.type === "HARMONICA" ? "Focus" : null}
               {currentSegment?.type === "RECORD" ? "Solo" : null}
-              {currentSegment?.type === "PAIRING" ? (assignment ? assignment.partnerLabel : "-") : null}
+              {currentSegment?.type === "DISCUSSION" ? (assignment ? assignment.partnerLabel : "-") : null}
             </span>
             {meditationActive ? (
               <button
@@ -1331,7 +1470,7 @@ export function ParticipantViewClient({
                 1,
                 Math.floor((segment.endAtMs - segment.startAtMs) / 1000)
               );
-              if (segment.type === "PAIRING") {
+              if (segment.type === "DISCUSSION") {
                 const roundNumber = segment.roundNumber ?? index + 1;
                 const roundAssignment = assignments.find((item) => item.roundNumber === roundNumber);
                 const meetingId =
@@ -1638,20 +1777,20 @@ export function ParticipantViewClient({
                 );
               }
 
-              if (segment.type === "MATCHING") {
+              if (segment.type === "GROUPING") {
                 return (
                   <div
                     key={`recap-matching-${index}`}
                     className="rounded-2xl border border-fuchsia-200/60 bg-fuchsia-50/60 px-4 py-4"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <p className="text-xs font-semibold uppercase text-fuchsia-700">Matching</p>
+                      <p className="text-xs font-semibold uppercase text-fuchsia-700">Grouping</p>
                       <p className="text-xs text-fuchsia-700/70">
                         Duration {formatDuration(durationSeconds)}
                       </p>
                     </div>
                     <p className="mt-2 text-sm text-fuchsia-900">
-                      Matching step completed. Check the organizer view for detailed pairings.
+                      Grouping step completed. Check the organizer view for detailed room assignments.
                     </p>
                   </div>
                 );

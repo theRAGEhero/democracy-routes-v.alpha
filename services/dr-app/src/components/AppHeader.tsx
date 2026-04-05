@@ -363,6 +363,13 @@ export function AppHeader() {
                   >
                     Remote worker
                   </Link>
+                  <Link
+                    href="/presentation"
+                    onClick={() => setShowMobileMenu(false)}
+                    className="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    Presentation
+                  </Link>
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
                       Policies
@@ -437,9 +444,6 @@ export function AppHeader() {
           <nav className="hidden items-center gap-2 text-sm text-slate-600 lg:flex">
             <Link href="/dashboard" className="rounded-full px-3 py-1 hover:bg-white/70">
               Dashboard
-            </Link>
-            <Link href="/presentation" className="rounded-full px-3 py-1 hover:bg-white/70">
-              Presentation
             </Link>
             <Link href="/open-problems" className="rounded-full px-3 py-1 hover:bg-white/70">
               Open Problems
@@ -627,6 +631,13 @@ export function AppHeader() {
                     Remote worker
                   </Link>
                   <Link
+                    href="/presentation"
+                    onClick={() => setShowUserMenu(false)}
+                    className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
+                  >
+                    Presentation
+                  </Link>
+                  <Link
                     href="/open-problems"
                     onClick={() => setShowUserMenu(false)}
                     className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
@@ -729,9 +740,6 @@ export function AppHeader() {
                 <Link href="/dashboard" onClick={() => setShowMobileMenu(false)} className="font-medium">
                   Dashboard
                 </Link>
-                <Link href="/presentation" onClick={() => setShowMobileMenu(false)} className="font-medium">
-                  Presentation
-                </Link>
                 <Link href="/open-problems" onClick={() => setShowMobileMenu(false)} className="font-medium">
                   Open Problems
                 </Link>
@@ -765,6 +773,9 @@ export function AppHeader() {
                 </Link>
                 <Link href="/remote-worker" onClick={() => setShowMobileMenu(false)}>
                   Remote worker
+                </Link>
+                <Link href="/presentation" onClick={() => setShowMobileMenu(false)}>
+                  Presentation
                 </Link>
                 <div className="rounded-xl border border-slate-200/70 bg-slate-50 px-3 py-2">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">

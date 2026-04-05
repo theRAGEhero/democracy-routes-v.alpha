@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ModularBuilderClient } from "@/app/modular/ModularBuilderClient";
 import type { TemplateBlock, TemplateDraftSettings } from "@/lib/templateDraft";
+import { normalizeBlockRecords } from "@/lib/blockType";
 
 type PageProps = {
   searchParams?: { templateId?: string };
@@ -42,7 +43,7 @@ export default async function ModularBuilderPage({ searchParams }: PageProps) {
     let blocks: TemplateBlock[] = [];
     let settings: TemplateDraftSettings | null = null;
     try {
-      blocks = JSON.parse(template.blocksJson) as TemplateBlock[];
+      blocks = normalizeBlockRecords(JSON.parse(template.blocksJson) as TemplateBlock[]) as TemplateBlock[];
     } catch {
       blocks = [];
     }
