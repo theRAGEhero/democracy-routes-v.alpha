@@ -11,16 +11,24 @@ import {
 import { normalizeMatchingMode } from "@/lib/matchingMode";
 import crypto from "crypto";
 import { normalizeBlockType } from "@/lib/blockType";
+import { generateFlowRoomId } from "@/lib/flowRuntime";
+import { getFlowAdmissionState } from "@/lib/flowRuntime";
+import { buildVideoAccessToken } from "@/lib/videoAccess";
+import { getRoomProviderSuffix } from "@/lib/transcriptionProviders";
 
 function generateRoomId(language: string, transcriptionProvider: string) {
-  const providerLabel =
-    transcriptionProvider === "VOSK"
-      ? "VOSK"
-      : transcriptionProvider === "DEEPGRAMLIVE"
-        ? "DEEPGRAMLIVE"
-        : "DEEPGRAM";
+  const providerLabel = getRoomProviderSuffix(transcriptionProvider);
   const base = crypto.randomBytes(16).toString("base64url").replace(/_/g, "-");
   return `${base}-${language}-${providerLabel}`;
+}
+
+function shuffleSessionIds(sessionIds: string[]) {
+  const list = [...sessionIds];
+  for (let index = list.length - 1; index > 0; index -= 1) {
+    const target = crypto.randomInt(0, index + 1);
+    [list[index], list[target]] = [list[target], list[index]];
+  }
+  return list;
 }
 
 function makeGroups(
@@ -96,6 +104,11 @@ export async function GET(
           allowOddGroup: true,
           language: true,
           transcriptionProvider: true,
+          runtimeVersion: true,
+          admissionMode: true,
+          joinOpensAt: true,
+          joinClosesAt: true,
+          lateJoinMinParticipants: true,
           meditationEnabled: true,
           meditationAtStart: true,
           meditationBetweenRounds: true,
@@ -143,6 +156,18 @@ export async function GET(
                   status: "APPROVED"
                 }
               }
+            },
+            {
+              participantSessions: {
+                some: viewer.participantSessionId
+                  ? { id: viewer.participantSessionId }
+                  : viewer.user.id
+                    ? {
+                        userId: viewer.user.id,
+                        status: "APPROVED"
+                      }
+                    : { id: "__never__" }
+              }
             }
           ]
         },
@@ -158,6 +183,11 @@ export async function GET(
           allowOddGroup: true,
           language: true,
           transcriptionProvider: true,
+          runtimeVersion: true,
+          admissionMode: true,
+          joinOpensAt: true,
+          joinClosesAt: true,
+          lateJoinMinParticipants: true,
           meditationEnabled: true,
           meditationAtStart: true,
           meditationBetweenRounds: true,
@@ -228,6 +258,13 @@ export async function GET(
   const nowMs = now.getTime();
   const elapsed = nowMs - plan.startAt.getTime();
   const currentSegment = getSegmentAtTime(schedule.segments, nowMs);
+  const admission = getFlowAdmissionState({
+    admissionMode: plan.admissionMode,
+    joinOpensAt: plan.joinOpensAt,
+    joinClosesAt: plan.joinClosesAt,
+    now,
+    flowEndsAtMs: schedule.totalEndMs
+  });
   const currentRoundIndex =
     currentSegment?.type === "DISCUSSION"
       ? currentSegment?.roundNumber ?? 1
@@ -242,7 +279,369 @@ export async function GET(
   }
 
   const currentRound = Math.min(Math.max(currentRoundIndex, 1), plan.roundsCount);
-  let currentRoundMeetings: Array<{ roomId: string; meetingId: string }> = [];
+  let currentRoundMeetings: Array<{ roomId: string; meetingId: string; accessToken: string }> = [];
+  let waitingRoom: {
+    waitingCount: number;
+    minParticipantsToStart: number;
+    roomSize: number;
+    participantsNeeded: number;
+    participantWaiting: boolean;
+  } | null = null;
+
+  if (plan.runtimeVersion === "ROOM_BASED") {
+    const activeParticipantSession =
+      viewer.participantSessionId
+        ? await prisma.planParticipantSession.findUnique({
+            where: { id: viewer.participantSessionId },
+            select: {
+              id: true,
+              userId: true,
+              displayName: true,
+              guestEmail: true,
+              status: true
+            }
+          })
+        : viewer.user.id
+          ? await prisma.planParticipantSession.findUnique({
+              where: {
+                planId_userId: {
+                  planId: plan.id,
+                  userId: viewer.user.id
+                }
+              },
+              select: {
+                id: true,
+                userId: true,
+                displayName: true,
+                guestEmail: true,
+                status: true
+              }
+            })
+          : null;
+
+    if (status === "active" && currentSegment?.type === "DISCUSSION") {
+      const roundMax =
+        roundBlocks[currentRound - 1]?.roundMaxParticipants ?? plan.maxParticipantsPerRoom;
+      let round = await prisma.planRound.findUnique({
+        where: {
+          planId_roundNumber: {
+            planId: plan.id,
+            roundNumber: currentRound
+          }
+        },
+        include: {
+          rooms: {
+            include: {
+              members: {
+                include: {
+                  participantSession: {
+                    select: {
+                      id: true,
+                      userId: true,
+                      displayName: true,
+                      guestEmail: true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (round && round.rooms.length === 0) {
+        const sessions = await prisma.planParticipantSession.findMany({
+          where: {
+            planId: plan.id,
+            status: "APPROVED"
+          },
+          orderBy: { joinedAt: "asc" },
+          select: { id: true }
+        });
+        const shuffledIds = shuffleSessionIds(sessions.map((session) => session.id));
+        const groups = makeGroups(shuffledIds, roundMax, Boolean(plan.allowOddGroup));
+
+        await prisma.$transaction(async (tx) => {
+          for (const group of groups) {
+            const memberIds = group.filter((id) => id !== "__break__");
+            if (memberIds.length < 2) {
+              continue;
+            }
+            const room = await tx.planRoom.create({
+              data: {
+                planId: plan.id,
+                planRoundId: round!.id,
+                blockId: currentSegment.blockId ?? null,
+                roomId: generateFlowRoomId(plan.language, plan.transcriptionProvider),
+                groupingMode: "random"
+              }
+            });
+            await tx.planRoomMember.createMany({
+              data: memberIds.map((participantSessionId) => ({
+                planRoomId: room.id,
+                participantSessionId
+              }))
+            });
+          }
+        });
+
+        round = await prisma.planRound.findUnique({
+          where: {
+            planId_roundNumber: {
+              planId: plan.id,
+              roundNumber: currentRound
+            }
+          },
+          include: {
+            rooms: {
+              include: {
+                members: {
+                  include: {
+                    participantSession: {
+                      select: {
+                        id: true,
+                        userId: true,
+                        displayName: true,
+                        guestEmail: true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        });
+      }
+
+      if (round) {
+        const assignedSessionIds = new Set(
+          round.rooms.flatMap((room) =>
+            room.members.map((member) => member.participantSession.id)
+          )
+        );
+        const threshold = Math.max(
+          2,
+          Math.min(plan.lateJoinMinParticipants ?? 3, roundMax)
+        );
+        const waitingSessions = await prisma.planParticipantSession.findMany({
+          where: {
+            planId: plan.id,
+            status: "APPROVED",
+            id: { notIn: Array.from(assignedSessionIds) }
+          },
+          orderBy: { joinedAt: "asc" },
+          select: { id: true }
+        });
+
+        if (waitingSessions.length >= threshold) {
+          const groups = makeGroups(
+            waitingSessions.map((session) => session.id),
+            roundMax,
+            Boolean(plan.allowOddGroup)
+          );
+          const groupsToCreate = groups
+            .map((group) => group.filter((id) => id !== "__break__"))
+            .filter((group) => group.length >= threshold);
+
+          if (groupsToCreate.length > 0) {
+            await prisma.$transaction(async (tx) => {
+              for (const group of groupsToCreate) {
+                const room = await tx.planRoom.create({
+                  data: {
+                    planId: plan.id,
+                    planRoundId: round!.id,
+                    blockId: currentSegment.blockId ?? null,
+                    roomId: generateFlowRoomId(plan.language, plan.transcriptionProvider),
+                    groupingMode: "random"
+                  }
+                });
+                await tx.planRoomMember.createMany({
+                  data: group.map((participantSessionId) => ({
+                    planRoomId: room.id,
+                    participantSessionId
+                  }))
+                });
+              }
+            });
+
+            round = await prisma.planRound.findUnique({
+              where: {
+                planId_roundNumber: {
+                  planId: plan.id,
+                  roundNumber: currentRound
+                }
+              },
+              include: {
+                rooms: {
+                  include: {
+                    members: {
+                      include: {
+                        participantSession: {
+                          select: {
+                            id: true,
+                            userId: true,
+                            displayName: true,
+                            guestEmail: true
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            });
+          }
+        }
+      }
+
+      if (round) {
+        for (const room of round.rooms) {
+          let meetingId = room.meetingId ?? null;
+          if (!meetingId) {
+            const registeredMembers = room.members
+              .map((member) => member.participantSession.userId)
+              .filter((userId): userId is string => Boolean(userId));
+
+            const meeting = await prisma.meeting.create({
+              data: {
+                title: `${plan.title} - Round ${currentRound}`,
+                roomId: room.roomId,
+                createdById: plan.createdById,
+                scheduledStartAt: new Date(currentSegment.startAtMs),
+                expiresAt: new Date(currentSegment.endAtMs),
+                language: plan.language,
+                transcriptionProvider: plan.transcriptionProvider,
+                dataspaceId: plan.dataspaceId ?? null,
+                isHidden: true,
+                members: {
+                  create: registeredMembers.map((userId) => ({
+                    userId,
+                    role: "GUEST"
+                  }))
+                }
+              }
+            });
+            meetingId = meeting.id;
+            await prisma.planRoom.update({
+              where: { id: room.id },
+              data: { meetingId }
+            });
+          }
+          currentRoundMeetings.push({
+            roomId: room.roomId,
+            meetingId,
+            accessToken: buildVideoAccessToken({
+              roomId: room.roomId,
+              meetingId,
+              userId: activeParticipantSession?.userId ?? viewer.user.id ?? null,
+              userEmail:
+                activeParticipantSession?.guestEmail ??
+                viewer.user.email ??
+                activeParticipantSession?.displayName ??
+                null
+            })
+          });
+        }
+      }
+    }
+
+    let assignment: {
+      roundNumber: number;
+      roomId: string;
+      meetingId: string | null;
+      isBreak: boolean;
+    } | null = null;
+
+    if (status === "active" && currentSegment?.type === "DISCUSSION" && activeParticipantSession) {
+      const roomMember = await prisma.planRoomMember.findFirst({
+        where: {
+          participantSessionId: activeParticipantSession.id,
+          planRoom: {
+            planId: plan.id,
+            planRound: {
+              roundNumber: currentRound
+            }
+          }
+        },
+        select: {
+          planRoom: {
+            select: {
+              roomId: true,
+              meetingId: true
+            }
+          }
+        }
+      });
+
+      assignment = roomMember
+        ? {
+            roundNumber: currentRound,
+            roomId: roomMember.planRoom.roomId,
+            meetingId: roomMember.planRoom.meetingId ?? null,
+            isBreak: false
+          }
+        : {
+            roundNumber: currentRound,
+            roomId: "",
+            meetingId: null,
+            isBreak: true
+      };
+    }
+
+    if (status === "active" && currentSegment?.type === "DISCUSSION" && round) {
+      const assignedSessionIds = new Set(
+        round.rooms.flatMap((room) =>
+          room.members.map((member) => member.participantSession.id)
+        )
+      );
+      const waitingCount = await prisma.planParticipantSession.count({
+        where: {
+          planId: plan.id,
+          status: "APPROVED",
+          id: { notIn: Array.from(assignedSessionIds) }
+        }
+      });
+      const roomSize =
+        roundBlocks[currentRound - 1]?.roundMaxParticipants ?? plan.maxParticipantsPerRoom;
+      const minParticipantsToStart = Math.max(
+        2,
+        Math.min(plan.lateJoinMinParticipants ?? 3, roomSize)
+      );
+      waitingRoom = {
+        waitingCount,
+        minParticipantsToStart,
+        roomSize,
+        participantsNeeded: Math.max(0, minParticipantsToStart - waitingCount),
+        participantWaiting: Boolean(
+          activeParticipantSession && !assignedSessionIds.has(activeParticipantSession.id)
+        )
+      };
+    }
+
+    return NextResponse.json({
+      serverNow: now.toISOString(),
+      status,
+      currentRound,
+      segmentType: currentSegment?.type ?? "DISCUSSION",
+      meditationIndex: currentSegment?.meditationIndex ?? null,
+      roundAfter: currentSegment?.roundAfter ?? null,
+      segmentStartsAt: currentSegment?.startAtMs
+        ? new Date(currentSegment.startAtMs).toISOString()
+        : null,
+      segmentEndsAt: currentSegment?.endAtMs
+        ? new Date(currentSegment.endAtMs).toISOString()
+        : null,
+      admission: {
+        mode: admission.mode,
+        status: admission.status,
+        opensAt: admission.opensAt?.toISOString() ?? null,
+        closesAt: admission.closesAt?.toISOString() ?? null
+      },
+      waitingRoom,
+      currentRoundMeetings: includeMeetings ? currentRoundMeetings : undefined,
+      assignment
+    });
+  }
 
   if (status === "active" && currentSegment?.type === "DISCUSSION") {
     const formBlock = getFormBlockByRound(plan.blocks, currentRound);
@@ -421,7 +820,16 @@ export async function GET(
           }
         });
 
-        currentRoundMeetings.push({ roomId, meetingId: meeting.id });
+        currentRoundMeetings.push({
+          roomId,
+          meetingId: meeting.id,
+          accessToken: buildVideoAccessToken({
+            roomId,
+            meetingId: meeting.id,
+            userId: viewer.user.id,
+            userEmail: viewer.user.email
+          })
+        });
       }
     }
   }
@@ -478,6 +886,13 @@ export async function GET(
     segmentEndsAt: currentSegment?.endAtMs
       ? new Date(currentSegment.endAtMs).toISOString()
       : null,
+    admission: {
+      mode: admission.mode,
+      status: admission.status,
+      opensAt: admission.opensAt?.toISOString() ?? null,
+      closesAt: admission.closesAt?.toISOString() ?? null
+    },
+    waitingRoom,
     currentRoundMeetings: includeMeetings ? currentRoundMeetings : undefined,
     assignment
   });

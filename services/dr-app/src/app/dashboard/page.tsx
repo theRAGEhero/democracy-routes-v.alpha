@@ -11,6 +11,7 @@ import {
 } from "@/lib/planSchedule";
 import { normalizeMatchingMode } from "@/lib/matchingMode";
 import { normalizeBlockType } from "@/lib/blockType";
+import { getTranscriptionProviderLabel } from "@/lib/transcriptionProviders";
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
@@ -229,16 +230,7 @@ export default async function DashboardPage() {
       scheduledLabel: formatDateTime(meeting.scheduledStartAt, meeting.timezone) ?? "Not scheduled",
       expiresLabel: formatDateTime(meeting.expiresAt, meeting.timezone),
       language: meeting.language,
-      providerLabel:
-        meeting.transcriptionProvider === "VOSK"
-          ? "Vosk"
-          : meeting.transcriptionProvider === "AUTOREMOTE"
-            ? "Auto Remote"
-          : meeting.transcriptionProvider === "WHISPERREMOTE"
-            ? "Whisper Remote"
-            : meeting.transcriptionProvider === "DEEPGRAMLIVE"
-              ? "Deepgram Live"
-              : "Deepgram",
+      providerLabel: getTranscriptionProviderLabel(meeting.transcriptionProvider),
       dataspaceLabel:
         meeting.dataspace?.personalOwnerId === session.user.id
           ? "My Data Space"

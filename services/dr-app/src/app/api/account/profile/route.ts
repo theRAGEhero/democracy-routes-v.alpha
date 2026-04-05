@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { profileSettingsSchema } from "@/lib/validators";
+import { normalizeAppTheme } from "@/lib/appTheme";
 
 function normalizeTelegramHandle(value: string | null) {
   if (!value) return null;
@@ -27,6 +28,7 @@ export async function POST(request: Request) {
   const personalDescription = parsed.data.personalDescription?.trim() || null;
   const calComLink = parsed.data.calComLink?.trim() || null;
   const avatarUrl = parsed.data.avatarUrl?.trim() || null;
+  const appTheme = normalizeAppTheme(parsed.data.appTheme);
 
   const existing = await prisma.user.findUnique({
     where: { id: session.user.id },
@@ -51,6 +53,7 @@ export async function POST(request: Request) {
       personalDescription,
       calComLink,
       avatarUrl,
+      appTheme,
       notifyEmailMeetingInvites: parsed.data.notifyEmailMeetingInvites ?? undefined,
       notifyTelegramMeetingInvites: parsed.data.notifyTelegramMeetingInvites ?? undefined,
       notifyEmailPlanInvites: parsed.data.notifyEmailPlanInvites ?? undefined,

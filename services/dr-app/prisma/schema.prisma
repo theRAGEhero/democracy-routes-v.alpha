@@ -23,6 +23,7 @@ model User {
   calComLink         String?
   avatarUrl          String?
   personalDescription String?
+  appTheme           String           @default("classic")
   notifyEmailMeetingInvites Boolean @default(true)
   notifyTelegramMeetingInvites Boolean @default(true)
   notifyEmailPlanInvites Boolean @default(true)
@@ -43,6 +44,7 @@ model User {
   meetingInvites     MeetingInvite[]
   meetingGuestInvites MeetingGuestInvite[]
   planParticipations PlanParticipant[]
+  planParticipantSessions PlanParticipantSession[]
   plansCreated       Plan[]           @relation("PlanCreator")
   planPairsA         PlanPair[]       @relation("PlanPairUserA")
   planPairsB         PlanPair[]       @relation("PlanPairUserB")
@@ -167,6 +169,7 @@ model Meeting {
   invites     MeetingInvite[]
   guestInvites MeetingGuestInvite[]
   planPairs   PlanPair[]
+  planRooms   PlanRoom[]
   transcript  MeetingTranscript?
   aiSummary   MeetingAiSummary?
   transcriptionJobs TranscriptionJob[]
@@ -424,6 +427,11 @@ model Plan {
   allowOddGroup        Boolean     @default(false)
   language             String      @default("EN")
   transcriptionProvider String     @default("DEEPGRAM")
+  runtimeVersion       String      @default("LEGACY_PAIR")
+  admissionMode        String      @default("ALWAYS_OPEN")
+  joinOpensAt          DateTime?
+  joinClosesAt         DateTime?
+  lateJoinMinParticipants Int      @default(3)
   meditationEnabled    Boolean     @default(false)
   meditationAtStart    Boolean     @default(false)
   meditationBetweenRounds Boolean  @default(false)
@@ -438,8 +446,10 @@ model Plan {
   updatedAt            DateTime    @default(now()) @updatedAt
   rounds               PlanRound[]
   participants         PlanParticipant[]
+  participantSessions  PlanParticipantSession[]
   meditationSessions   PlanMeditationSession[]
   blocks               PlanBlock[]
+  rooms                PlanRoom[]
   textEntries          PlanTextEntry[]
   transcriptionJobs    TranscriptionJob[]
   guestInvites         PlanGuestInvite[]
@@ -451,6 +461,29 @@ model Plan {
   @@index([createdById])
   @@index([startAt])
   @@index([dataspaceId])
+}
+
+model PlanParticipantSession {
+  id           String   @id @default(cuid())
+  planId       String
+  userId       String?
+  guestToken   String?  @unique
+  guestName    String?
+  guestEmail   String?
+  displayName  String
+  isRegistered Boolean  @default(false)
+  status       String   @default("APPROVED")
+  joinedAt     DateTime @default(now())
+  lastSeenAt   DateTime?
+  plan         Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  roomMembers  PlanRoomMember[]
+
+  @@unique([planId, userId])
+  @@index([planId])
+  @@index([userId])
+  @@index([status])
+  @@index([joinedAt])
 }
 
 model PlanAnalysis {
@@ -517,6 +550,7 @@ model PlanBlock {
   textEntries    PlanTextEntry[]
   recordSessions PlanRecordSession[]
   formResponses  PlanFormResponse[]
+  rooms          PlanRoom[]
 
   @@index([planId])
   @@index([orderIndex])
@@ -606,9 +640,44 @@ model PlanRound {
   roundNumber Int
   plan        Plan       @relation(fields: [planId], references: [id], onDelete: Cascade)
   pairs       PlanPair[]
+  rooms       PlanRoom[]
 
   @@unique([planId, roundNumber])
   @@index([planId])
+}
+
+model PlanRoom {
+  id           String   @id @default(cuid())
+  planId       String
+  planRoundId  String
+  blockId      String?
+  roomId       String   @unique
+  meetingId    String?  @unique
+  groupingMode String?
+  createdAt    DateTime @default(now())
+  plan         Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  planRound    PlanRound @relation(fields: [planRoundId], references: [id], onDelete: Cascade)
+  block        PlanBlock? @relation(fields: [blockId], references: [id], onDelete: SetNull)
+  meeting      Meeting? @relation(fields: [meetingId], references: [id], onDelete: SetNull)
+  members      PlanRoomMember[]
+
+  @@index([planId])
+  @@index([planRoundId])
+  @@index([blockId])
+  @@index([groupingMode])
+}
+
+model PlanRoomMember {
+  id                   String   @id @default(cuid())
+  planRoomId           String
+  participantSessionId String
+  createdAt            DateTime @default(now())
+  planRoom             PlanRoom @relation(fields: [planRoomId], references: [id], onDelete: Cascade)
+  participantSession   PlanParticipantSession @relation(fields: [participantSessionId], references: [id], onDelete: Cascade)
+
+  @@unique([planRoomId, participantSessionId])
+  @@index([planRoomId])
+  @@index([participantSessionId])
 }
 
 model MatchingRun {

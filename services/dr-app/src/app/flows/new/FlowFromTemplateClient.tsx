@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { isLiveTranscriptionProvider } from "@/lib/transcriptionProviders";
 
 type UserOption = {
   id: string;
@@ -136,6 +137,12 @@ export function FlowFromTemplateClient({
   const [title, setTitle] = useState(template.name);
   const [description, setDescription] = useState(template.description ?? "");
   const [startAt, setStartAt] = useState("");
+  const [admissionMode, setAdmissionMode] = useState<"ALWAYS_OPEN" | "TIME_WINDOW">(
+    "ALWAYS_OPEN"
+  );
+  const [joinOpensAt, setJoinOpensAt] = useState("");
+  const [joinClosesAt, setJoinClosesAt] = useState("");
+  const [lateJoinMinParticipants, setLateJoinMinParticipants] = useState("3");
   const [timezone, setTimezone] = useState(template.settings?.timezone ?? "");
   const [dataspaceId, setDataspaceId] = useState(template.settings?.dataspaceId ?? "");
   const [isPublic, setIsPublic] = useState(false);
@@ -188,7 +195,7 @@ export function FlowFromTemplateClient({
     };
   }, [template.blocks, template.settings]);
 
-  const liveAiSupported = (template.settings?.transcriptionProvider ?? "DEEPGRAM") === "DEEPGRAMLIVE";
+  const liveAiSupported = isLiveTranscriptionProvider(template.settings?.transcriptionProvider ?? "DEEPGRAM");
 
   const availableUsers = useMemo(() => {
     const selected = new Set(selectedIds);
@@ -246,6 +253,18 @@ export function FlowFromTemplateClient({
         title: title.trim(),
         description: description.trim() || "",
         startAt: new Date(startAt).toISOString(),
+        admissionMode,
+        joinOpensAt:
+          admissionMode === "TIME_WINDOW" && joinOpensAt
+            ? new Date(joinOpensAt).toISOString()
+            : null,
+        joinClosesAt:
+          admissionMode === "TIME_WINDOW" && joinClosesAt
+            ? new Date(joinClosesAt).toISOString()
+            : null,
+        lateJoinMinParticipants: lateJoinMinParticipants.trim()
+          ? Number(lateJoinMinParticipants)
+          : null,
         roundDurationMinutes: Math.max(
           1,
           Math.min(240, Math.round(templateSummary.firstDiscussionSeconds / 60))
@@ -262,7 +281,13 @@ export function FlowFromTemplateClient({
         dataspaceId: dataspaceId || null,
         language: template.settings?.language === "IT" ? "IT" : "EN",
         transcriptionProvider:
-          template.settings?.transcriptionProvider === "VOSK" ? "VOSK" : "DEEPGRAM",
+          template.settings?.transcriptionProvider === "VOSK"
+            ? "VOSK"
+            : template.settings?.transcriptionProvider === "GLADIALIVE"
+              ? "GLADIALIVE"
+              : template.settings?.transcriptionProvider === "DEEPGRAMLIVE"
+                ? "DEEPGRAMLIVE"
+                : "DEEPGRAM",
         timezone: timezone.trim() || resolvedTimezone,
         meditationEnabled: template.blocks.some((block) => block.type === "PAUSE"),
         meditationAtStart: false,
@@ -415,6 +440,54 @@ export function FlowFromTemplateClient({
 
             <label className="space-y-2 text-sm text-slate-700">
               <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                Admission
+              </span>
+              <select
+                className="dr-input w-full rounded px-3 py-2 text-sm"
+                value={admissionMode}
+                onChange={(event) =>
+                  setAdmissionMode(
+                    event.target.value === "TIME_WINDOW" ? "TIME_WINDOW" : "ALWAYS_OPEN"
+                  )
+                }
+              >
+                <option value="ALWAYS_OPEN">Always open</option>
+                <option value="TIME_WINDOW">Time window</option>
+              </select>
+            </label>
+
+            {admissionMode === "TIME_WINDOW" ? (
+              <>
+                <label className="space-y-2 text-sm text-slate-700">
+                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                    Join opens
+                  </span>
+                  <input
+                    type="datetime-local"
+                    className="dr-input w-full rounded px-3 py-2 text-sm"
+                    value={joinOpensAt}
+                    onChange={(event) => setJoinOpensAt(event.target.value)}
+                    required
+                  />
+                </label>
+
+                <label className="space-y-2 text-sm text-slate-700">
+                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                    Join closes
+                  </span>
+                  <input
+                    type="datetime-local"
+                    className="dr-input w-full rounded px-3 py-2 text-sm"
+                    value={joinClosesAt}
+                    onChange={(event) => setJoinClosesAt(event.target.value)}
+                    required
+                  />
+                </label>
+              </>
+            ) : null}
+
+            <label className="space-y-2 text-sm text-slate-700">
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                 Dataspace
               </span>
               <select
@@ -442,6 +515,21 @@ export function FlowFromTemplateClient({
                 value={capacity}
                 onChange={(event) => setCapacity(event.target.value)}
                 placeholder="Optional"
+              />
+            </label>
+
+            <label className="space-y-2 text-sm text-slate-700">
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                Late-join minimum
+              </span>
+              <input
+                type="number"
+                min="2"
+                max="12"
+                className="dr-input w-full rounded px-3 py-2 text-sm"
+                value={lateJoinMinParticipants}
+                onChange={(event) => setLateJoinMinParticipants(event.target.value)}
+                placeholder="3"
               />
             </label>
           </div>

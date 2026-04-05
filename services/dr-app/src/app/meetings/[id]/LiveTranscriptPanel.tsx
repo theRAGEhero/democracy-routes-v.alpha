@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getTranscriptionProviderLabel } from "@/lib/transcriptionProviders";
 
 type LiveLine = {
   id: string;
@@ -22,7 +23,13 @@ type AgentMessage = {
 };
 
 type RenderItem =
-  | ({ kind: "line"; showSpeaker: boolean } & LiveLine)
+  | {
+      kind: "line-group";
+      id: string;
+      speaker?: number | string;
+      texts: string[];
+      time?: number;
+    }
   | {
       kind: "agent";
       id: string;
@@ -34,12 +41,13 @@ type RenderItem =
 
 type Props = {
   meetingId: string;
+  provider: string;
   enabled: boolean;
   visible: boolean;
   className?: string;
 };
 
-const POLL_MS = 2000;
+const POLL_MS = 600;
 
 function formatSpeaker(speaker?: number | string) {
   if (speaker === undefined || speaker === null || speaker === "") return "Speaker";
@@ -57,24 +65,39 @@ function normalizeSpeakerKey(speaker?: number | string) {
   return String(speaker);
 }
 
-export function LiveTranscriptPanel({ meetingId, enabled, visible, className = "" }: Props) {
+function buildLineGroups(lines: LiveLine[]) {
+  const groups: Array<Extract<RenderItem, { kind: "line-group" }>> = [];
+  for (const line of lines) {
+    const previous = groups[groups.length - 1];
+    if (
+      previous &&
+      normalizeSpeakerKey(previous.speaker) === normalizeSpeakerKey(line.speaker)
+    ) {
+      previous.texts.push(line.text);
+      previous.time = line.time ?? previous.time;
+      continue;
+    }
+    groups.push({
+      kind: "line-group",
+      id: line.id,
+      speaker: line.speaker,
+      texts: [line.text],
+      time: line.time
+    });
+  }
+  return groups;
+}
+
+export function LiveTranscriptPanel({ meetingId, provider, enabled, visible, className = "" }: Props) {
   const [lines, setLines] = useState<LiveLine[]>([]);
   const [agentMessages, setAgentMessages] = useState<AgentMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const linesRef = useRef<LiveLine[]>([]);
+  const agentMessagesRef = useRef<AgentMessage[]>([]);
 
   const mergedLines = useMemo(() => lines.slice(-200), [lines]);
   const renderedItems = useMemo<RenderItem[]>(() => {
-    const lineItems: RenderItem[] = mergedLines.map((line, index) => {
-      const previous = index > 0 ? mergedLines[index - 1] : null;
-      const speakerChanged =
-        !previous ||
-        normalizeSpeakerKey(previous.speaker) !== normalizeSpeakerKey(line.speaker);
-      return {
-        ...line,
-        kind: "line",
-        showSpeaker: speakerChanged
-      };
-    });
+    const lineItems: RenderItem[] = buildLineGroups(mergedLines);
 
     const agentItems: RenderItem[] = agentMessages.slice(-50).map((message) => ({
       kind: "agent",
@@ -88,11 +111,27 @@ export function LiveTranscriptPanel({ meetingId, enabled, visible, className = "
     }));
 
     return [...lineItems, ...agentItems].sort((a, b) => {
-      const aTime = a.kind === "line" ? a.time ?? 0 : a.sortTime;
-      const bTime = b.kind === "line" ? b.time ?? 0 : b.sortTime;
+      const aTime = a.kind === "line-group" ? a.time ?? 0 : a.sortTime;
+      const bTime = b.kind === "line-group" ? b.time ?? 0 : b.sortTime;
       return aTime - bTime;
     });
   }, [mergedLines, agentMessages]);
+
+  useEffect(() => {
+    linesRef.current = lines;
+  }, [lines]);
+
+  useEffect(() => {
+    agentMessagesRef.current = agentMessages;
+  }, [agentMessages]);
+
+  useEffect(() => {
+    setLines([]);
+    setAgentMessages([]);
+    setError(null);
+    linesRef.current = [];
+    agentMessagesRef.current = [];
+  }, [meetingId]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -101,7 +140,13 @@ export function LiveTranscriptPanel({ meetingId, enabled, visible, className = "
 
     async function poll() {
       try {
-        const response = await fetch(`/api/meetings/${meetingId}/live-transcript`, {
+        const search = new URLSearchParams();
+        const lastLineId = linesRef.current[linesRef.current.length - 1]?.id;
+        const lastAgentMessageId = agentMessagesRef.current[agentMessagesRef.current.length - 1]?.id;
+        if (lastLineId) search.set("after", lastLineId);
+        if (lastAgentMessageId) search.set("afterAgent", lastAgentMessageId);
+
+        const response = await fetch(`/api/meetings/${meetingId}/live-transcript?${search.toString()}`, {
           cache: "no-store"
         });
         if (!response.ok) {
@@ -112,8 +157,16 @@ export function LiveTranscriptPanel({ meetingId, enabled, visible, className = "
           const nextAgentMessages = Array.isArray(payload?.agentMessages) ? payload.agentMessages : [];
           if (active) {
             setError(null);
-            setLines(nextLines);
-            setAgentMessages(nextAgentMessages);
+            setLines((current) => {
+              if (!lastLineId) return nextLines;
+              if (!nextLines.length) return current;
+              return [...current, ...nextLines];
+            });
+            setAgentMessages((current) => {
+              if (!lastAgentMessageId) return nextAgentMessages;
+              if (!nextAgentMessages.length) return current;
+              return [...current, ...nextAgentMessages];
+            });
           }
         }
       } catch {
@@ -145,7 +198,7 @@ export function LiveTranscriptPanel({ meetingId, enabled, visible, className = "
           <h3 className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
             Live transcription
           </h3>
-          <p className="mt-1 text-[11px] text-slate-400">Deepgram Live · Auto</p>
+          <p className="mt-1 text-[11px] text-slate-400">{getTranscriptionProviderLabel(provider)} · Auto</p>
         </div>
         <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
           Live
@@ -160,16 +213,18 @@ export function LiveTranscriptPanel({ meetingId, enabled, visible, className = "
         ) : (
           <div className="space-y-2.5">
             {renderedItems.map((item) =>
-              item.kind === "line" ? (
+              item.kind === "line-group" ? (
                 <div key={item.id} className="rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                  {item.showSpeaker ? (
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      {formatSpeaker(item.speaker)}
-                    </p>
-                  ) : null}
-                  <p className={`${item.showSpeaker ? "mt-1" : ""} text-[13px] leading-5 text-slate-800`}>
-                    {item.text}
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    {formatSpeaker(item.speaker)}
                   </p>
+                  <div className="mt-1 space-y-1">
+                    {item.texts.map((text, index) => (
+                      <p key={`${item.id}-${index}`} className="text-[13px] leading-5 text-slate-800">
+                        {text}
+                      </p>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <div

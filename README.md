@@ -295,6 +295,136 @@ Primary documents:
 - [Democracy Routes - Whitepaper 2.0.pdf](/root/Democracy%20Routes/Democracy%20Routes%20-%20Whitepaper%202.0.pdf)
 - [Proof of Political Power 2.pdf](/root/Democracy%20Routes/Proof%20of%20Political%20Power%202.pdf)
 
+## Agent Handoff
+
+This section is for external coding agents working on this repo.
+
+### What this repo is
+
+- `services/dr-app`
+  the main Next.js 14 app; owns product UI, auth, Prisma schema, templates, flows, meetings, dashboard, admin, AI summaries, and most orchestration logic
+
+- `services/dr-video`
+  the embedded WebRTC / mediasoup video service; owns live room runtime, live transcription capture, and pushes live transcript lines back into `dr-app`
+
+- `services/dr-matching`
+  grouping / remix backend used by flows
+
+- `services/dr-event-hub`
+  event and log collection
+
+- `services/transcription-hub`
+  transcription pipeline support
+
+The repo is operationally centered on `dr-app` and `dr-video`.
+
+### Product model
+
+- `dataspace`
+  long-lived shared context
+
+- `meeting`
+  one concrete room/call
+
+- `template`
+  reusable process definition
+
+- `flow`
+  executable runtime instance created from a template
+
+- `discussion`
+  the current user-facing term; do not reintroduce the old visible `pairing` label
+
+- `grouping`
+  the current user-facing module for forming / reforming rooms
+
+### Important runtime facts
+
+- `dr-app` uses Prisma with SQLite
+- `dr-app` startup applies:
+  - `prisma db push`
+  - Prisma client generation
+  - seed
+- schema changes usually require a `dr-app` rebuild/recreate
+- `dr-video` is a separate service and must be rebuilt separately when live-call behavior changes
+- proxy health is typically checked on:
+  - `http://127.0.0.1:8088/`
+
+### Current architecture constraints
+
+- legacy flow execution still exists in some places as pair-oriented logic
+- newer public citizen-assembly work uses a room-based runtime path
+- room-based flows use:
+  - `PlanParticipantSession`
+  - `PlanRoom`
+  - `PlanRoomMember`
+- public room-based flows now support:
+  - registered users
+  - guest join via token
+
+### Live transcription facts
+
+- live providers currently include:
+  - `DEEPGRAMLIVE`
+  - `GLADIALIVE`
+- post-call providers are separate from live providers
+- `dr-video` pushes live transcript lines to:
+  - `/api/meetings/:id/live-transcript`
+- when working on live transcript UX, inspect both:
+  - `services/dr-video/public/app.js`
+  - `services/dr-app/src/app/meetings/[id]/LiveTranscriptPanel.tsx`
+
+### Recent product decisions that should be preserved
+
+- visible UI language should use:
+  - `Discussion`
+  - `Grouping`
+  not:
+  - `Pairing`
+  - `Matching` as the primary visible label
+
+- flow settings should stay runtime-only
+- template logic belongs in the builder, not execution pages
+- AI participants are a live-transcription feature, not a generic post-call feature
+- dashboard has:
+  - `Notifications` tab
+  - `Open Problems` in both the dedicated tab and overview
+
+### Practical workflow
+
+- for code changes in `dr-app` only:
+  - rebuild/recreate `dr-app`
+
+- for code changes in `dr-video` only:
+  - rebuild/recreate `dr-video`
+
+- for changes spanning live meeting UX or transcript flow:
+  - rebuild/recreate both `dr-app` and `dr-video`
+
+- after deploy, verify:
+  - container status
+  - proxy health
+  - relevant page or API path
+
+### Things to check before changing architecture
+
+- whether the path is legacy pair runtime or room-based runtime
+- whether the change belongs to:
+  - template builder
+  - flow runtime
+  - meeting runtime
+- whether a visible naming change would conflict with the `Discussion` / `Grouping` direction
+
+### Good starting files
+
+- `services/dr-app/prisma/schema.prisma`
+- `services/dr-app/src/app/api/flows/[id]/current/route.ts`
+- `services/dr-app/src/app/api/flows/[id]/join/route.ts`
+- `services/dr-app/src/app/flows/[id]/ParticipantViewClient.tsx`
+- `services/dr-app/src/app/meetings/[id]/LiveTranscriptPanel.tsx`
+- `services/dr-video/public/app.js`
+- `services/dr-video/server.js`
+
 ## Core Services
 
 ### Stack interaction map

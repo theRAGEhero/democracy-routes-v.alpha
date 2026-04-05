@@ -1,12 +1,15 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { APP_THEME_OPTIONS, type AppTheme } from "@/lib/appTheme";
 
 type Props = {
   initialTelegramHandle: string;
   initialPersonalDescription: string;
   initialCalComLink: string;
   initialAvatarUrl: string;
+  initialAppTheme: AppTheme;
   initialNotifyEmailMeetingInvites: boolean;
   initialNotifyTelegramMeetingInvites: boolean;
   initialNotifyEmailPlanInvites: boolean;
@@ -22,6 +25,7 @@ export function ProfileSettingsForm({
   initialPersonalDescription,
   initialCalComLink,
   initialAvatarUrl,
+  initialAppTheme,
   initialNotifyEmailMeetingInvites,
   initialNotifyTelegramMeetingInvites,
   initialNotifyEmailPlanInvites,
@@ -31,10 +35,12 @@ export function ProfileSettingsForm({
   initialNotifyEmailDataspaceActivity,
   initialNotifyTelegramDataspaceActivity
 }: Props) {
+  const router = useRouter();
   const [telegramHandle, setTelegramHandle] = useState(initialTelegramHandle);
   const [personalDescription, setPersonalDescription] = useState(initialPersonalDescription);
   const [calComLink, setCalComLink] = useState(initialCalComLink);
   const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl);
+  const [appTheme, setAppTheme] = useState<AppTheme>(initialAppTheme);
   const [notifyEmailMeetingInvites, setNotifyEmailMeetingInvites] = useState(
     initialNotifyEmailMeetingInvites
   );
@@ -82,6 +88,7 @@ export function ProfileSettingsForm({
         personalDescription,
         calComLink,
         avatarUrl,
+        appTheme,
         notifyEmailMeetingInvites,
         notifyTelegramMeetingInvites,
         notifyEmailPlanInvites,
@@ -104,6 +111,7 @@ export function ProfileSettingsForm({
 
     setTelegramCode(payload?.telegramVerificationCode ?? null);
     setMessage("success");
+    router.refresh();
   }
 
   async function handleUpload() {
@@ -176,6 +184,23 @@ export function ProfileSettingsForm({
           </button>
         </div>
         {uploadError ? <p className="mt-2 text-xs text-red-600">{uploadError}</p> : null}
+      </div>
+      <div>
+        <label className="text-sm font-medium">App theme</label>
+        <select
+          value={appTheme}
+          onChange={(event) => setAppTheme(event.target.value as AppTheme)}
+          className="dr-input mt-1 w-full rounded px-3 py-2 text-sm"
+        >
+          {APP_THEME_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-xs text-slate-500">
+          {APP_THEME_OPTIONS.find((option) => option.value === appTheme)?.description}
+        </p>
       </div>
       <div>
         <label className="text-sm font-medium">Telegram handle</label>

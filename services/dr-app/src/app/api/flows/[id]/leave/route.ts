@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { getPlanViewer } from "@/lib/planGuests";
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: { id: string } }
 ) {
-  const session = await getSession();
-  if (!session?.user) {
+  const viewer = await getPlanViewer(request, params.id);
+  if (!viewer) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -19,27 +20,43 @@ export async function POST(
     return NextResponse.json({ error: "Template not found" }, { status: 404 });
   }
 
-  const fixedParticipants = await prisma.planPair.findFirst({
-    where: {
-      planRound: { planId: plan.id },
-      OR: [{ userAId: session.user.id }, { userBId: session.user.id }]
-    },
-    select: { id: true }
-  });
+  if (plan.runtimeVersion === "LEGACY_PAIR" && viewer.user.id) {
+    const fixedParticipants = await prisma.planPair.findFirst({
+      where: {
+        planRound: { planId: plan.id },
+        OR: [{ userAId: viewer.user.id }, { userBId: viewer.user.id }]
+      },
+      select: { id: true }
+    });
 
-  if (fixedParticipants) {
-    return NextResponse.json(
-      { error: "You are assigned to this plan and cannot leave." },
-      { status: 400 }
-    );
+    if (fixedParticipants) {
+      return NextResponse.json(
+        { error: "You are assigned to this flow and cannot leave." },
+        { status: 400 }
+      );
+    }
   }
 
-  await prisma.planParticipant.deleteMany({
-    where: {
-      planId: plan.id,
-      userId: session.user.id
-    }
-  });
+  if (viewer.participantSessionId) {
+    await prisma.planParticipantSession.deleteMany({
+      where: { id: viewer.participantSessionId, planId: plan.id }
+    });
+  }
 
-  return NextResponse.json({ message: "Left plan" });
+  if (viewer.user.id) {
+    await prisma.planParticipant.deleteMany({
+      where: {
+        planId: plan.id,
+        userId: viewer.user.id
+      }
+    });
+    await prisma.planParticipantSession.deleteMany({
+      where: {
+        planId: plan.id,
+        userId: viewer.user.id
+      }
+    });
+  }
+
+  return NextResponse.json({ message: "Left flow" });
 }

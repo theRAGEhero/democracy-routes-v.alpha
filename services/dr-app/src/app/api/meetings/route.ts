@@ -7,6 +7,7 @@ import { sendMail } from "@/lib/mailer";
 import { notifyDataspaceSubscribers } from "@/lib/dataspaceNotifications";
 import { checkRateLimit, getRequestIp } from "@/lib/rateLimit";
 import { getRequestId, logError } from "@/lib/logger";
+import { getRoomProviderSuffix, isLiveTranscriptionProvider } from "@/lib/transcriptionProviders";
 import crypto from "crypto";
 
 const GOVERNANCE_TITLE_ADJECTIVES = [
@@ -103,17 +104,8 @@ export async function POST(request: Request) {
   } = parsed.data;
   const fallbackTitle = `${pickRandom(GOVERNANCE_TITLE_ADJECTIVES)} ${pickRandom(GOVERNANCE_TITLE_NOUNS)}`;
   const title = String(rawTitle || "").trim() || fallbackTitle;
-  const effectiveAiAgentIds = transcriptionProvider === "DEEPGRAMLIVE" ? aiAgentIds ?? [] : [];
-  const providerLabel =
-    transcriptionProvider === "VOSK"
-      ? "Vosk"
-      : transcriptionProvider === "AUTOREMOTE"
-        ? "AUTOREMOTE"
-      : transcriptionProvider === "WHISPERREMOTE"
-        ? "WHISPERREMOTE"
-      : transcriptionProvider === "DEEPGRAMLIVE"
-        ? "DEEPGRAMLIVE"
-        : "Deepgram";
+  const effectiveAiAgentIds = isLiveTranscriptionProvider(transcriptionProvider) ? aiAgentIds ?? [] : [];
+  const providerLabel = getRoomProviderSuffix(transcriptionProvider);
   const roomId = `${generateRoomId()}-${language}-${providerLabel}`;
   let scheduledStartAt: Date | null = null;
   let expiresAt: Date | null = null;

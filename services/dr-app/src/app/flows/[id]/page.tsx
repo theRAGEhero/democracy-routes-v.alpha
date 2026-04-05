@@ -19,12 +19,34 @@ import { buildVideoAccessToken } from "@/lib/videoAccess";
 import Link from "next/link";
 import { DEFAULT_DATASPACE_COLOR, getDataspaceTheme } from "@/lib/dataspaceColor";
 import { normalizeBlockType } from "@/lib/blockType";
+import { PublicFlowGuestJoin } from "@/app/flows/[id]/PublicFlowGuestJoin";
 
 export default async function PlanParticipantPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
 
   if (!session?.user) {
-    return null;
+    const publicPlan = await prisma.plan.findUnique({
+      where: { id: params.id },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        isPublic: true,
+        runtimeVersion: true
+      }
+    });
+
+    if (!publicPlan || !publicPlan.isPublic || publicPlan.runtimeVersion !== "ROOM_BASED") {
+      return null;
+    }
+
+    return (
+      <PublicFlowGuestJoin
+        planId={publicPlan.id}
+        title={publicPlan.title}
+        description={publicPlan.description}
+      />
+    );
   }
 
   const plan = await prisma.plan.findUnique({
@@ -103,8 +125,9 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
           member.userId === session.user.id
       )
     : false;
+  const canJoinPublicFlow = plan.isPublic && (plan.runtimeVersion === "ROOM_BASED" || isDataspaceMember);
 
-  if (!isAdmin && !isPairParticipant && !participantApproved && !(plan.isPublic && isDataspaceMember)) {
+  if (!isAdmin && !isPairParticipant && !participantApproved && !canJoinPublicFlow) {
     return <p className="text-sm text-slate-600">Access denied.</p>;
   }
 
@@ -403,7 +426,7 @@ export default async function PlanParticipantPage({ params }: { params: { id: st
         isPublic={plan.isPublic}
         requiresApproval={plan.requiresApproval}
         capacity={plan.capacity}
-        isDataspaceMember={isDataspaceMember}
+        isDataspaceMember={plan.runtimeVersion === "ROOM_BASED" ? true : isDataspaceMember}
         isFixedParticipant={isPairParticipant}
         participantStatus={participantRecord?.status ?? null}
         pendingRequests={pendingRequests}

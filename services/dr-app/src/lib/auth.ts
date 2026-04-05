@@ -3,6 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "@/lib/bcrypt";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { normalizeAppTheme } from "@/lib/appTheme";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -52,7 +53,8 @@ export const authOptions: NextAuthOptions = {
           email: user.email,
           role: user.role as "ADMIN" | "USER",
           mustChangePassword: user.mustChangePassword,
-          avatarUrl: user.avatarUrl ?? null
+          avatarUrl: user.avatarUrl ?? null,
+          appTheme: normalizeAppTheme(user.appTheme)
         };
       }
     })
@@ -67,6 +69,7 @@ export const authOptions: NextAuthOptions = {
         token.role = user.role;
         token.mustChangePassword = user.mustChangePassword;
         token.avatarUrl = user.avatarUrl ?? null;
+        token.appTheme = normalizeAppTheme(user.appTheme);
       }
       return token;
     },
@@ -76,16 +79,19 @@ export const authOptions: NextAuthOptions = {
         session.user.role = token.role as "ADMIN" | "USER";
         session.user.mustChangePassword = token.mustChangePassword as boolean;
         session.user.avatarUrl = token.avatarUrl ?? null;
+        session.user.appTheme = normalizeAppTheme(token.appTheme as string | null | undefined);
       }
       if (token.id) {
         const profile = await prisma.user.findUnique({
           where: { id: token.id as string },
-          select: { avatarUrl: true }
+          select: { avatarUrl: true, appTheme: true }
         });
         if (session.user) {
           session.user.avatarUrl = profile?.avatarUrl ?? null;
+          session.user.appTheme = normalizeAppTheme(profile?.appTheme);
         }
         token.avatarUrl = profile?.avatarUrl ?? null;
+        token.appTheme = normalizeAppTheme(profile?.appTheme);
       }
       return session;
     }

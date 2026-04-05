@@ -6,6 +6,179 @@ import { buildVideoAccessToken } from "@/lib/videoAccess";
 import { normalizeMatchingMode } from "@/lib/matchingMode";
 
 export default async function GuestPlanPage({ params }: { params: { token: string } }) {
+  const participantSession = await prisma.planParticipantSession.findUnique({
+    where: { guestToken: params.token },
+    include: {
+      plan: {
+        include: {
+          dataspace: {
+            include: { members: { select: { userId: true } } }
+          },
+          blocks: {
+            orderBy: { orderIndex: "asc" },
+            include: {
+              poster: { select: { id: true, title: true, content: true } }
+            }
+          },
+          rounds: {
+            orderBy: { roundNumber: "asc" },
+            include: {
+              pairs: {
+                include: {
+                  userA: { select: { email: true } },
+                  userB: { select: { email: true } }
+                }
+              },
+              rooms: {
+                include: {
+                  members: {
+                    include: {
+                      participantSession: {
+                        select: {
+                          id: true,
+                          displayName: true,
+                          guestEmail: true,
+                          user: { select: { email: true } }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          participants: {
+            include: {
+              user: { select: { email: true } }
+            }
+          }
+        }
+      }
+    }
+  });
+
+  if (participantSession?.plan) {
+    const plan = participantSession.plan;
+    const userEmail = participantSession.guestEmail || participantSession.displayName;
+    const assignments = plan.rounds.map((round) => {
+      const room = round.rooms.find((entry) =>
+        entry.members.some((member) => member.participantSessionId === participantSession.id)
+      );
+      const participants = room
+        ? room.members.map((member) =>
+            member.participantSession.guestEmail ||
+            member.participantSession.user?.email ||
+            member.participantSession.displayName
+          )
+        : [];
+      return {
+        roundNumber: round.roundNumber,
+        roomId: room?.roomId ?? "",
+        partnerLabel: participants.filter((value) => value !== userEmail).join(", ") || "Break",
+        isBreak: !room,
+        meetingId: room?.meetingId ?? null
+      };
+    });
+    const roundGroups = plan.rounds.map((round) => ({
+      roundNumber: round.roundNumber,
+      rooms: round.rooms.map((room) => ({
+        roomId: room.roomId,
+        participants: room.members.map((member) =>
+          member.participantSession.guestEmail ||
+          member.participantSession.user?.email ||
+          member.participantSession.displayName
+        ),
+        meetingId: room.meetingId ?? null
+      }))
+    }));
+    const accessTokensByRoomId = new Map(
+      plan.rounds.flatMap((round) =>
+        round.rooms.map((room) => [
+          room.roomId,
+          buildVideoAccessToken({
+            roomId: room.roomId,
+            meetingId: room.meetingId ?? null,
+            userEmail
+          })
+        ] as const)
+      )
+    );
+    const baseUrl = normalizeCallBaseUrl(process.env.DEMOCRACYROUTES_CALL_BASE_URL || "");
+
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
+              Guest flow access
+            </p>
+            <h1 className="text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
+              {plan.title}
+            </h1>
+            <p className="text-sm text-slate-600">
+              You are participating as <span className="font-semibold">{userEmail}</span>.
+            </p>
+          </div>
+        </div>
+
+        <ParticipantViewClient
+          planId={plan.id}
+          planTitle={plan.title}
+          language={plan.language}
+          transcriptionProvider={plan.transcriptionProvider}
+          startAt={plan.startAt.toISOString()}
+          roundDurationMinutes={plan.roundDurationMinutes}
+          roundsCount={plan.roundsCount}
+          syncMode={plan.syncMode === "CLIENT" ? "CLIENT" : "SERVER"}
+          meditationEnabled={plan.meditationEnabled}
+          meditationAtStart={plan.meditationAtStart}
+          meditationBetweenRounds={plan.meditationBetweenRounds}
+          meditationAtEnd={plan.meditationAtEnd}
+          meditationDurationMinutes={plan.meditationDurationMinutes}
+          meditationAnimationId={plan.meditationAnimationId}
+          meditationAudioUrl={plan.meditationAudioUrl}
+          blocks={plan.blocks.map((block: (typeof plan.blocks)[number]) => ({
+            id: block.id,
+            type: block.type as "START" | "PARTICIPANTS" | "DISCUSSION" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "GROUPING" | "BREAK" | "HARMONICA" | "DEMBRANE" | "DELIBERAIDE" | "POLIS" | "AGORACITIZENS" | "NEXUSPOLITICS" | "SUFFRAGO",
+            durationSeconds: block.durationSeconds,
+            roundNumber: block.roundNumber,
+            formQuestion: block.formQuestion ?? null,
+            formChoices: (() => {
+              if (!block.formChoicesJson) return null;
+              try {
+                return JSON.parse(block.formChoicesJson) as Array<{ key: string; label: string }>;
+              } catch {
+                return null;
+              }
+            })(),
+            meditationAnimationId: block.meditationAnimationId ?? null,
+            meditationAudioUrl: block.meditationAudioUrl ?? null,
+            embedUrl: block.embedUrl ?? null,
+            harmonicaUrl: block.harmonicaUrl ?? null,
+            matchingMode: normalizeMatchingMode(block.matchingMode),
+            poster: block.poster
+              ? { id: block.poster.id, title: block.poster.title, content: block.poster.content }
+              : null
+          }))}
+          roundGroups={roundGroups}
+          assignments={assignments}
+          baseUrl={baseUrl}
+          accessTokens={Object.fromEntries(accessTokensByRoomId)}
+          userEmail={userEmail}
+          guestToken={participantSession.guestToken}
+          callDisplayName={participantSession.displayName}
+        />
+
+        <p className="text-xs text-slate-500">
+          Prefer to register?{" "}
+          <Link href="/register" className="font-semibold text-slate-700 hover:underline">
+            Create an account
+          </Link>
+        </p>
+      </div>
+    );
+  }
+
   const invite = await prisma.planGuestInvite.findUnique({
     where: { token: params.token },
     include: {

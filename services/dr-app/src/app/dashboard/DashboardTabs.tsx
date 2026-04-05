@@ -65,7 +65,7 @@ type Props = {
   calendarEvents: Parameters<typeof CalendarPanel>[0]["events"];
 };
 
-const TABS = ["Overview", "Meetings", "Invites", "Calendar", "Open Problems"] as const;
+const TABS = ["Overview", "Meetings", "Notifications", "Calendar", "Open Problems"] as const;
 type TabKey = (typeof TABS)[number];
 
 function overviewTypeBadgeClass(type: RecentItem["type"] | UpcomingItem["type"]) {
@@ -77,6 +77,73 @@ function overviewTypeBadgeClass(type: RecentItem["type"] | UpcomingItem["type"])
     default:
       return "bg-slate-100 text-slate-600";
   }
+}
+
+function OpenProblemsList({
+  problems,
+  joiningProblemId,
+  onJoin
+}: {
+  problems: OpenProblemRow[];
+  joiningProblemId: string | null;
+  onJoin: (problemId: string) => void;
+}) {
+  return (
+    <div className="mt-4 space-y-3">
+      {problems.length === 0 ? (
+        <p className="text-sm text-slate-500">No open problems found for the current dataspace selection.</p>
+      ) : (
+        problems.map((problem) => (
+          <div
+            key={problem.id}
+            className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-4"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  {problem.dataspaceColor ? (
+                    <span
+                      className="h-2.5 w-2.5 rounded-full border border-white/70 shadow-sm"
+                      style={{ backgroundColor: problem.dataspaceColor }}
+                    />
+                  ) : null}
+                  <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-sky-700 ring-1 ring-sky-200">
+                    Open Problem
+                  </span>
+                  <p className="font-medium text-slate-900">{problem.title}</p>
+                </div>
+                <p className="mt-2 line-clamp-2 max-w-3xl text-sm text-slate-600">
+                  {problem.description}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {!problem.createdByMe && !problem.joinedByMe ? (
+                  <button
+                    type="button"
+                    onClick={() => onJoin(problem.id)}
+                    disabled={joiningProblemId === problem.id}
+                    className="dr-button-outline px-3 py-1 text-[11px]"
+                  >
+                    {joiningProblemId === problem.id ? "Joining..." : "Join"}
+                  </button>
+                ) : null}
+                <Link href={problem.href} className="text-xs font-semibold text-slate-700 hover:underline">
+                  Open
+                </Link>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+              <span>{problem.updatedLabel ?? "Recently updated"}</span>
+              <span>{problem.dataspaceLabel}</span>
+              <span>{problem.joinCount} joined</span>
+              <span>{problem.createdByMe ? "Created by you" : `By ${problem.createdByEmail}`}</span>
+              {problem.joinedByMe ? <span className="font-semibold text-emerald-700">You joined</span> : null}
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
 }
 
 export function DashboardTabs({
@@ -91,7 +158,7 @@ export function DashboardTabs({
   calendarEvents
 }: Props) {
   const [tab, setTab] = useState<TabKey>(
-    upcomingInvites.length > 0 ? "Invites" : "Overview"
+    upcomingInvites.length > 0 ? "Notifications" : "Overview"
   );
   const [selectedDataspaces, setSelectedDataspaces] = useState<string[]>([]);
   const [openProblems, setOpenProblems] = useState<OpenProblemRow[]>(openProblemRows);
@@ -257,7 +324,7 @@ export function DashboardTabs({
         <div className="dr-card mb-4 flex-shrink-0 overflow-x-auto px-2 py-2">
           <div className="flex min-w-max items-center gap-2">
             {TABS.map((key) => {
-              const isInvites = key === "Invites";
+              const isInvites = key === "Notifications";
               const hasInvites = scopedInvites.length > 0;
               const isActive = tab === key;
               return (
@@ -365,6 +432,26 @@ export function DashboardTabs({
                   </div>
                 </div>
                 <UpcomingInvites invites={scopedInvites} />
+                <div className="dr-card p-6">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-sm font-semibold uppercase text-slate-500">Open Problems</h2>
+                      <p className="mt-1 text-sm text-slate-600">
+                        Problems visible in the selected dataspaces.
+                      </p>
+                    </div>
+                    <Link href="/open-problems" className="text-sm font-semibold text-slate-700 hover:underline">
+                      Browse all
+                    </Link>
+                  </div>
+                  <OpenProblemsList
+                    problems={scopedOpenProblems.slice(0, 5)}
+                    joiningProblemId={joiningProblemId}
+                    onJoin={(problemId) => {
+                      handleJoinOpenProblem(problemId).catch(() => null);
+                    }}
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -386,7 +473,7 @@ export function DashboardTabs({
           </div>
         ) : null}
 
-        {tab === "Invites" ? (
+        {tab === "Notifications" ? (
           <div className="min-h-0 flex-1 overflow-auto">
             <UpcomingInvites invites={scopedInvites} />
           </div>
@@ -410,62 +497,13 @@ export function DashboardTabs({
                   Browse all
                 </Link>
               </div>
-              <div className="mt-4 space-y-3">
-                {scopedOpenProblems.length === 0 ? (
-                  <p className="text-sm text-slate-500">No open problems found for the current dataspace selection.</p>
-                ) : (
-                  scopedOpenProblems.map((problem) => (
-                    <div
-                      key={problem.id}
-                      className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-4"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            {problem.dataspaceColor ? (
-                              <span
-                                className="h-2.5 w-2.5 rounded-full border border-white/70 shadow-sm"
-                                style={{ backgroundColor: problem.dataspaceColor }}
-                              />
-                            ) : null}
-                            <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase text-sky-700 ring-1 ring-sky-200">
-                              Open Problem
-                            </span>
-                            <p className="font-medium text-slate-900">{problem.title}</p>
-                          </div>
-                          <p className="mt-2 line-clamp-2 max-w-3xl text-sm text-slate-600">
-                            {problem.description}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {!problem.createdByMe && !problem.joinedByMe ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                handleJoinOpenProblem(problem.id).catch(() => null);
-                              }}
-                              disabled={joiningProblemId === problem.id}
-                              className="dr-button-outline px-3 py-1 text-[11px]"
-                            >
-                              {joiningProblemId === problem.id ? "Joining..." : "Join"}
-                            </button>
-                          ) : null}
-                          <Link href={problem.href} className="text-xs font-semibold text-slate-700 hover:underline">
-                            Open
-                          </Link>
-                        </div>
-                      </div>
-                      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-                        <span>{problem.updatedLabel ?? "Recently updated"}</span>
-                        <span>{problem.dataspaceLabel}</span>
-                        <span>{problem.joinCount} joined</span>
-                        <span>{problem.createdByMe ? "Created by you" : `By ${problem.createdByEmail}`}</span>
-                        {problem.joinedByMe ? <span className="font-semibold text-emerald-700">You joined</span> : null}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
+              <OpenProblemsList
+                problems={scopedOpenProblems}
+                joiningProblemId={joiningProblemId}
+                onJoin={(problemId) => {
+                  handleJoinOpenProblem(problemId).catch(() => null);
+                }}
+              />
             </div>
           </div>
         ) : null}

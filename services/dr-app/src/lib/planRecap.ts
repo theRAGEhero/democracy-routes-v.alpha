@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 
 type Viewer = {
   user: {
-    id: string;
+    id: string | null;
     role: string;
     email: string;
   };
@@ -146,31 +146,35 @@ export async function getPlanRecapData(
   }
 
   const isAdmin = viewer.user.role === "ADMIN";
-  const isPairParticipant = plan.rounds.some(
-    (round: (typeof plan.rounds)[number]) =>
-      round.pairs.some(
-        (pair: (typeof round.pairs)[number]) =>
-          pair.userAId === viewer.user.id || pair.userBId === viewer.user.id
+  const isPairParticipant = viewer.user.id
+    ? plan.rounds.some(
+        (round: (typeof plan.rounds)[number]) =>
+          round.pairs.some(
+            (pair: (typeof round.pairs)[number]) =>
+              pair.userAId === viewer.user.id || pair.userBId === viewer.user.id
+          )
       )
-  );
-  const participantRecord = await prisma.planParticipant.findUnique({
-    where: {
-      planId_userId: {
-        planId: plan.id,
-        userId: viewer.user.id
-      }
-    },
-    select: { status: true }
-  });
+    : false;
+  const participantRecord = viewer.user.id
+    ? await prisma.planParticipant.findUnique({
+        where: {
+          planId_userId: {
+            planId: plan.id,
+            userId: viewer.user.id
+          }
+        },
+        select: { status: true }
+      })
+    : null;
   const participantApproved = participantRecord?.status === "APPROVED";
   const isDataspaceMember = plan.dataspace
     ? plan.dataspace.members.some(
         (member: (typeof plan.dataspace.members)[number]) =>
-          member.userId === viewer.user.id
+          viewer.user.id ? member.userId === viewer.user.id : false
       )
     : false;
 
-  if (!isAdmin && !isPairParticipant && !participantApproved && !(plan.isPublic && isDataspaceMember)) {
+  if (!isAdmin && !isPairParticipant && !participantApproved && !(plan.isPublic && (plan.runtimeVersion === "ROOM_BASED" || isDataspaceMember))) {
     throw new PlanRecapError("Forbidden", 403);
   }
 

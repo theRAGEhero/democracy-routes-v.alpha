@@ -9,6 +9,7 @@ import { renderPosterHtml } from "@/lib/poster";
 import { buildCallJoinUrl, buildDisplayName } from "@/lib/callUrl";
 import { logClientInfo, logClientWarn } from "@/lib/clientLog";
 import { CallFrame } from "@/components/CallFrame";
+import { getTranscriptionProviderLabel, isLiveTranscriptionProvider } from "@/lib/transcriptionProviders";
 
 type RoundAssignment = {
   roundNumber: number;
@@ -138,7 +139,21 @@ export function ParticipantViewClient({
   const [now, setNow] = useState<number | null>(null);
   const [offsetMs, setOffsetMs] = useState<number | null>(null);
   const [meetingByRound, setMeetingByRound] = useState<Record<number, string>>({});
+  const [liveAccessTokens, setLiveAccessTokens] = useState<Record<string, string>>({});
   const [liveAssignment, setLiveAssignment] = useState<RoundAssignment | null>(null);
+  const [waitingRoomState, setWaitingRoomState] = useState<{
+    waitingCount: number;
+    minParticipantsToStart: number;
+    roomSize: number;
+    participantsNeeded: number;
+    participantWaiting: boolean;
+  } | null>(null);
+  const [admissionState, setAdmissionState] = useState<{
+    mode: "ALWAYS_OPEN" | "TIME_WINDOW";
+    status: "upcoming" | "open" | "closed";
+    opensAt: string | null;
+    closesAt: string | null;
+  } | null>(null);
   type MeditationSession = {
     id: string;
     meditationIndex: number;
@@ -303,14 +318,23 @@ export function ParticipantViewClient({
       const serverNow = Date.parse(payload?.serverNow);
       if (Number.isNaN(serverNow)) return;
       setOffsetMs(serverNow - Date.now());
+      setWaitingRoomState(payload?.waitingRoom ?? null);
+      setAdmissionState(payload?.admission ?? null);
       if (Array.isArray(payload?.currentRoundMeetings)) {
         setMeetingByRound((prev) => {
           const next = { ...prev };
-          payload.currentRoundMeetings.forEach((item: { roomId: string; meetingId: string }) => {
+          payload.currentRoundMeetings.forEach((item: { roomId: string; meetingId: string; accessToken?: string }) => {
             const assignment = assignments.find((entry) => entry.roomId === item.roomId);
             if (assignment) {
               next[assignment.roundNumber] = item.meetingId;
             }
+          });
+          return next;
+        });
+        setLiveAccessTokens((prev) => {
+          const next = { ...prev };
+          payload.currentRoundMeetings.forEach((item: { roomId: string; accessToken?: string }) => {
+            if (item.accessToken) next[item.roomId] = item.accessToken;
           });
           return next;
         });
@@ -430,11 +454,18 @@ export function ParticipantViewClient({
         if (mounted && Array.isArray(payload?.currentRoundMeetings)) {
           setMeetingByRound((prev) => {
             const next = { ...prev };
-            payload.currentRoundMeetings.forEach((item: { roomId: string; meetingId: string }) => {
+            payload.currentRoundMeetings.forEach((item: { roomId: string; meetingId: string; accessToken?: string }) => {
               const assignment = assignments.find((entry) => entry.roomId === item.roomId);
               if (assignment) {
                 next[assignment.roundNumber] = item.meetingId;
               }
+            });
+            return next;
+          });
+          setLiveAccessTokens((prev) => {
+            const next = { ...prev };
+            payload.currentRoundMeetings.forEach((item: { roomId: string; accessToken?: string }) => {
+              if (item.accessToken) next[item.roomId] = item.accessToken;
             });
             return next;
           });
@@ -459,8 +490,8 @@ export function ParticipantViewClient({
       : baseAssignment;
   const currentMeetingId =
     assignment?.meetingId ?? (assignment ? meetingByRound[assignment.roundNumber] : undefined);
-  const liveTranscriptionEnabled = transcriptionProvider === "DEEPGRAMLIVE";
-  const recordingEnabled = ["DEEPGRAM", "DEEPGRAMLIVE", "VOSK", "WHISPERREMOTE", "AUTOREMOTE"].includes(
+  const liveTranscriptionEnabled = isLiveTranscriptionProvider(transcriptionProvider);
+  const recordingEnabled = ["DEEPGRAM", "DEEPGRAMLIVE", "GLADIALIVE", "VOSK", "WHISPERREMOTE", "AUTOREMOTE"].includes(
     transcriptionProvider
   );
   const transcriptionLanguageCode = liveTranscriptionEnabled ? (language === "IT" ? "it" : "en") : "";
@@ -476,7 +507,7 @@ export function ParticipantViewClient({
         embed: true,
         autoRecordVideo: recordingEnabled,
         transcriptionLanguage: transcriptionLanguageCode,
-        accessToken: accessTokens[assignment!.roomId]
+        accessToken: liveAccessTokens[assignment!.roomId] ?? accessTokens[assignment!.roomId]
       })
     : "";
 
@@ -620,7 +651,6 @@ export function ParticipantViewClient({
   ]);
 
   useEffect(() => {
-    if (!canSkip) return;
     if (status !== "active" || currentSegment?.type !== "GROUPING") return;
     const blockId = currentSegment.blockId ?? `segment-${currentSegment.startAtMs}`;
     if (autoMatchingRef.current.has(blockId)) return;
@@ -674,7 +704,6 @@ export function ParticipantViewClient({
     };
     void runMatching();
   }, [
-    canSkip,
     currentSegment?.type,
     currentSegment?.blockId,
     currentSegment?.startAtMs,
@@ -991,6 +1020,34 @@ export function ParticipantViewClient({
         <p className="mt-2 text-sm text-slate-400">
           Starts in {formatCountdownHuman(Math.max(0, Math.floor((startTime - effectiveNow) / 1000)))}
         </p>
+        {admissionState?.mode === "TIME_WINDOW" && admissionState.opensAt ? (
+          <p className="mt-2 text-xs text-slate-500">
+            Join window opens at {new Date(admissionState.opensAt).toLocaleString()}.
+          </p>
+        ) : null}
+      </div>
+    </div>
+  ) : status === "active" &&
+    currentSegment?.type === "DISCUSSION" &&
+    waitingRoomState?.participantWaiting ? (
+    <div
+      className={`flex items-center justify-center rounded-3xl border border-white/10 bg-slate-950/70 px-6 py-10 text-center text-slate-200 ${experienceContainerClass}`}
+    >
+      <div className="max-w-xl">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+          Waiting Room
+        </p>
+        <p className="mt-3 text-lg">
+          {waitingRoomState.waitingCount} people are waiting to talk.
+        </p>
+        <p className="mt-2 text-sm text-slate-400">
+          {waitingRoomState.participantsNeeded > 0
+            ? `${waitingRoomState.participantsNeeded} more needed to open the next discussion room.`
+            : "The next discussion room is opening now."}
+        </p>
+        <p className="mt-2 text-xs text-slate-500">
+          Rooms for this round open in groups of up to {waitingRoomState.roomSize}.
+        </p>
       </div>
     </div>
   ) : assignment?.isBreak ? (
@@ -1228,7 +1285,7 @@ export function ParticipantViewClient({
               {language}
             </span>
             <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[10px] font-semibold uppercase text-slate-600">
-              {transcriptionProvider === "VOSK" ? "Vosk" : "Deepgram"}
+              {getTranscriptionProviderLabel(transcriptionProvider)}
             </span>
             <span className="uppercase tracking-[0.18em]">Phase</span>
             <span className="font-semibold text-slate-900">

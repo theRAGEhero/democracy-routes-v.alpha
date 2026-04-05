@@ -10,6 +10,8 @@ type PlanViewer = {
   };
   isGuest: boolean;
   inviteId: string | null;
+  participantSessionId: string | null;
+  guestDisplayName?: string | null;
 };
 
 function readGuestToken(request: Request) {
@@ -28,13 +30,34 @@ export async function getPlanViewer(request: Request, planId: string): Promise<P
         isGuest: false
       },
       isGuest: false,
-      inviteId: null
+      inviteId: null,
+      participantSessionId: null,
+      guestDisplayName: null
     };
   }
 
   const token = readGuestToken(request);
   if (!token) {
     return null;
+  }
+
+  const participantSession = await prisma.planParticipantSession.findUnique({
+    where: { guestToken: token }
+  });
+
+  if (participantSession && participantSession.planId === planId) {
+    return {
+      user: {
+        id: participantSession.userId ?? "",
+        email: participantSession.guestEmail ?? participantSession.displayName,
+        role: "USER",
+        isGuest: true
+      },
+      isGuest: true,
+      inviteId: null,
+      participantSessionId: participantSession.id,
+      guestDisplayName: participantSession.displayName
+    };
   }
 
   const invite = await prisma.planGuestInvite.findUnique({
@@ -58,6 +81,8 @@ export async function getPlanViewer(request: Request, planId: string): Promise<P
       isGuest: invite.user.isGuest
     },
     isGuest: true,
-    inviteId: invite.id
+    inviteId: invite.id,
+    participantSessionId: null,
+    guestDisplayName: invite.email
   };
 }

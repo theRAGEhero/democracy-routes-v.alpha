@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { ensureMeetingAiSummary } from "@/lib/meetingAiSummary";
+import { isLiveTranscriptionProvider } from "@/lib/transcriptionProviders";
 
 function computeTranscriptHash(transcriptText: string, transcriptJson: string | null) {
   return crypto
@@ -144,7 +145,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
   if (
     auto &&
     transcriptText &&
-    (meeting.transcriptionProvider !== "DEEPGRAMLIVE" || isConcluded) &&
+    (!isLiveTranscriptionProvider(meeting.transcriptionProvider) || isConcluded) &&
     (!meeting.aiSummary || !meeting.aiSummary.sourceTranscriptHash || meeting.aiSummary.sourceTranscriptHash !== transcriptHash)
   ) {
     void ensureMeetingAiSummary(meeting.id).catch(() => null);

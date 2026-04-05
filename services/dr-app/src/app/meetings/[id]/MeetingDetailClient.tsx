@@ -13,6 +13,7 @@ type Props = {
   hasBaseUrl: boolean;
   statusLabel: string;
   languageLabel: string;
+  transcriptionProvider: string;
   providerLabel: string;
   startsLabel: string;
   expiresLabel: string;
@@ -34,6 +35,7 @@ export function MeetingDetailClient({
   hasBaseUrl,
   statusLabel,
   languageLabel,
+  transcriptionProvider,
   providerLabel,
   startsLabel,
   expiresLabel,
@@ -210,6 +212,7 @@ export function MeetingDetailClient({
               {livePanelAvailable ? (
                 <LiveTranscriptPanel
                   meetingId={meetingId}
+                  provider={transcriptionProvider}
                   enabled={liveTranscriptionEnabled}
                   visible={liveTranscriptVisible}
                   className="h-full"
@@ -234,6 +237,7 @@ export function MeetingDetailClient({
               {livePanelAvailable ? (
                 <LiveTranscriptPanel
                   meetingId={meetingId}
+                  provider={transcriptionProvider}
                   enabled={liveTranscriptionEnabled}
                   visible={liveTranscriptVisible}
                   className="max-h-[36dvh]"

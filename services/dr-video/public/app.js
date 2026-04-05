@@ -256,11 +256,17 @@ let recordingComposite = null;
 let recordingAudioMix = null;
 let hideRecordingButtonsByUrl = false;
 let transcriptionLanguage = "";
+let transcriptionProvider = "DEEPGRAMLIVE";
 let transcriptionRecorder = null;
 let transcriptionRecorderSeq = 0;
 let transcriptionRecorderSessionId = "";
 let transcriptionUploadPending = [];
 let transcriptionAudioMixer = null;
+let transcriptionPcmProcessor = null;
+let transcriptionPcmSource = null;
+let transcriptionPcmSinkGain = null;
+let transcriptionPcmPendingBytes = [];
+let transcriptionCaptureMode = "";
 const MAX_TRANSCRIPT_LINES = 500;
 let transcriptFinalItems = [];
 let transcriptInterimItem = "";
@@ -380,6 +386,12 @@ function normalizeTranscriptionLanguage(value) {
   const base = match[1].toLowerCase();
   if (!match[2]) return base;
   return base + "-" + match[2].toUpperCase();
+}
+
+function detectTranscriptionProviderFromRoomId(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (normalized.endsWith("-GLADIALIVE")) return "GLADIALIVE";
+  return "DEEPGRAMLIVE";
 }
 
 function getJoinTranscriptionLanguagePreference() {
@@ -769,6 +781,7 @@ function initializeJoinFields() {
 
   if (initialRoom) {
     roomEl.value = initialRoom;
+    transcriptionProvider = detectTranscriptionProviderFromRoomId(initialRoom);
     updateMeetingUrl(initialRoom, nameEl.value || "");
   }
 
@@ -1018,6 +1031,18 @@ function resolveTranscriptSourceName(payload = {}) {
     diarizedSpeakerId ||
     (sourcePeerId === peerId ? "you" : (peerNames.get(sourcePeerId) || sourcePeerId || "participant"))
   );
+}
+
+function resolveTranscriptSpeakerToken(payload = {}) {
+  const mappedPeerId = String(payload.mappedPeerId || "").trim();
+  const mappedPeerName = String(payload.mappedPeerName || "").trim();
+  const sourcePeerId = String(payload.peerId || "").trim();
+  const sourceName = resolveTranscriptSourceName(payload);
+
+  if (mappedPeerName) return mappedPeerName;
+  if (mappedPeerId) return peerNames.get(mappedPeerId) || mappedPeerName || sourceName;
+  if (sourcePeerId) return peerNames.get(sourcePeerId) || sourceName;
+  return sourceName;
 }
 
 function pushTranscriptLine(payload = {}) {
@@ -2143,6 +2168,121 @@ function buildTranscriptionAudioStream() {
   };
 }
 
+function downsampleToInt16Pcm(inputChannels, sourceSampleRate, targetSampleRate = 16000) {
+  if (!Array.isArray(inputChannels) || inputChannels.length === 0) {
+    return new Int16Array(0);
+  }
+  if (!Number.isFinite(sourceSampleRate) || sourceSampleRate <= 0) {
+    return new Int16Array(0);
+  }
+
+  const channelLength = inputChannels[0]?.length || 0;
+  if (!channelLength) return new Int16Array(0);
+  const ratio = sourceSampleRate / targetSampleRate;
+  const outputLength = Math.max(1, Math.round(channelLength / ratio));
+  const output = new Int16Array(outputLength);
+
+  for (let index = 0; index < outputLength; index += 1) {
+    const start = Math.floor(index * ratio);
+    const end = Math.min(channelLength, Math.floor((index + 1) * ratio) || start + 1);
+    let sum = 0;
+    let count = 0;
+    for (let sampleIndex = start; sampleIndex < end; sampleIndex += 1) {
+      let mixed = 0;
+      for (const channel of inputChannels) {
+        mixed += channel?.[sampleIndex] || 0;
+      }
+      mixed /= inputChannels.length;
+      sum += mixed;
+      count += 1;
+    }
+    const sample = count > 0 ? sum / count : 0;
+    const clamped = Math.max(-1, Math.min(1, sample));
+    output[index] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
+  }
+
+  return output;
+}
+
+function appendPcmBytes(chunk) {
+  if (!(chunk instanceof Int16Array) || chunk.length === 0) return;
+  const bytes = new Uint8Array(chunk.buffer.slice(chunk.byteOffset, chunk.byteOffset + chunk.byteLength));
+  transcriptionPcmPendingBytes.push(bytes);
+}
+
+function drainPcmBytes(minBytes = 3200) {
+  const totalBytes = transcriptionPcmPendingBytes.reduce((sum, part) => sum + part.length, 0);
+  if (totalBytes < minBytes) return null;
+  const merged = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const part of transcriptionPcmPendingBytes) {
+    merged.set(part, offset);
+    offset += part.length;
+  }
+  transcriptionPcmPendingBytes = [];
+  return merged;
+}
+
+async function uploadTranscriptionChunk(body) {
+  const url =
+    withBasePath("/api/transcription/chunk?roomId=") + encodeURIComponent(roomId) +
+    "&peerId=" + encodeURIComponent(peerId) +
+    "&language=" + encodeURIComponent(transcriptionLanguage) +
+    "&sessionId=" + encodeURIComponent(transcriptionRecorderSessionId) +
+    "&seq=" + transcriptionRecorderSeq++;
+  const uploadPromise = fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/octet-stream" },
+    body
+  })
+    .catch((error) => {
+      trace("warn", "transcription_upload_failed", {
+        sessionId: transcriptionRecorderSessionId,
+        seq: transcriptionRecorderSeq - 1,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      log("Transcription upload failed: " + String(error));
+    })
+    .finally(() => {
+      const idx = transcriptionUploadPending.indexOf(uploadPromise);
+      if (idx >= 0) transcriptionUploadPending.splice(idx, 1);
+    });
+  transcriptionUploadPending.push(uploadPromise);
+  return uploadPromise;
+}
+
+async function startGladiaTranscriptionCapture(mixed) {
+  const ac = ensureAudioContext();
+  const source = ac.createMediaStreamSource(mixed.stream);
+  const processor = ac.createScriptProcessor(4096, 2, 1);
+  const sinkGain = ac.createGain();
+  sinkGain.gain.value = 0;
+  transcriptionPcmPendingBytes = [];
+  transcriptionCaptureMode = "pcm";
+  transcriptionPcmSource = source;
+  transcriptionPcmProcessor = processor;
+  transcriptionPcmSinkGain = sinkGain;
+
+  processor.onaudioprocess = (event) => {
+    if (!transcriptionRecorderSessionId) return;
+    const inputBuffer = event.inputBuffer;
+    const channels = [];
+    for (let channelIndex = 0; channelIndex < inputBuffer.numberOfChannels; channelIndex += 1) {
+      channels.push(inputBuffer.getChannelData(channelIndex));
+    }
+    const pcmChunk = downsampleToInt16Pcm(channels, inputBuffer.sampleRate, 16000);
+    appendPcmBytes(pcmChunk);
+    const merged = drainPcmBytes(6400);
+    if (merged) {
+      void uploadTranscriptionChunk(merged);
+    }
+  };
+
+  source.connect(processor);
+  processor.connect(sinkGain);
+  sinkGain.connect(ac.destination);
+}
+
 async function startTranscriptionRecorder(recordingSessionId = "") {
   if (!transcriptionLanguage || transcriptionRecorder || !roomId || !peerId) return;
   if (!recordingSessionId) return;
@@ -2153,94 +2293,133 @@ async function startTranscriptionRecorder(recordingSessionId = "") {
     transcriptionRecorderSessionId = recordingSessionId;
     transcriptionRecorderSeq = 0;
     transcriptionUploadPending = [];
+    transcriptionCaptureMode = transcriptionProvider === "GLADIALIVE" ? "pcm" : "mediarecorder";
 
-    const preferredMimeType = "audio/webm;codecs=opus";
-    const mimeType = MediaRecorder.isTypeSupported(preferredMimeType) ? preferredMimeType : undefined;
-    transcriptionRecorder = mimeType
-      ? new MediaRecorder(mixed.stream, { mimeType })
-      : new MediaRecorder(mixed.stream);
-    trace("info", "transcription_recorder_created", {
-      sessionId: transcriptionRecorderSessionId,
-      mimeType: transcriptionRecorder.mimeType || mimeType || null,
-      trackKinds: mixed.stream.getTracks().map((track) => track.kind)
-    });
-
-    transcriptionRecorder.ondataavailable = async (event) => {
-      if (!event.data || !event.data.size) return;
-      trace("debug", "transcription_recorder_chunk", {
+    if (transcriptionProvider === "GLADIALIVE") {
+      trace("info", "transcription_pcm_started", {
         sessionId: transcriptionRecorderSessionId,
-        seq: transcriptionRecorderSeq,
-        size: event.data.size
+        provider: transcriptionProvider
       });
-      const url =
-        withBasePath("/api/transcription/chunk?roomId=") + encodeURIComponent(roomId) +
-        "&peerId=" + encodeURIComponent(peerId) +
-        "&language=" + encodeURIComponent(transcriptionLanguage) +
-        "&sessionId=" + encodeURIComponent(transcriptionRecorderSessionId) +
-        "&seq=" + transcriptionRecorderSeq++;
-      const uploadPromise = fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/octet-stream" },
-        body: event.data
-        })
-        .catch((error) => {
-          trace("warn", "transcription_upload_failed", {
-            sessionId: transcriptionRecorderSessionId,
-            seq: transcriptionRecorderSeq - 1,
-            error: error instanceof Error ? error.message : String(error)
-          });
-          log("Transcription upload failed: " + String(error));
-        })
-        .finally(() => {
-          const idx = transcriptionUploadPending.indexOf(uploadPromise);
-          if (idx >= 0) transcriptionUploadPending.splice(idx, 1);
-        });
-      transcriptionUploadPending.push(uploadPromise);
-    };
-
-    transcriptionRecorder.onstop = async () => {
-      trace("info", "transcription_recorder_stopped", {
-        sessionId: transcriptionRecorderSessionId
+      await startGladiaTranscriptionCapture(mixed);
+    } else {
+      const preferredMimeType = "audio/webm;codecs=opus";
+      const mimeType = MediaRecorder.isTypeSupported(preferredMimeType) ? preferredMimeType : undefined;
+      transcriptionRecorder = mimeType
+        ? new MediaRecorder(mixed.stream, { mimeType })
+        : new MediaRecorder(mixed.stream);
+      trace("info", "transcription_recorder_created", {
+        sessionId: transcriptionRecorderSessionId,
+        provider: transcriptionProvider,
+        mimeType: transcriptionRecorder.mimeType || mimeType || null,
+        trackKinds: mixed.stream.getTracks().map((track) => track.kind)
       });
-      if (transcriptionUploadPending.length) {
-        await Promise.allSettled([...transcriptionUploadPending]);
-      }
 
-      try {
-        await fetch(withBasePath("/api/transcription/finalize"), {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ roomId, peerId, sessionId: transcriptionRecorderSessionId })
+      transcriptionRecorder.ondataavailable = async (event) => {
+        if (!event.data || !event.data.size) return;
+        trace("debug", "transcription_recorder_chunk", {
+          sessionId: transcriptionRecorderSessionId,
+          seq: transcriptionRecorderSeq,
+          size: event.data.size
         });
-      } catch {}
+        await uploadTranscriptionChunk(event.data);
+      };
 
-      if (transcriptionAudioMixer) {
-        transcriptionAudioMixer.stop();
-        transcriptionAudioMixer = null;
-      }
+      transcriptionRecorder.onstop = async () => {
+        trace("info", "transcription_recorder_stopped", {
+          sessionId: transcriptionRecorderSessionId
+        });
+        if (transcriptionUploadPending.length) {
+          await Promise.allSettled([...transcriptionUploadPending]);
+        }
 
-      mixed.stream.getTracks().forEach((t) => {
         try {
-          t.stop();
+          await fetch(withBasePath("/api/transcription/finalize"), {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ roomId, peerId, sessionId: transcriptionRecorderSessionId })
+          });
         } catch {}
-      });
 
-      transcriptionRecorder = null;
-      transcriptionRecorderSessionId = "";
-      transcriptionUploadPending = [];
-    };
-    transcriptionRecorder.onerror = (event) => {
-      trace("error", "transcription_recorder_error", {
+        if (transcriptionAudioMixer) {
+          transcriptionAudioMixer.stop();
+          transcriptionAudioMixer = null;
+        }
+
+        mixed.stream.getTracks().forEach((t) => {
+          try {
+            t.stop();
+          } catch {}
+        });
+
+        transcriptionRecorder = null;
+        transcriptionRecorderSessionId = "";
+        transcriptionUploadPending = [];
+        transcriptionCaptureMode = "";
+      };
+      transcriptionRecorder.onerror = (event) => {
+        trace("error", "transcription_recorder_error", {
+          sessionId: transcriptionRecorderSessionId,
+          error: event?.error?.message || String(event?.error || "unknown")
+        });
+      };
+
+      transcriptionRecorder.start(1000);
+      trace("info", "transcription_recorder_started", {
         sessionId: transcriptionRecorderSessionId,
-        error: event?.error?.message || String(event?.error || "unknown")
+        timesliceMs: 1000,
+        provider: transcriptionProvider
       });
-    };
+    }
 
-    transcriptionRecorder.start(1000);
-    trace("info", "transcription_recorder_started", {
-      sessionId: transcriptionRecorderSessionId,
-      timesliceMs: 1000
-    });
+    if (transcriptionProvider === "GLADIALIVE") {
+      transcriptionRecorder = {
+        stop: async () => {
+          trace("info", "transcription_pcm_stopped", {
+            sessionId: transcriptionRecorderSessionId
+          });
+          const trailing = drainPcmBytes(1);
+          if (trailing) {
+            await uploadTranscriptionChunk(trailing);
+          }
+          if (transcriptionUploadPending.length) {
+            await Promise.allSettled([...transcriptionUploadPending]);
+          }
+          try {
+            await fetch(withBasePath("/api/transcription/finalize"), {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ roomId, peerId, sessionId: transcriptionRecorderSessionId })
+            });
+          } catch {}
+          try {
+            transcriptionPcmSource?.disconnect();
+          } catch {}
+          try {
+            transcriptionPcmProcessor?.disconnect();
+          } catch {}
+          try {
+            transcriptionPcmSinkGain?.disconnect();
+          } catch {}
+          transcriptionPcmSource = null;
+          transcriptionPcmProcessor = null;
+          transcriptionPcmSinkGain = null;
+          if (transcriptionAudioMixer) {
+            transcriptionAudioMixer.stop();
+            transcriptionAudioMixer = null;
+          }
+          mixed.stream.getTracks().forEach((t) => {
+            try {
+              t.stop();
+            } catch {}
+          });
+          transcriptionRecorder = null;
+          transcriptionRecorderSessionId = "";
+          transcriptionUploadPending = [];
+          transcriptionPcmPendingBytes = [];
+          transcriptionCaptureMode = "";
+        }
+      };
+    }
   } catch (error) {
     trace("error", "transcription_start_failed", {
       error: error instanceof Error ? error.message : String(error)
@@ -2567,6 +2746,7 @@ async function joinRoom() {
     roomId = generateRoomName();
     roomEl.value = roomId;
   }
+  transcriptionProvider = detectTranscriptionProviderFromRoomId(roomId);
 
   const displayName = nameEl.value.trim();
   if (!displayName) {
@@ -2894,11 +3074,7 @@ async function joinRoom() {
           return;
         }
         const speaker =
-          payload.data?.mappedPeerId ??
-          payload.data?.mappedPeerName ??
-          payload.data?.speakerId ??
-          payload.data?.peerId ??
-          "speaker";
+          resolveTranscriptSpeakerToken(payload.data || {}) || "speaker";
         const time = typeof payload.data?.time === "number" ? payload.data.time : Date.now();
         const labeled = `[${language}] ${resolveTranscriptSourceName(payload.data || {})}: ${text}`;
         await postLiveTranscriptLine(labeled, speaker, time);

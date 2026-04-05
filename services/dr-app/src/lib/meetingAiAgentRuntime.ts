@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { postEventHubEvent } from "@/lib/eventHub";
+import { isLiveTranscriptionProvider } from "@/lib/transcriptionProviders";
 
 function hashTranscriptWindow(text: string) {
   return crypto.createHash("sha256").update(text).digest("hex");
@@ -102,7 +103,7 @@ export async function maybeRunMeetingAiAgents(meetingId: string) {
   });
 
   if (!meeting) return { ok: false as const, reason: "missing_meeting" as const };
-  if (meeting.transcriptionProvider !== "DEEPGRAMLIVE") {
+  if (!isLiveTranscriptionProvider(meeting.transcriptionProvider)) {
     return { ok: false as const, reason: "provider_not_supported" as const };
   }
   if (!meeting.isActive) {

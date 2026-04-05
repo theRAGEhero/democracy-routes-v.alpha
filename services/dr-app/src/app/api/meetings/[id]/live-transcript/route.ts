@@ -45,17 +45,26 @@ function extractSpeakerFromLabeledText(text: string) {
 function normalizeLiveLineSpeaker(line: LiveLine) {
   const rawSpeaker = line.speaker;
   const speakerText = typeof rawSpeaker === "string" ? rawSpeaker.trim() : rawSpeaker;
+  const extracted = extractSpeakerFromLabeledText(line.text);
   if (
     typeof speakerText === "string" &&
-    /^speaker[_-]/i.test(speakerText)
+    (/^speaker[_-]/i.test(speakerText) || /^peer[_-]/i.test(speakerText))
   ) {
-    const extracted = extractSpeakerFromLabeledText(line.text);
     if (extracted) {
       return {
         ...line,
         speaker: extracted
       };
     }
+  }
+  if (
+    (!speakerText || speakerText === "speaker") &&
+    extracted
+  ) {
+    return {
+      ...line,
+      speaker: extracted
+    };
   }
   return line;
 }
@@ -68,6 +77,10 @@ export async function GET(
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const { searchParams } = new URL(request.url);
+  const afterLineId = searchParams.get("after");
+  const afterAgentId = searchParams.get("afterAgent");
 
   const meeting = await prisma.meeting.findUnique({
     where: { id: params.id },
@@ -107,7 +120,7 @@ export async function GET(
   if (!meeting.transcript?.transcriptJson) {
     return NextResponse.json({
       lines: [],
-      agentMessages: meeting.aiAgentMessages.map((message) => ({
+      agentMessages: (afterAgentId ? [] : meeting.aiAgentMessages).map((message) => ({
         id: message.id,
         text: message.text,
         createdAt: message.createdAt.toISOString(),
@@ -123,12 +136,26 @@ export async function GET(
 
   try {
     const payload = JSON.parse(meeting.transcript.transcriptJson) as TranscriptPayload;
-    const lines = Array.isArray(payload.liveLines)
+    const allLines = Array.isArray(payload.liveLines)
       ? payload.liveLines.map(normalizeLiveLineSpeaker)
       : [];
+    const lines =
+      afterLineId && allLines.length
+        ? (() => {
+            const index = allLines.findIndex((line) => line.id === afterLineId);
+            return index >= 0 ? allLines.slice(index + 1) : allLines;
+          })()
+        : allLines;
+    const agentMessages =
+      afterAgentId && meeting.aiAgentMessages.length
+        ? (() => {
+            const index = meeting.aiAgentMessages.findIndex((message) => message.id === afterAgentId);
+            return index >= 0 ? meeting.aiAgentMessages.slice(index + 1) : meeting.aiAgentMessages;
+          })()
+        : meeting.aiAgentMessages;
     return NextResponse.json({
       lines,
-      agentMessages: meeting.aiAgentMessages.map((message) => ({
+      agentMessages: agentMessages.map((message) => ({
         id: message.id,
         text: message.text,
         createdAt: message.createdAt.toISOString(),
@@ -143,7 +170,7 @@ export async function GET(
   } catch {
     return NextResponse.json({
       lines: [],
-      agentMessages: meeting.aiAgentMessages.map((message) => ({
+      agentMessages: (afterAgentId ? [] : meeting.aiAgentMessages).map((message) => ({
         id: message.id,
         text: message.text,
         createdAt: message.createdAt.toISOString(),
@@ -247,17 +274,17 @@ export async function POST(
   await prisma.meetingTranscript.upsert({
     where: { meetingId: meeting.id },
     update: {
-      provider: "DEEPGRAMLIVE",
+      provider: meeting.transcriptionProvider,
       roundId: meeting.transcriptionRoundId ?? null,
       transcriptJson,
-      transcriptText: updatedLines.map((line) => line.text).join(" ")
+      transcriptText: [transcriptRecord?.transcriptText, newLine.text].filter(Boolean).join(" ").trim()
     },
     create: {
       meetingId: meeting.id,
-      provider: "DEEPGRAMLIVE",
+      provider: meeting.transcriptionProvider,
       roundId: meeting.transcriptionRoundId ?? null,
       transcriptJson,
-      transcriptText: updatedLines.map((line) => line.text).join(" ")
+      transcriptText: newLine.text
     }
   });
 

@@ -5,6 +5,7 @@ import { createMeetingSchema } from "@/lib/validators";
 import { sendMail } from "@/lib/mailer";
 import crypto from "crypto";
 import { checkRateLimit, getRequestIp } from "@/lib/rateLimit";
+import { isLiveTranscriptionProvider } from "@/lib/transcriptionProviders";
 
 function generateToken() {
   return crypto.randomBytes(24).toString("base64url");
@@ -183,7 +184,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     capacity,
     aiAgentIds
   } = parsed.data;
-  const effectiveAiAgentIds = transcriptionProvider === "DEEPGRAMLIVE" ? aiAgentIds ?? [] : [];
+  const effectiveAiAgentIds = isLiveTranscriptionProvider(transcriptionProvider) ? aiAgentIds ?? [] : [];
 
   if (startTime && !date && !startAtRaw) {
     return NextResponse.json({ error: "Select a date for the start/end time." }, { status: 400 });

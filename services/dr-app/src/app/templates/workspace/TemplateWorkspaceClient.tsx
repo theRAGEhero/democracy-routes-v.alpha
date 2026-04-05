@@ -1008,6 +1008,7 @@ export function TemplateWorkspaceClient({
                       >
                         <option value="DEEPGRAM">Deepgram</option>
                         <option value="DEEPGRAMLIVE">Deepgram Live</option>
+                        <option value="GLADIALIVE">Gladia Live</option>
                         <option value="VOSK">Vosk</option>
                         <option value="WHISPERREMOTE">Whisper Remote</option>
                       </select>
@@ -1407,6 +1408,7 @@ export function TemplateWorkspaceClient({
                 >
                   <option value="DEEPGRAM">Deepgram</option>
                   <option value="DEEPGRAMLIVE">Deepgram Live</option>
+                  <option value="GLADIALIVE">Gladia Live</option>
                   <option value="VOSK">Vosk</option>
                   <option value="WHISPERREMOTE">Whisper Remote</option>
                   <option value="AUTOREMOTE">Auto Remote</option>

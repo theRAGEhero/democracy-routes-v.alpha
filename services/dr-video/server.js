@@ -30,6 +30,10 @@ const DEEPGRAM_SMART_FORMAT = String(process.env.DEEPGRAM_SMART_FORMAT || "true"
 const DEEPGRAM_DIARIZE = String(process.env.DEEPGRAM_DIARIZE || "true") === "true";
 const DEEPGRAM_UTTERANCES = String(process.env.DEEPGRAM_UTTERANCES || "true") === "true";
 const DEEPGRAM_KEEPALIVE_MS = Number(process.env.DEEPGRAM_KEEPALIVE_MS || 5000);
+const GLADIA_API_KEY = String(process.env.GLADIA_API_KEY || "").trim();
+const GLADIA_MODEL = String(process.env.GLADIA_MODEL || "solaria-1").trim();
+const GLADIA_REGION = String(process.env.GLADIA_REGION || "").trim();
+const GLADIA_KEEPALIVE_MS = Number(process.env.GLADIA_KEEPALIVE_MS || 15000);
 
 const LOG_DIR = path.resolve(__dirname, process.env.LOG_DIR || "./logs");
 const LOG_FILE = process.env.LOG_FILE || "dr-video.log";
@@ -214,6 +218,18 @@ const logger = {
   error: (message, meta) => writeLog("error", message, meta),
   fatal: (message, meta) => writeLog("fatal", message, meta)
 };
+
+function normalizeTranscriptionProvider(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (normalized === "GLADIALIVE") return "GLADIALIVE";
+  return "DEEPGRAMLIVE";
+}
+
+function getTranscriptionProviderForRoom(roomId) {
+  const normalized = String(roomId || "").trim().toUpperCase();
+  if (normalized.endsWith("-GLADIALIVE")) return "GLADIALIVE";
+  return "DEEPGRAMLIVE";
+}
 
 function traceRecTrans(event, meta = {}) {
   if (!REC_TRANS_TRACE) return;
@@ -1111,6 +1127,103 @@ function mapDiarizedSpeakerToPeer(session, speakerInfo) {
   };
 }
 
+function mapTranscriptWindowToPeer(session, { speakerId = "", startSec, endSec }) {
+  const normalizedSpeakerId = String(speakerId || "").trim();
+  const room = rooms.get(session.roomId);
+  const connectedPeers = room
+    ? Array.from(room.peers.values()).filter((peer) => peer && peer.connected !== false)
+    : [];
+
+  if (connectedPeers.length === 1) {
+    const onlyPeer = connectedPeers[0];
+    if (onlyPeer?.id) {
+      if (onlyPeer.name) {
+        session.peerNameById[onlyPeer.id] = onlyPeer.name;
+      }
+      return {
+        mappedPeerId: onlyPeer.id,
+        mappedPeerName: onlyPeer.name || null,
+        mappingConfidence: 1,
+        mappingMethod: "single_participant"
+      };
+    }
+  }
+
+  if (!Number.isFinite(startSec) || !Number.isFinite(endSec)) {
+    return { mappedPeerId: null, mappedPeerName: null, mappingConfidence: 0, mappingMethod: "none" };
+  }
+
+  const segStartMs = session.startedAtMs + startSec * 1000;
+  const segEndMs = session.startedAtMs + endSec * 1000;
+  trimPeerSpeechWindows(session, Date.now());
+  let counts = collectPeerOverlapScores(session, segStartMs, segEndMs);
+  let mappingMethod = "voice_overlap";
+
+  if (!counts.size) {
+    const fromMs = segStartMs - 600;
+    const toMs = segEndMs + 600;
+    counts = new Map();
+    for (const ev of session.activeSpeakerEvents) {
+      if (ev.tsMs < fromMs || ev.tsMs > toMs) continue;
+      counts.set(ev.peerId, (counts.get(ev.peerId) || 0) + 1);
+    }
+    mappingMethod = counts.size ? "active_speaker_fallback" : "none";
+  }
+
+  if (!counts.size) {
+    return { mappedPeerId: null, mappedPeerName: null, mappingConfidence: 0, mappingMethod };
+  }
+
+  let winnerPeerId = null;
+  let winnerVotes = -1;
+  let totalVotes = 0;
+  for (const [peerId, votes] of counts.entries()) {
+    totalVotes += votes;
+    if (votes > winnerVotes) {
+      winnerVotes = votes;
+      winnerPeerId = peerId;
+    }
+  }
+
+  if (!winnerPeerId || winnerVotes <= 0) {
+    return { mappedPeerId: null, mappedPeerName: null, mappingConfidence: 0, mappingMethod };
+  }
+
+  let mappedPeerId = winnerPeerId;
+  let confidence = winnerVotes / Math.max(totalVotes, 1);
+
+  if (normalizedSpeakerId) {
+    const perSpeakerVotes = session.speakerPeerVotes[normalizedSpeakerId] || {};
+    perSpeakerVotes[winnerPeerId] = (perSpeakerVotes[winnerPeerId] || 0) + winnerVotes;
+    session.speakerPeerVotes[normalizedSpeakerId] = perSpeakerVotes;
+
+    let stablePeerId = null;
+    let stableVotes = -1;
+    let stableTotal = 0;
+    for (const [peerId, votes] of Object.entries(perSpeakerVotes)) {
+      stableTotal += votes;
+      if (votes > stableVotes) {
+        stableVotes = votes;
+        stablePeerId = peerId;
+      }
+    }
+    mappedPeerId = stablePeerId || winnerPeerId;
+    confidence = stableTotal > 0 ? stableVotes / stableTotal : confidence;
+  }
+
+  const mappedPeer = mappedPeerId ? peers.get(mappedPeerId) : null;
+  if (mappedPeerId && mappedPeer?.name) {
+    session.peerNameById[mappedPeerId] = mappedPeer.name;
+  }
+
+  return {
+    mappedPeerId,
+    mappedPeerName: mappedPeer ? mappedPeer.name : null,
+    mappingConfidence: confidence,
+    mappingMethod
+  };
+}
+
 const SUPPORTED_TRANSCRIPTION_LANGUAGES = new Set([
   "multi",
   "ar", "ar-AE", "ar-SA", "ar-QA", "ar-KW", "ar-SY", "ar-LB", "ar-PS", "ar-JO", "ar-EG", "ar-SD", "ar-TD", "ar-MA", "ar-DZ", "ar-TN", "ar-IQ", "ar-IR",
@@ -1145,6 +1258,76 @@ function buildDeepgramListenUrl(language) {
   params.set("diarize", String(DEEPGRAM_DIARIZE));
   params.set("utterances", String(DEEPGRAM_UTTERANCES));
   return "wss://api.deepgram.com/v1/listen?" + params.toString();
+}
+
+async function createGladiaLiveSession(language, metadata = {}) {
+  if (!GLADIA_API_KEY) {
+    throw new Error("GLADIA_API_KEY is not configured");
+  }
+
+  const url = new URL("https://api.gladia.io/v2/live");
+  if (GLADIA_REGION) {
+    url.searchParams.set("region", GLADIA_REGION);
+  }
+
+  const normalizedLanguage = String(language || "").trim().toLowerCase();
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-gladia-key": GLADIA_API_KEY
+    },
+    body: JSON.stringify({
+      encoding: "wav/pcm",
+      bit_depth: 16,
+      sample_rate: 16000,
+      channels: 1,
+      model: GLADIA_MODEL,
+      endpointing: 0.2,
+      maximum_duration_without_endpointing: 8,
+      language_config:
+        normalizedLanguage === "multi"
+          ? { languages: [], code_switching: true }
+          : { languages: normalizedLanguage ? [normalizedLanguage] : [], code_switching: false },
+      realtime_processing: {
+        custom_vocabulary: false,
+        custom_spelling: false,
+        translation: false,
+        named_entity_recognition: false,
+        sentiment_analysis: false
+      },
+      post_processing: {
+        summarization: false,
+        chapterization: false
+      },
+      messages_config: {
+        receive_partial_transcripts: true,
+        receive_final_transcripts: true,
+        receive_speech_events: true,
+        receive_pre_processing_events: false,
+        receive_realtime_processing_events: false,
+        receive_post_processing_events: false,
+        receive_acknowledgments: true,
+        receive_errors: true,
+        receive_lifecycle_events: true
+      },
+      callback: false,
+      custom_metadata: metadata
+    })
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.error || payload?.message || "Failed to initialize Gladia live session");
+  }
+
+  const wsUrl = String(payload?.url || "").trim();
+  const liveSessionId = String(payload?.id || "").trim();
+  if (!wsUrl || !liveSessionId) {
+    throw new Error("Gladia live session did not return url/id");
+  }
+
+  return { wsUrl, liveSessionId };
 }
 
 function formatTimestamp(seconds) {
@@ -1779,8 +1962,9 @@ function persistTranscriptionSession(session, reason = "manual_stop") {
       roomId,
       recordingSessionId,
       ownerPeerId: session.ownerPeerId,
+      provider: normalizeTranscriptionProvider(session.provider),
       language: session.language,
-      model: DEEPGRAM_MODEL,
+      model: session.model || DEEPGRAM_MODEL,
       createdAt: session.createdAt,
       updatedAt: new Date().toISOString(),
       closedReason: reason,
@@ -1794,7 +1978,7 @@ function persistTranscriptionSession(session, reason = "manual_stop") {
     const deliberationPayload = createDeliberationOntologyFromWords({
       recordingSessionId,
       language: session.language,
-      model: DEEPGRAM_MODEL,
+      model: session.model || DEEPGRAM_MODEL,
       confidence: avgConfidence,
       words: Array.isArray(session.finalWords) ? session.finalWords : [],
       processedAt: new Date().toISOString(),
@@ -1836,7 +2020,7 @@ function persistTranscriptionSession(session, reason = "manual_stop") {
       sessionId: recordingSessionId,
       meetingId,
       runId: recordingSessionId,
-      provider: "DEEPGRAMLIVE",
+      provider: normalizeTranscriptionProvider(session.provider),
       language: rawPayload.language || null,
       status: "finalized",
       startedAt: rawPayload.createdAt || null,
@@ -1885,6 +2069,11 @@ function stopTranscriptionSession(roomId, reason = "manual_stop", recordingSessi
 
   if (session.ws && (session.ws.readyState === WebSocket.OPEN || session.ws.readyState === WebSocket.CONNECTING)) {
     try {
+      if (session.provider === "GLADIALIVE" && session.ws.readyState === WebSocket.OPEN) {
+        session.ws.send(JSON.stringify({ type: "stop_recording" }));
+      }
+    } catch {}
+    try {
       session.ws.close(1000, String(reason || "manual_stop").slice(0, 120));
     } catch {}
   }
@@ -1906,9 +2095,13 @@ function stopTranscriptionSession(roomId, reason = "manual_stop", recordingSessi
   });
 }
 
-function getOrCreateTranscriptionSession(roomId, ownerPeerId, languageRaw, recordingSessionIdRaw = "") {
-  if (!DEEPGRAM_API_KEY) {
+async function getOrCreateTranscriptionSession(roomId, ownerPeerId, languageRaw, recordingSessionIdRaw = "") {
+  const provider = getTranscriptionProviderForRoom(roomId);
+  if (provider === "DEEPGRAMLIVE" && !DEEPGRAM_API_KEY) {
     throw new Error("DEEPGRAM_API_KEY is not configured");
+  }
+  if (provider === "GLADIALIVE" && !GLADIA_API_KEY) {
+    throw new Error("GLADIA_API_KEY is not configured");
   }
 
   const language = normalizeTranscriptionLanguage(languageRaw);
@@ -1925,9 +2118,12 @@ function getOrCreateTranscriptionSession(roomId, ownerPeerId, languageRaw, recor
   }
 
   const existing = transcriptionSessions.get(roomId);
-  if (existing && existing.language === language && existing.recordingSessionId === recordingSessionId) {
-    // Single Deepgram call strategy:
-    // keep one room-level DG websocket for the whole recording run even if owner changes.
+  if (
+    existing &&
+    existing.provider === provider &&
+    existing.language === language &&
+    existing.recordingSessionId === recordingSessionId
+  ) {
     if (ownerPeerId && ownerPeerId !== existing.ownerPeerId) {
       existing.ownerPeerId = ownerPeerId;
       logger.info("transcription_session_owner_updated", {
@@ -1943,21 +2139,38 @@ function getOrCreateTranscriptionSession(roomId, ownerPeerId, languageRaw, recor
     stopTranscriptionSession(roomId, "replaced");
   }
 
-  const sessionId = createId("dg");
-  const wsUrl = buildDeepgramListenUrl(language);
-  const dgWs = new WebSocket(wsUrl, {
-    headers: {
-      Authorization: "Token " + DEEPGRAM_API_KEY
-    }
-  });
+  let sessionId = createId(provider === "GLADIALIVE" ? "gl" : "dg");
+  let wsUrl = "";
+  let ws;
+  let model = provider === "GLADIALIVE" ? GLADIA_MODEL : DEEPGRAM_MODEL;
+
+  if (provider === "GLADIALIVE") {
+    const gladia = await createGladiaLiveSession(language, {
+      roomId,
+      recordingSessionId,
+      ownerPeerId: String(ownerPeerId || "")
+    });
+    sessionId = gladia.liveSessionId;
+    wsUrl = gladia.wsUrl;
+    ws = new WebSocket(wsUrl);
+  } else {
+    wsUrl = buildDeepgramListenUrl(language);
+    ws = new WebSocket(wsUrl, {
+      headers: {
+        Authorization: "Token " + DEEPGRAM_API_KEY
+      }
+    });
+  }
 
   const session = {
     sessionId,
+    provider,
+    model,
     roomId,
     ownerPeerId,
     recordingSessionId,
     language,
-    ws: dgWs,
+    ws,
     queue: [],
     createdAt: new Date().toISOString(),
     startedAtMs: Date.now(),
@@ -1984,12 +2197,12 @@ function getOrCreateTranscriptionSession(roomId, ownerPeerId, languageRaw, recor
     language
   });
 
-  dgWs.on("open", () => {
+  ws.on("open", () => {
     session.ready = true;
     if (session.queue.length > 0) {
       for (const chunk of session.queue.splice(0)) {
         try {
-          dgWs.send(chunk);
+          ws.send(chunk);
         } catch {}
       }
     }
@@ -1999,7 +2212,8 @@ function getOrCreateTranscriptionSession(roomId, ownerPeerId, languageRaw, recor
       sessionId,
       ownerPeerId,
       language,
-      model: DEEPGRAM_MODEL
+      provider,
+      model
     });
     traceRecTrans("transcription_session_open", {
       roomId,
@@ -2011,7 +2225,7 @@ function getOrCreateTranscriptionSession(roomId, ownerPeerId, languageRaw, recor
     });
   });
 
-  dgWs.on("message", (payloadRaw) => {
+  ws.on("message", (payloadRaw) => {
     let payload;
     try {
       payload = JSON.parse(String(payloadRaw));
@@ -2019,78 +2233,145 @@ function getOrCreateTranscriptionSession(roomId, ownerPeerId, languageRaw, recor
       return;
     }
 
-    if (payload && payload.type === "Error") {
+    if (provider === "DEEPGRAMLIVE" && payload && payload.type === "Error") {
       logger.warn("deepgram_error", { roomId, sessionId, error: payload.description || payload.message || "unknown" });
+      return;
+    }
+    if (provider === "GLADIALIVE" && payload?.error) {
+      logger.warn("gladia_error", { roomId, sessionId, error: payload.error?.message || payload.error || "unknown" });
       return;
     }
 
     session.rawEvents.push(payload);
 
-    const alt = payload && payload.channel && payload.channel.alternatives ? payload.channel.alternatives[0] : null;
-    const text = String((alt && alt.transcript) || "").trim();
-    if (!text) return;
+    if (provider === "GLADIALIVE") {
+      if (payload?.type !== "transcript") return;
+      const utterance = payload?.data?.utterance || {};
+      const text = String(utterance?.text || "").trim();
+      if (!text) return;
+      const startSec = Number(utterance?.start || 0);
+      const endSec = Number(utterance?.end || startSec || 0);
+      const channel = Number.isInteger(utterance?.channel) ? Number(utterance.channel) : 0;
+      const speakerId = `speaker_${channel}`;
+      const mapping = mapTranscriptWindowToPeer(session, { speakerId, startSec, endSec });
+      const isFinal = Boolean(payload?.data?.is_final ?? payload?.data?.isFinal ?? payload?.is_final ?? true);
+      const confidence = Number.isFinite(Number(utterance?.confidence)) ? Number(utterance.confidence) : null;
+      const transcriptLanguage = String(utterance?.language || language || "").trim() || language;
 
-    const isFinal = Boolean(payload && (payload.is_final || payload.speech_final));
-    const speakerInfo = extractSpeakerFromAlternative(alt);
-    const mapping = mapDiarizedSpeakerToPeer(session, speakerInfo);
-    session.lastTranscriptAt = new Date().toISOString();
-    session.entries.push({
-      text,
-      isFinal,
-      confidence: alt && typeof alt.confidence === "number" ? alt.confidence : null,
-      speakerNumber: speakerInfo.speakerNumber,
-      speakerId: speakerInfo.speakerId,
-      mappedPeerId: mapping.mappedPeerId,
-      mappedPeerName: mapping.mappedPeerName,
-      mappingConfidence: mapping.mappingConfidence,
-      startSec: speakerInfo.startSec,
-      endSec: speakerInfo.endSec,
-      ts: session.lastTranscriptAt
-    });
+      session.lastTranscriptAt = new Date().toISOString();
+      session.entries.push({
+        text,
+        isFinal,
+        confidence,
+        speakerNumber: channel,
+        speakerId,
+        mappedPeerId: mapping.mappedPeerId,
+        mappedPeerName: mapping.mappedPeerName,
+        mappingConfidence: mapping.mappingConfidence,
+        startSec,
+        endSec,
+        ts: session.lastTranscriptAt
+      });
 
-    if (isFinal && Array.isArray(alt?.words) && alt.words.length > 0) {
-      const normalizedWords = alt.words
-        .map((w) => ({
-          word: String(w?.word || "").trim(),
-          start: Number(w?.start || 0),
-          end: Number(w?.end || 0),
-          confidence: Number(w?.confidence || 0),
-          speaker: Number.isInteger(w?.speaker) ? Number(w.speaker) : speakerInfo.speakerNumber ?? 0
-        }))
-        .filter((w) => Boolean(w.word));
-      if (normalizedWords.length > 0) {
-        session.finalWords.push(...normalizedWords);
+      if (isFinal && Array.isArray(utterance?.words) && utterance.words.length > 0) {
+        const normalizedWords = utterance.words
+          .map((w) => ({
+            word: String(w?.word || "").trim(),
+            start: Number(w?.start || 0),
+            end: Number(w?.end || 0),
+            confidence: Number(w?.confidence || 0),
+            speaker: channel
+          }))
+          .filter((w) => Boolean(w.word));
+        if (normalizedWords.length > 0) {
+          session.finalWords.push(...normalizedWords);
+        }
       }
+
+      broadcastToRoom(roomId, "transcription", {
+        text,
+        isFinal,
+        confidence,
+        speakerNumber: channel,
+        speakerId,
+        mappedPeerId: mapping.mappedPeerId,
+        mappedPeerName: mapping.mappedPeerName,
+        mappingConfidence: mapping.mappingConfidence,
+        startSec,
+        endSec,
+        language: transcriptLanguage,
+        peerId: session.ownerPeerId,
+        ts: session.lastTranscriptAt
+      });
+    } else {
+      const alt = payload && payload.channel && payload.channel.alternatives ? payload.channel.alternatives[0] : null;
+      const text = String((alt && alt.transcript) || "").trim();
+      if (!text) return;
+
+      const isFinal = Boolean(payload && (payload.is_final || payload.speech_final));
+      const speakerInfo = extractSpeakerFromAlternative(alt);
+      const mapping = mapDiarizedSpeakerToPeer(session, speakerInfo);
+      session.lastTranscriptAt = new Date().toISOString();
+      session.entries.push({
+        text,
+        isFinal,
+        confidence: alt && typeof alt.confidence === "number" ? alt.confidence : null,
+        speakerNumber: speakerInfo.speakerNumber,
+        speakerId: speakerInfo.speakerId,
+        mappedPeerId: mapping.mappedPeerId,
+        mappedPeerName: mapping.mappedPeerName,
+        mappingConfidence: mapping.mappingConfidence,
+        startSec: speakerInfo.startSec,
+        endSec: speakerInfo.endSec,
+        ts: session.lastTranscriptAt
+      });
+
+      if (isFinal && Array.isArray(alt?.words) && alt.words.length > 0) {
+        const normalizedWords = alt.words
+          .map((w) => ({
+            word: String(w?.word || "").trim(),
+            start: Number(w?.start || 0),
+            end: Number(w?.end || 0),
+            confidence: Number(w?.confidence || 0),
+            speaker: Number.isInteger(w?.speaker) ? Number(w.speaker) : speakerInfo.speakerNumber ?? 0
+          }))
+          .filter((w) => Boolean(w.word));
+        if (normalizedWords.length > 0) {
+          session.finalWords.push(...normalizedWords);
+        }
+      }
+
+      broadcastToRoom(roomId, "transcription", {
+        text,
+        isFinal,
+        confidence: alt && typeof alt.confidence === "number" ? alt.confidence : null,
+        speakerNumber: speakerInfo.speakerNumber,
+        speakerId: speakerInfo.speakerId,
+        mappedPeerId: mapping.mappedPeerId,
+        mappedPeerName: mapping.mappedPeerName,
+        mappingConfidence: mapping.mappingConfidence,
+        startSec: speakerInfo.startSec,
+        endSec: speakerInfo.endSec,
+        language,
+        peerId: session.ownerPeerId,
+        ts: session.lastTranscriptAt
+      });
     }
 
-    broadcastToRoom(roomId, "transcription", {
-      text,
-      isFinal,
-      confidence: alt && typeof alt.confidence === "number" ? alt.confidence : null,
-      speakerNumber: speakerInfo.speakerNumber,
-      speakerId: speakerInfo.speakerId,
-      mappedPeerId: mapping.mappedPeerId,
-      mappedPeerName: mapping.mappedPeerName,
-      mappingConfidence: mapping.mappingConfidence,
-      startSec: speakerInfo.startSec,
-      endSec: speakerInfo.endSec,
-      language,
-      peerId: session.ownerPeerId,
-      ts: session.lastTranscriptAt
-    });
-
+    const latestEntry = session.entries[session.entries.length - 1];
     logger.debug("transcription_line", {
       roomId,
       sessionId,
       ownerPeerId: session.ownerPeerId,
       language,
-      isFinal,
-      mappedPeerId: mapping.mappedPeerId,
-      chars: text.length
+      provider,
+      isFinal: Boolean(latestEntry?.isFinal),
+      mappedPeerId: latestEntry?.mappedPeerId || null,
+      chars: String(latestEntry?.text || "").length
     });
   });
 
-  dgWs.on("close", (code, reasonBuffer) => {
+  ws.on("close", (code, reasonBuffer) => {
     if (session.keepAliveTimer) clearInterval(session.keepAliveTimer);
     const reason = String(reasonBuffer || "");
 
@@ -2117,22 +2398,27 @@ function getOrCreateTranscriptionSession(roomId, ownerPeerId, languageRaw, recor
     });
   });
 
-  dgWs.on("error", (error) => {
+  ws.on("error", (error) => {
     logger.warn("transcription_session_error", {
       roomId,
       sessionId,
       ownerPeerId: session.ownerPeerId,
       language,
+      provider,
       error: error instanceof Error ? error.message : String(error)
     });
   });
 
   session.keepAliveTimer = setInterval(() => {
-    if (dgWs.readyState !== WebSocket.OPEN) return;
+    if (ws.readyState !== WebSocket.OPEN) return;
     try {
-      dgWs.send(JSON.stringify({ type: "KeepAlive" }));
+      if (provider === "GLADIALIVE") {
+        ws.ping();
+      } else {
+        ws.send(JSON.stringify({ type: "KeepAlive" }));
+      }
     } catch {}
-  }, Math.max(1000, DEEPGRAM_KEEPALIVE_MS));
+  }, Math.max(1000, provider === "GLADIALIVE" ? GLADIA_KEEPALIVE_MS : DEEPGRAM_KEEPALIVE_MS));
 
   return session;
 }
@@ -2142,10 +2428,11 @@ function pushTranscriptionChunk(session, chunk) {
 
   if (session.ws.readyState === WebSocket.OPEN) {
     session.ws.send(chunk);
-    traceRecTrans("transcription_chunk_sent_to_deepgram", {
+    traceRecTrans("transcription_chunk_sent", {
       roomId: session.roomId,
       sessionId: session.sessionId,
       recordingSessionId: session.recordingSessionId,
+      provider: session.provider,
       bytes: chunk.length,
       queuedChunks: session.queue.length
     });
@@ -2482,15 +2769,19 @@ app.post("/api/record/finalize", express.json(), (req, res) => {
   });
 });
 
-app.post("/api/transcription/chunk", (req, res) => {
+app.post("/api/transcription/chunk", async (req, res) => {
   const roomId = String(req.query.roomId || "").trim();
   const peerId = String(req.query.peerId || "").trim();
   const recordingSessionIdRaw = String(req.query.sessionId || "").trim();
   const languageRaw = String(req.query.language || req.query.transcriptionLanguage || "").trim();
   const language = normalizeTranscriptionLanguage(languageRaw);
+  const provider = getTranscriptionProviderForRoom(roomId);
 
-  if (!DEEPGRAM_API_KEY) {
+  if (provider === "DEEPGRAMLIVE" && !DEEPGRAM_API_KEY) {
     return json(res, 503, { error: "DEEPGRAM_API_KEY is not configured" });
+  }
+  if (provider === "GLADIALIVE" && !GLADIA_API_KEY) {
+    return json(res, 503, { error: "GLADIA_API_KEY is not configured" });
   }
 
   if (!roomId || !peerId || !language || !recordingSessionIdRaw) {
@@ -2520,7 +2811,7 @@ app.post("/api/transcription/chunk", (req, res) => {
   }
 
   try {
-    const session = getOrCreateTranscriptionSession(roomId, peerId, language, recordingSessionId);
+    const session = await getOrCreateTranscriptionSession(roomId, peerId, language, recordingSessionId);
     room.recordingState.transcriptionLanguage = session.language;
     pushTranscriptionChunk(session, req.body);
     traceRecTrans("transcription_chunk_accepted", {
@@ -2529,7 +2820,8 @@ app.post("/api/transcription/chunk", (req, res) => {
       peerId,
       recordingSessionId,
       language,
-      deepgramSessionId: session.sessionId,
+      provider,
+      transcriptionSessionId: session.sessionId,
       queued: !session.ready,
       bytes: req.body.length
     });

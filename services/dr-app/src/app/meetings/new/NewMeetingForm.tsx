@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { logClientError } from "@/lib/clientLog";
+import { isLiveTranscriptionProvider } from "@/lib/transcriptionProviders";
 
 type DataspaceOption = {
   id: string;
@@ -43,7 +44,7 @@ const TRANSCRIPTION_PROVIDER_GROUPS = [
     key: "live",
     title: "Live transcription",
     description: "Transcription happens during the meeting.",
-    providers: [["DEEPGRAMLIVE", "Deepgram Live"]]
+    providers: [["DEEPGRAMLIVE", "Deepgram Live"], ["GLADIALIVE", "Gladia Live"]]
   },
   {
     key: "post",
@@ -534,7 +535,7 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
               ))}
             </div>
             <p className="mt-2 text-xs text-slate-500">
-              Live transcription is available only with Deepgram Live. All other options process the meeting after the call.
+              Live transcription is available with Deepgram Live and Gladia Live. All other options process the meeting after the call.
             </p>
           </div>
 
@@ -588,9 +589,9 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
             Invite AI agents as meeting participants.
           </span>
         </div>
-        {provider !== "DEEPGRAMLIVE" ? (
+        {!isLiveTranscriptionProvider(provider) ? (
           <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-900">
-            AI participants are currently active only for Deepgram Live meetings.
+            AI participants are currently active only for live-transcribed meetings.
           </div>
         ) : null}
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -625,7 +626,7 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
                   <input
                     type="checkbox"
                     checked={checked}
-                    disabled={provider !== "DEEPGRAMLIVE"}
+                    disabled={!isLiveTranscriptionProvider(provider)}
                     onChange={(event) =>
                       setSelectedAiAgentIds((current) =>
                         event.target.checked
@@ -641,7 +642,7 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
           )}
         </div>
         <p className="mt-2 text-xs text-slate-500">
-          This assigns AI agents to the meeting. Live response behavior will follow the meeting runtime configuration for Deepgram Live meetings.
+          This assigns AI agents to the meeting. Live response behavior will follow the meeting runtime configuration for live-transcribed meetings.
         </p>
       </section>
 

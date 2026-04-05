@@ -8,50 +8,14 @@ import crypto from "crypto";
 import bcrypt from "@/lib/bcrypt";
 import { checkRateLimit, getRequestIp } from "@/lib/rateLimit";
 import { normalizeMatchingMode } from "@/lib/matchingMode";
-
-function generateRoomId(language: string, transcriptionProvider: string) {
-  const providerLabel =
-    transcriptionProvider === "VOSK"
-      ? "VOSK"
-      : transcriptionProvider === "DEEPGRAMLIVE"
-        ? "DEEPGRAMLIVE"
-        : "DEEPGRAM";
-  const base = crypto.randomBytes(16).toString("base64url").replace(/_/g, "-");
-  return `${base}-${language}-${providerLabel}`;
-}
-
-function makeGroups(
-  userIds: string[],
-  maxParticipantsPerRoom: number,
-  allowOddGroup: boolean
-) {
-  const list = [...userIds];
-  if (maxParticipantsPerRoom === 2 && list.length % 2 === 1) {
-    if (allowOddGroup && list.length >= 3) {
-      const groups: Array<string[]> = [];
-      for (let i = 0; i < list.length - 3; i += 2) {
-        groups.push(list.slice(i, i + 2));
-      }
-      groups.push(list.slice(list.length - 3));
-      return groups;
-    }
-    list.push("__break__");
-  }
-
-  const groups: Array<string[]> = [];
-  for (let i = 0; i < list.length; i += maxParticipantsPerRoom) {
-    groups.push(list.slice(i, i + maxParticipantsPerRoom));
-  }
-  return groups;
-}
-
-function rotate(userIds: string[]) {
-  if (userIds.length <= 2) return userIds;
-  const [first, ...rest] = userIds;
-  const last = rest.pop();
-  if (!last) return userIds;
-  return [first, last, ...rest];
-}
+import {
+  detectFlowRuntimeVersion,
+  generateFlowRoomId,
+  normalizeFlowAdmissionMode,
+  getDiscussionRoomSize,
+  makeFlowGroups,
+  rotateParticipants
+} from "@/lib/flowRuntime";
 
 type BlockInput = {
   type: "START" | "PARTICIPANTS" | "DISCUSSION" | "PAUSE" | "PROMPT" | "NOTES" | "RECORD" | "FORM" | "EMBED" | "GROUPING" | "BREAK" | "HARMONICA" | "DEMBRANE" | "DELIBERAIDE" | "POLIS" | "AGORACITIZENS" | "NEXUSPOLITICS" | "SUFFRAGO";
@@ -209,18 +173,58 @@ export async function POST(request: Request) {
   existingUsers.forEach((user: (typeof existingUsers)[number]) => participantsById.add(user.id));
   inviteUsers.forEach((user: (typeof inviteUsers)[number]) => participantsById.add(user.id));
 
+  const maxParticipantsPerRoom = parsed.data.maxParticipantsPerRoom;
+  const allowOddGroup = Boolean(parsed.data.allowOddGroup);
+  const admissionMode = normalizeFlowAdmissionMode(parsed.data.admissionMode);
+  const joinOpensAt = parsed.data.joinOpensAt ? new Date(parsed.data.joinOpensAt) : null;
+  const joinClosesAt = parsed.data.joinClosesAt ? new Date(parsed.data.joinClosesAt) : null;
+  const lateJoinMinParticipants = parsed.data.lateJoinMinParticipants ?? 3;
+  if (joinOpensAt && Number.isNaN(joinOpensAt.getTime())) {
+    return NextResponse.json({ error: "Invalid join open time." }, { status: 400 });
+  }
+  if (joinClosesAt && Number.isNaN(joinClosesAt.getTime())) {
+    return NextResponse.json({ error: "Invalid join close time." }, { status: 400 });
+  }
+  if (admissionMode === "TIME_WINDOW") {
+    if (!joinOpensAt || !joinClosesAt) {
+      return NextResponse.json(
+        { error: "Join open and close times are required for a time window." },
+        { status: 400 }
+      );
+    }
+    if (joinClosesAt <= joinOpensAt) {
+      return NextResponse.json(
+        { error: "Join close time must be after join open time." },
+        { status: 400 }
+      );
+    }
+  }
+  if (lateJoinMinParticipants > maxParticipantsPerRoom) {
+    return NextResponse.json(
+      { error: "Late-join minimum cannot exceed the discussion room size." },
+      { status: 400 }
+    );
+  }
+  const blocksInput =
+    parsed.data.blocks && parsed.data.blocks.length > 0
+      ? parsed.data.blocks
+      : buildDefaultBlocks(parsed.data);
+  const roundBlocks = blocksInput.filter((block) => block.type === "DISCUSSION");
+  const runtimeVersion = detectFlowRuntimeVersion(blocksInput);
   const participants = Array.from(participantsById);
-  if (participants.length < 1) {
+  if (participants.length < 1 && runtimeVersion !== "ROOM_BASED") {
     return NextResponse.json(
       { error: "Select at least one participant (including invited guests)." },
       { status: 400 }
     );
   }
 
-  const users = await prisma.user.findMany({
-    where: { id: { in: participants } },
-    select: { id: true }
-  });
+  const users = participants.length
+    ? await prisma.user.findMany({
+        where: { id: { in: participants } },
+        select: { id: true, email: true }
+      })
+    : [];
 
   if (parsed.data.dataspaceId) {
     const dataspace = await prisma.dataspace.findUnique({
@@ -231,17 +235,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Dataspace not found" }, { status: 404 });
     }
   }
-  if (parsed.data.isPublic && !parsed.data.dataspaceId) {
+  if (parsed.data.isPublic && !parsed.data.dataspaceId && runtimeVersion !== "ROOM_BASED") {
     return NextResponse.json({ error: "Public templates require a dataspace." }, { status: 400 });
   }
-
-  const maxParticipantsPerRoom = parsed.data.maxParticipantsPerRoom;
-  const allowOddGroup = Boolean(parsed.data.allowOddGroup);
-  const blocksInput =
-    parsed.data.blocks && parsed.data.blocks.length > 0
-      ? parsed.data.blocks
-      : buildDefaultBlocks(parsed.data);
-  const roundBlocks = blocksInput.filter((block) => block.type === "DISCUSSION");
   const missingPoster = blocksInput.some(
     (block) => block.type === "PROMPT" && !block.posterId
   );
@@ -291,10 +287,14 @@ export async function POST(request: Request) {
   }>;
 
   for (let i = 0; i < roundBlocks.length; i += 1) {
-    const roundMax = roundBlocks[i]?.roundMaxParticipants ?? maxParticipantsPerRoom;
-    const groups = makeGroups(rotation, roundMax, allowOddGroup);
+    if (runtimeVersion === "ROOM_BASED") {
+      roundsData.push({ roundNumber: i + 1, pairs: [] });
+      continue;
+    }
+    const roundMax = getDiscussionRoomSize(roundBlocks, i, maxParticipantsPerRoom);
+    const groups = makeFlowGroups(rotation, roundMax, allowOddGroup);
     const pairs = groups.flatMap((group) => {
-      const roomId = generateRoomId(parsed.data.language, parsed.data.transcriptionProvider);
+      const roomId = generateFlowRoomId(parsed.data.language, parsed.data.transcriptionProvider);
       const roomPairs: Array<{ userAId: string; userBId: string | null; roomId: string }> = [];
 
       for (let index = 0; index < group.length; index += 2) {
@@ -311,7 +311,7 @@ export async function POST(request: Request) {
       return roomPairs;
     });
     roundsData.push({ roundNumber: i + 1, pairs });
-    rotation = rotate(rotation);
+    rotation = rotateParticipants(rotation);
   }
 
   let roundCounter = 0;
@@ -356,6 +356,11 @@ export async function POST(request: Request) {
       allowOddGroup,
       language: parsed.data.language,
       transcriptionProvider: parsed.data.transcriptionProvider,
+      runtimeVersion,
+      admissionMode,
+      joinOpensAt: admissionMode === "TIME_WINDOW" ? joinOpensAt : null,
+      joinClosesAt: admissionMode === "TIME_WINDOW" ? joinClosesAt : null,
+      lateJoinMinParticipants,
       meditationEnabled: blocksInput.some((block) => block.type === "PAUSE"),
       meditationAtStart: false,
       meditationBetweenRounds: false,
@@ -366,21 +371,35 @@ export async function POST(request: Request) {
       isPublic: Boolean(parsed.data.isPublic),
       requiresApproval: Boolean(parsed.data.requiresApproval),
       capacity: parsed.data.capacity ?? null,
-      rounds: {
-        create: roundsData.map((round) => ({
-          roundNumber: round.roundNumber,
-          pairs: {
-            create: round.pairs.map((pair) => ({
-              roomId: pair.roomId,
-              userAId: pair.userAId,
-              userBId: pair.userBId
-            }))
-          }
-        }))
-      },
-      blocks: {
-        create: blocksData
-      }
+        rounds: {
+          create: roundsData.map((round) => ({
+            roundNumber: round.roundNumber,
+            ...(runtimeVersion === "LEGACY_PAIR"
+              ? {
+                  pairs: {
+                    create: round.pairs.map((pair) => ({
+                      roomId: pair.roomId,
+                      userAId: pair.userAId,
+                      userBId: pair.userBId
+                    }))
+                  }
+                }
+              : {})
+          }))
+        },
+        participantSessions: {
+          create: users.map((user) => ({
+            userId: user.id,
+            displayName: user.email,
+            guestName: null,
+            guestEmail: null,
+            isRegistered: true,
+            status: parsed.data.requiresApproval ? "PENDING" : "APPROVED"
+          }))
+        },
+        blocks: {
+          create: blocksData
+        }
     }
   });
 

@@ -12,6 +12,7 @@ import { buildVideoAccessToken } from "@/lib/videoAccess";
 import { MeetingDetailClient } from "@/app/meetings/[id]/MeetingDetailClient";
 import { DEFAULT_DATASPACE_COLOR, getDataspaceTheme } from "@/lib/dataspaceColor";
 import { chooseAutoRemoteAssignee, parseAutoRemoteAssignment } from "@/lib/autoRemoteAssignment";
+import { getTranscriptionProviderLabel, isLiveTranscriptionProvider } from "@/lib/transcriptionProviders";
 
 export default async function MeetingDetailPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -111,11 +112,11 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
   const callDisplayName = buildDisplayName(currentUser?.email ?? null, session.user.id);
   const baseUrl = normalizeCallBaseUrl(process.env.DEMOCRACYROUTES_CALL_BASE_URL || "");
   const langCode = meeting.language === "IT" ? "it" : "en";
-  const liveTranscriptionEnabled = meeting.transcriptionProvider === "DEEPGRAMLIVE";
-  const recordingEnabled = ["DEEPGRAM", "DEEPGRAMLIVE", "VOSK", "WHISPERREMOTE", "AUTOREMOTE"].includes(
+  const liveTranscriptionEnabled = isLiveTranscriptionProvider(meeting.transcriptionProvider);
+  const recordingEnabled = ["DEEPGRAM", "DEEPGRAMLIVE", "GLADIALIVE", "VOSK", "WHISPERREMOTE", "AUTOREMOTE"].includes(
     meeting.transcriptionProvider
   );
-  const postCallTranscriptEnabled = meeting.transcriptionProvider !== "DEEPGRAMLIVE";
+  const postCallTranscriptEnabled = !isLiveTranscriptionProvider(meeting.transcriptionProvider);
   const transcriptionLanguage = liveTranscriptionEnabled ? langCode : "";
   const drAppBaseUrl = process.env.APP_BASE_URL || "";
   const accessToken = buildVideoAccessToken({
@@ -154,13 +155,7 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
   const providerLabel =
     meeting.transcriptionProvider === "VOSK"
       ? "Vosk (privacy friendly)"
-      : meeting.transcriptionProvider === "AUTOREMOTE"
-        ? "Auto Remote"
-      : meeting.transcriptionProvider === "WHISPERREMOTE"
-        ? "Whisper Remote"
-      : meeting.transcriptionProvider === "DEEPGRAMLIVE"
-        ? "Deepgram Live"
-        : "Deepgram";
+      : getTranscriptionProviderLabel(meeting.transcriptionProvider);
   const theme = getDataspaceTheme(meeting.dataspace?.color ?? DEFAULT_DATASPACE_COLOR);
   const latestRemoteWorkerJob =
     meeting.transcriptionProvider === "AUTOREMOTE"
@@ -251,14 +246,15 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
         </div>
       </div>
 
-      <MeetingDetailClient
-        embedUrl={embedUrl}
-        joinUrl={joinUrl}
-        isActive={active}
-        hasBaseUrl={Boolean(baseUrl)}
-        statusLabel={statusLabel}
-        languageLabel={languageLabel}
-        providerLabel={providerLabel}
+        <MeetingDetailClient
+          embedUrl={embedUrl}
+          joinUrl={joinUrl}
+          isActive={active}
+          hasBaseUrl={Boolean(baseUrl)}
+          statusLabel={statusLabel}
+          languageLabel={languageLabel}
+          transcriptionProvider={meeting.transcriptionProvider}
+          providerLabel={providerLabel}
         startsLabel={
           meeting.scheduledStartAt
             ? formatDateTime(meeting.scheduledStartAt, meeting.timezone)

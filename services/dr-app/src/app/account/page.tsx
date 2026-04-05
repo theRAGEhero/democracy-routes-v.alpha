@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { ChangePasswordForm } from "@/app/account/change-password/ChangePasswordForm";
 import { ProfileSettingsForm } from "@/app/account/ProfileSettingsForm";
 import { ChangeEmailForm } from "@/app/account/ChangeEmailForm";
+import { normalizeAppTheme } from "@/lib/appTheme";
 
 export default async function AccountSettingsPage() {
   const session = await getServerSession(authOptions);
@@ -22,6 +23,7 @@ export default async function AccountSettingsPage() {
       calComLink: true,
       email: true,
       avatarUrl: true,
+      appTheme: true,
       notifyEmailMeetingInvites: true,
       notifyTelegramMeetingInvites: true,
       notifyEmailPlanInvites: true,
@@ -56,6 +58,7 @@ export default async function AccountSettingsPage() {
             initialPersonalDescription={user?.personalDescription ?? ""}
             initialCalComLink={user?.calComLink ?? ""}
             initialAvatarUrl={user?.avatarUrl ?? ""}
+            initialAppTheme={normalizeAppTheme(user?.appTheme)}
             initialNotifyEmailMeetingInvites={user?.notifyEmailMeetingInvites ?? true}
             initialNotifyTelegramMeetingInvites={user?.notifyTelegramMeetingInvites ?? true}
             initialNotifyEmailPlanInvites={user?.notifyEmailPlanInvites ?? true}

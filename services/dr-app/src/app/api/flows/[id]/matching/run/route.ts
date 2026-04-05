@@ -8,14 +8,11 @@ import { buildPlanSegmentsFromBlocks, buildLegacySegments, type PlanBlockInput, 
 import { logError, logInfo, logWarn } from "@/lib/logger";
 import crypto from "crypto";
 import { normalizeBlockType } from "@/lib/blockType";
+import { generateFlowRoomId, nextDiscussionRoundNumber } from "@/lib/flowRuntime";
+import { getRoomProviderSuffix } from "@/lib/transcriptionProviders";
 
 function generateRoomId(language: string, transcriptionProvider: string) {
-  const providerLabel =
-    transcriptionProvider === "VOSK"
-      ? "VOSK"
-      : transcriptionProvider === "DEEPGRAMLIVE"
-        ? "DEEPGRAMLIVE"
-        : "DEEPGRAM";
+  const providerLabel = getRoomProviderSuffix(transcriptionProvider);
   const base = crypto.randomBytes(16).toString("base64url").replace(/_/g, "-");
   return `${base}-${language}-${providerLabel}`;
 }
@@ -23,6 +20,44 @@ function generateRoomId(language: string, transcriptionProvider: string) {
 const requestSchema = z.object({
   mode: z.enum(["polar", "anti", "random"]).default("polar")
 });
+
+function buildRemixedRooms(
+  participantIds: string[],
+  groupSize: number,
+  priorEncounterCounts: Map<string, number>
+) {
+  const rooms: string[][] = [];
+
+  function pairKey(a: string, b: string) {
+    return a < b ? `${a}::${b}` : `${b}::${a}`;
+  }
+
+  for (const participantId of participantIds) {
+    let bestRoomIndex = -1;
+    let bestScore = Number.POSITIVE_INFINITY;
+
+    for (let roomIndex = 0; roomIndex < rooms.length; roomIndex += 1) {
+      const room = rooms[roomIndex];
+      if (room.length >= groupSize) continue;
+      const score = room.reduce(
+        (sum, memberId) => sum + (priorEncounterCounts.get(pairKey(participantId, memberId)) ?? 0),
+        0
+      );
+      if (score < bestScore) {
+        bestScore = score;
+        bestRoomIndex = roomIndex;
+      }
+    }
+
+    if (bestRoomIndex === -1) {
+      rooms.push([participantId]);
+    } else {
+      rooms[bestRoomIndex].push(participantId);
+    }
+  }
+
+  return rooms;
+}
 
 export async function POST(
   request: Request,
@@ -46,6 +81,7 @@ export async function POST(
       dataspaceId: true,
       language: true,
       transcriptionProvider: true,
+      runtimeVersion: true,
       meditationEnabled: true,
       meditationAtStart: true,
       meditationBetweenRounds: true,
@@ -74,7 +110,8 @@ export async function POST(
 
   const isAdmin = viewer.user.role === "ADMIN";
   const isOwner = plan.createdById === viewer.user.id;
-  if (!isAdmin && !isOwner) {
+  const canRunRoomGrouping = plan.runtimeVersion === "ROOM_BASED";
+  if (!isAdmin && !isOwner && !canRunRoomGrouping) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -95,57 +132,6 @@ export async function POST(
   });
 
   let planRecap;
-  try {
-    planRecap = await getPlanRecapData(params.id, viewer);
-  } catch (error) {
-    if (isPlanRecapError(error)) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
-    }
-    const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
-
-  const baseUrl = process.env.DR_MATCHING_BASE_URL || "http://dr-matching:3002";
-  const apiKey = process.env.DR_MATCHING_API_KEY;
-
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/api/match`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(apiKey ? { "x-api-key": apiKey } : {})
-    },
-    body: JSON.stringify({
-      plan: {
-        id: plan.id,
-        title: plan.title,
-        maxParticipantsPerRoom: plan.maxParticipantsPerRoom ?? 2,
-        roundsCount: plan.roundsCount,
-        roundDurationMinutes: plan.roundDurationMinutes
-      },
-      recap: planRecap.recap,
-      mode: parsed.data.mode,
-      groupSize: plan.maxParticipantsPerRoom ?? 2
-    })
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    logWarn("flow_matching_run_failed", {
-      planId: plan.id,
-      actorId: viewer.user.id,
-      dataspaceId: plan.dataspaceId ?? null,
-      mode: parsed.data.mode,
-      responseStatus: response.status,
-      errorData
-    });
-    return NextResponse.json(
-      { error: "Failed to run matching", details: errorData },
-      { status: response.status }
-    );
-  }
-
-  const payload = await response.json();
-
   let appliedRoundNumber: number | null = null;
   let appliedRoomIds: string[] = [];
 
@@ -187,8 +173,202 @@ export async function POST(
     (segment) => segment.startAtMs <= nowMs && nowMs < segment.endAtMs
   );
   const canApply = currentSegment?.type === "GROUPING" && currentSegment.blockId;
+  let payload: any = null;
 
-  if (canApply && Array.isArray(payload?.rooms)) {
+  if (plan.runtimeVersion === "ROOM_BASED") {
+    if (!canApply) {
+      return NextResponse.json({
+        summary: "Grouping run skipped because the current segment is not a Grouping block.",
+        rooms: [],
+        appliedRoundNumber: null,
+        appliedRoomIds: []
+      });
+    }
+    const currentBlock = plan.blocks.find((block) => block.id === currentSegment.blockId);
+    const targetRoundNumber = currentBlock
+      ? nextDiscussionRoundNumber(plan.blocks, currentBlock.orderIndex)
+      : null;
+    if (!targetRoundNumber) {
+      return NextResponse.json({
+        summary: "No following Discussion block was found for this grouping step.",
+        rooms: [],
+        appliedRoundNumber: null,
+        appliedRoomIds: []
+      });
+    }
+    const targetRoundBlock = plan.blocks.find(
+      (block) => block.type === "DISCUSSION" && block.roundNumber === targetRoundNumber
+    );
+    const groupSize = targetRoundBlock?.roundMaxParticipants ?? plan.maxParticipantsPerRoom ?? 2;
+    const sessions = await prisma.planParticipantSession.findMany({
+      where: {
+        planId: plan.id,
+        status: "APPROVED"
+      },
+      orderBy: { joinedAt: "asc" },
+      select: {
+        id: true,
+        displayName: true
+      }
+    });
+    const shuffled = [...sessions];
+    for (let i = shuffled.length - 1; i > 0; i -= 1) {
+      const j = crypto.randomInt(0, i + 1);
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    const priorMembers = targetRoundNumber > 1
+      ? await prisma.planRoom.findMany({
+          where: {
+            planId: plan.id,
+            planRound: {
+              roundNumber: { lt: targetRoundNumber }
+            }
+          },
+          select: {
+            members: {
+              select: {
+                participantSessionId: true
+              }
+            }
+          }
+        })
+      : [];
+    const priorEncounterCounts = new Map<string, number>();
+    for (const room of priorMembers) {
+      const memberIds = room.members.map((member) => member.participantSessionId);
+      for (let i = 0; i < memberIds.length; i += 1) {
+        for (let j = i + 1; j < memberIds.length; j += 1) {
+          const a = memberIds[i];
+          const b = memberIds[j];
+          const key = a < b ? `${a}::${b}` : `${b}::${a}`;
+          priorEncounterCounts.set(key, (priorEncounterCounts.get(key) ?? 0) + 1);
+        }
+      }
+    }
+    const remixedSessionIds =
+      targetRoundNumber > 1
+        ? buildRemixedRooms(shuffled.map((session) => session.id), groupSize, priorEncounterCounts)
+        : (() => {
+            const groups: string[][] = [];
+            for (let i = 0; i < shuffled.length; i += groupSize) {
+              groups.push(shuffled.slice(i, i + groupSize).map((session) => session.id));
+            }
+            return groups;
+          })();
+    const sessionById = new Map(shuffled.map((session) => [session.id, session]));
+    const rooms: Array<{ participants: string[]; sessionIds: string[]; reason: string }> = remixedSessionIds
+      .filter((group) => group.length > 0)
+      .map((group) => ({
+        participants: group.map((sessionId) => sessionById.get(sessionId)?.displayName ?? sessionId),
+        sessionIds: group,
+        reason:
+          targetRoundNumber > 1
+            ? "Remixed grouping that tries to reduce repeated encounters from earlier rounds."
+            : "Randomized grouping for the next discussion round."
+      }));
+
+    const round = await prisma.planRound.findUnique({
+      where: { planId_roundNumber: { planId: plan.id, roundNumber: targetRoundNumber } },
+      select: { id: true }
+    });
+    if (round) {
+      await prisma.$transaction(async (tx) => {
+        await tx.planRoomMember.deleteMany({
+          where: {
+            planRoom: {
+              planId: plan.id,
+              planRoundId: round.id
+            }
+          }
+        });
+        await tx.planRoom.deleteMany({
+          where: {
+            planId: plan.id,
+            planRoundId: round.id
+          }
+        });
+        for (const room of rooms) {
+          const createdRoom = await tx.planRoom.create({
+            data: {
+              planId: plan.id,
+              planRoundId: round.id,
+              blockId: currentSegment.blockId,
+              roomId: generateFlowRoomId(plan.language, plan.transcriptionProvider),
+              groupingMode: parsed.data.mode
+            }
+          });
+          appliedRoomIds.push(createdRoom.roomId);
+          await tx.planRoomMember.createMany({
+            data: room.sessionIds.map((participantSessionId) => ({
+              planRoomId: createdRoom.id,
+              participantSessionId
+            }))
+          });
+        }
+      });
+      appliedRoundNumber = targetRoundNumber;
+    }
+    payload = {
+      summary: `Created ${rooms.length} discussion rooms for round ${appliedRoundNumber ?? "?"}.`,
+      rooms: rooms.map((room) => ({
+        participants: room.participants,
+        reason: room.reason
+      }))
+    };
+  } else {
+    try {
+      planRecap = await getPlanRecapData(params.id, viewer);
+    } catch (error) {
+      if (isPlanRecapError(error)) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
+
+    const baseUrl = process.env.DR_MATCHING_BASE_URL || "http://dr-matching:3002";
+    const apiKey = process.env.DR_MATCHING_API_KEY;
+
+    const response = await fetch(`${baseUrl.replace(/\/$/, "")}/api/match`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { "x-api-key": apiKey } : {})
+      },
+      body: JSON.stringify({
+        plan: {
+          id: plan.id,
+          title: plan.title,
+          maxParticipantsPerRoom: plan.maxParticipantsPerRoom ?? 2,
+          roundsCount: plan.roundsCount,
+          roundDurationMinutes: plan.roundDurationMinutes
+        },
+        recap: planRecap.recap,
+        mode: parsed.data.mode,
+        groupSize: plan.maxParticipantsPerRoom ?? 2
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      logWarn("flow_matching_run_failed", {
+        planId: plan.id,
+        actorId: viewer.user.id,
+        dataspaceId: plan.dataspaceId ?? null,
+        mode: parsed.data.mode,
+        responseStatus: response.status,
+        errorData
+      });
+      return NextResponse.json(
+        { error: "Failed to run matching", details: errorData },
+        { status: response.status }
+      );
+    }
+
+    payload = await response.json();
+  }
+
+  if (plan.runtimeVersion !== "ROOM_BASED" && canApply && Array.isArray(payload?.rooms)) {
     const blocksById = new Map(plan.blocks.map((block) => [block.id, block]));
     const currentBlock = blocksById.get(currentSegment.blockId as string);
     let nextRoundNumber: number | null = null;

@@ -6,6 +6,9 @@ import { getSiteSetting } from "@/lib/siteSettings";
 import { AnalyticsConsent } from "@/components/AnalyticsConsent";
 import { PwaRegister } from "@/components/PwaRegister";
 import { AppFrame } from "@/components/AppFrame";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { getAppThemeBodyClass } from "@/lib/appTheme";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +39,7 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const session = await getServerSession(authOptions);
   let shouldInject = false;
   let analyticsSnippet = "";
   if (process.env.DATABASE_URL) {
@@ -50,6 +54,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en">
       <body
+        className={getAppThemeBodyClass(session?.user?.appTheme)}
         style={
           {
             "--font-sans": '"Space Grotesk", "IBM Plex Sans", sans-serif',

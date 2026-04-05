@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { isLiveTranscriptionProvider } from "@/lib/transcriptionProviders";
 import { postEventHubEvent } from "@/lib/eventHub";
 
 const summaryResponseSchema = z.object({
@@ -210,7 +211,7 @@ export async function ensureMeetingAiSummary(meetingId: string) {
   const isConcluded =
     !meeting.isActive || (meeting.expiresAt ? meeting.expiresAt.getTime() < Date.now() : false);
 
-  if (meeting.transcriptionProvider === "DEEPGRAMLIVE" && !isConcluded) {
+  if (isLiveTranscriptionProvider(meeting.transcriptionProvider) && !isConcluded) {
     return { ok: false as const, reason: "live_meeting_not_concluded" as const };
   }
 

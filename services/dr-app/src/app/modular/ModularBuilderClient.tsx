@@ -8,6 +8,7 @@ import { MEDITATION_ANIMATIONS } from "@/lib/meditation";
 import { buildDefaultTemplateDraft, type TemplateBlock, type TemplateBlockType, type TemplateDraft } from "@/lib/templateDraft";
 import { compileTemplateDraft, type TemplateCompileResult } from "@/lib/templateCompile";
 import { postClientLog } from "@/lib/clientLogs";
+import { isLiveTranscriptionProvider } from "@/lib/transcriptionProviders";
 
 type TemplateSummary = {
   id: string;
@@ -347,7 +348,7 @@ function buildNodeHtml(
   const aiAgentsEnabled = Boolean(data.aiAgentsEnabled);
   const selectedAiAgentIds = data.aiAgentIds ?? [];
   const aiAgentsMarkup = !options.liveAiSupported
-    ? `<div class="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-3 py-2 text-[11px] text-slate-500">AI participants are available only with Deepgram Live transcription.</div>`
+    ? `<div class="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-3 py-2 text-[11px] text-slate-500">AI participants are available only with live transcription.</div>`
     : options.aiAgents.length === 0
       ? `<div class="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-3 py-2 text-[11px] text-slate-500">No AI agents available yet.</div>`
       : options.aiAgents
@@ -1050,7 +1051,7 @@ export function ModularBuilderClient({
     editor.start();
     editor.on("nodeCreated", (id: number) => {
       const node = editor.getNodeFromId(id);
-      updateNodeHtml(id, node?.name, node?.data, provider === "DEEPGRAMLIVE");
+      updateNodeHtml(id, node?.name, node?.data, isLiveTranscriptionProvider(provider));
     });
     editor.on("connectionCreated", () => {
       setEditorVersion((prev) => prev + 1);
@@ -1074,7 +1075,7 @@ export function ModularBuilderClient({
     };
   }, [drawflowReady]);
 
-  function updateNodeHtml(id: number, type: BlockType, data: NodeData, liveAiSupported = provider === "DEEPGRAMLIVE") {
+  function updateNodeHtml(id: number, type: BlockType, data: NodeData, liveAiSupported = isLiveTranscriptionProvider(provider)) {
     if (!editorRef.current) return;
     const html = buildNodeHtml(type, data, { posters, audioFiles, aiAgents, liveAiSupported });
     const nodeEl = document.getElementById(`node-${id}`);
@@ -1217,7 +1218,7 @@ export function ModularBuilderClient({
     if (!editorRef.current) return;
     const exported = editorRef.current.export();
     const data = exported?.drawflow?.Home?.data ?? {};
-    const liveAiSupported = provider === "DEEPGRAMLIVE";
+    const liveAiSupported = isLiveTranscriptionProvider(provider);
     Object.values(data).forEach((node: any) => {
       updateNodeHtml(Number(node.id), node.name as BlockType, node.data as NodeData, liveAiSupported);
     });
@@ -1230,7 +1231,7 @@ export function ModularBuilderClient({
     const posX = clientX - rect.left;
     const posY = clientY - rect.top;
     const data = buildDefaultData(type);
-    const html = buildNodeHtml(type, data, { posters, audioFiles, aiAgents, liveAiSupported: provider === "DEEPGRAMLIVE" });
+    const html = buildNodeHtml(type, data, { posters, audioFiles, aiAgents, liveAiSupported: isLiveTranscriptionProvider(provider) });
     const nodeId = editor.addNode(type, 1, 1, posX, posY, type, data, html);
     setTimeout(() => updateNodeHtml(nodeId, type, data), 0);
     setEditorVersion((prev) => prev + 1);
@@ -1375,7 +1376,7 @@ export function ModularBuilderClient({
     const blocks = chain.map((node: any) => {
       const type = node.name as BlockType;
       const data = node.data as NodeData;
-      return buildBlockFromNode(type, data, provider === "DEEPGRAMLIVE");
+      return buildBlockFromNode(type, data, isLiveTranscriptionProvider(provider));
     });
 
     if (requireCompleteFields) {
@@ -1540,10 +1541,10 @@ export function ModularBuilderClient({
       const type = block.type as BlockType;
       const data = nodeDataFromBlock(block);
       const position = positions[index] ?? { x: 80, y: 60 + index * 168 };
-      const html = buildNodeHtml(type, data, { posters, audioFiles, aiAgents, liveAiSupported: provider === "DEEPGRAMLIVE" });
+      const html = buildNodeHtml(type, data, { posters, audioFiles, aiAgents, liveAiSupported: isLiveTranscriptionProvider(provider) });
       const id = editorRef.current.addNode(type, 1, 1, position.x, position.y, type, data, html);
       createdNodeIds.push(id);
-      updateNodeHtml(id, type, data, provider === "DEEPGRAMLIVE");
+      updateNodeHtml(id, type, data, isLiveTranscriptionProvider(provider));
     });
     connectSequentialNodes(createdNodeIds);
     setEditorVersion((prev) => prev + 1);
@@ -1564,9 +1565,9 @@ export function ModularBuilderClient({
     for (let index = 0; index < count; index += 1) {
       const position = positions[index] ?? { x: 120, y: startY + index * 168 };
       const data = { durationSeconds, matchingMode: undefined };
-      const html = buildNodeHtml("DISCUSSION", data, { posters, audioFiles, aiAgents, liveAiSupported: provider === "DEEPGRAMLIVE" });
+      const html = buildNodeHtml("DISCUSSION", data, { posters, audioFiles, aiAgents, liveAiSupported: isLiveTranscriptionProvider(provider) });
       const id = editorRef.current.addNode("DISCUSSION", 1, 1, position.x, position.y, "DISCUSSION", data, html);
-      updateNodeHtml(id, "DISCUSSION", data, provider === "DEEPGRAMLIVE");
+      updateNodeHtml(id, "DISCUSSION", data, isLiveTranscriptionProvider(provider));
     }
     setEditorVersion((prev) => prev + 1);
   }
@@ -1719,10 +1720,10 @@ export function ModularBuilderClient({
     const createdNodeIds: number[] = [];
     nodes.forEach((node, index) => {
       const position = positions[index] ?? { x: 80, y: 60 + index * 168 };
-      const html = buildNodeHtml(node.type, node.data, { posters, audioFiles, aiAgents, liveAiSupported: provider === "DEEPGRAMLIVE" });
+      const html = buildNodeHtml(node.type, node.data, { posters, audioFiles, aiAgents, liveAiSupported: isLiveTranscriptionProvider(provider) });
       const id = editorRef.current.addNode(node.type, 1, 1, position.x, position.y, node.type, node.data, html);
       createdNodeIds.push(id);
-      updateNodeHtml(id, node.type, node.data, provider === "DEEPGRAMLIVE");
+      updateNodeHtml(id, node.type, node.data, isLiveTranscriptionProvider(provider));
     });
     connectSequentialNodes(createdNodeIds);
     setEditorVersion((prev) => prev + 1);

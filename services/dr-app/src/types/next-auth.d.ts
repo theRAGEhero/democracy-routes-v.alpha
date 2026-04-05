@@ -11,6 +11,7 @@ declare module "next-auth" {
       role: Role;
       mustChangePassword: boolean;
       avatarUrl?: string | null;
+      appTheme?: string | null;
     };
   }
 
@@ -20,6 +21,7 @@ declare module "next-auth" {
     role: Role;
     mustChangePassword: boolean;
     avatarUrl?: string | null;
+    appTheme?: string | null;
   }
 }
 
@@ -29,5 +31,6 @@ declare module "next-auth/jwt" {
     role?: Role;
     mustChangePassword?: boolean;
     avatarUrl?: string | null;
+    appTheme?: string | null;
   }
 }

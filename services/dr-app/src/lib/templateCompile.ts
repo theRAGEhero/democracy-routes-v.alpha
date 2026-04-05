@@ -1,5 +1,6 @@
 import type { TemplateBlock, TemplateDraft } from "@/lib/templateDraft";
 import { buildPlanSegmentsFromBlocks, type PlanBlockInput } from "@/lib/planSchedule";
+import { isLiveTranscriptionProvider } from "@/lib/transcriptionProviders";
 
 export type TemplateCompileIssue = {
   severity: "error" | "warning";
@@ -48,7 +49,7 @@ export function compileTemplateDraft(draft: TemplateDraft): TemplateCompileResul
   const issues: TemplateCompileIssue[] = [];
   const blocks = draft.blocks ?? [];
   const normalizedBlocks = normalizeBlocks(blocks);
-  const liveAiSupported = draft.settings?.transcriptionProvider === "DEEPGRAMLIVE";
+  const liveAiSupported = isLiveTranscriptionProvider(draft.settings?.transcriptionProvider);
   const totalDurationMinutes = Math.round(
     normalizedBlocks.reduce((sum, block) => sum + Math.max(0, block.durationSeconds || 0), 0) / 60
   );

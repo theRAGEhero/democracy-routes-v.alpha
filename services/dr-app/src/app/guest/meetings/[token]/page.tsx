@@ -4,6 +4,7 @@ import { isMeetingActive } from "@/lib/utils";
 import { normalizeCallBaseUrl } from "@/lib/callUrl";
 import { buildVideoAccessToken } from "@/lib/videoAccess";
 import { GuestJoinCard } from "@/app/guest/meetings/[token]/GuestJoinCard";
+import { getRoomProviderSuffix } from "@/lib/transcriptionProviders";
 
 export default async function GuestMeetingPage({
   params
@@ -35,16 +36,7 @@ export default async function GuestMeetingPage({
   const active = isMeetingActive(meeting);
   const baseUrl = normalizeCallBaseUrl(process.env.DEMOCRACYROUTES_CALL_BASE_URL || "");
   const langCode = meeting.language === "IT" ? "it" : "en";
-  const providerCode =
-    meeting.transcriptionProvider === "VOSK"
-      ? "vosk"
-      : meeting.transcriptionProvider === "AUTOREMOTE"
-        ? "autoremote"
-      : meeting.transcriptionProvider === "WHISPERREMOTE"
-        ? "whisperremote"
-      : meeting.transcriptionProvider === "DEEPGRAMLIVE"
-        ? "deepgramlive"
-        : "deepgram";
+  const providerCode = getRoomProviderSuffix(meeting.transcriptionProvider).toLowerCase();
   const accessToken = buildVideoAccessToken({
     roomId: meeting.roomId,
     meetingId: meeting.id,

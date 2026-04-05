@@ -14,6 +14,11 @@ type FlowSettingsClientProps = {
     title: string;
     description: string | null;
     startAt: string;
+    admissionMode: "ALWAYS_OPEN" | "TIME_WINDOW";
+    joinOpensAt: string | null;
+    joinClosesAt: string | null;
+    lateJoinMinParticipants: number | null;
+    runtimeVersion: string;
     timezone: string | null;
     dataspaceId: string | null;
     isPublic: boolean;
@@ -54,6 +59,16 @@ export function FlowSettingsClient({
   const [title, setTitle] = useState(initialFlow.title);
   const [description, setDescription] = useState(initialFlow.description ?? "");
   const [startAt, setStartAt] = useState(toDatetimeLocal(initialFlow.startAt));
+  const [admissionMode, setAdmissionMode] = useState(initialFlow.admissionMode);
+  const [joinOpensAt, setJoinOpensAt] = useState(
+    initialFlow.joinOpensAt ? toDatetimeLocal(initialFlow.joinOpensAt) : ""
+  );
+  const [joinClosesAt, setJoinClosesAt] = useState(
+    initialFlow.joinClosesAt ? toDatetimeLocal(initialFlow.joinClosesAt) : ""
+  );
+  const [lateJoinMinParticipants, setLateJoinMinParticipants] = useState(
+    initialFlow.lateJoinMinParticipants !== null ? String(initialFlow.lateJoinMinParticipants) : "3"
+  );
   const [timezone, setTimezone] = useState(initialFlow.timezone ?? "");
   const [dataspaceId, setDataspaceId] = useState(initialFlow.dataspaceId ?? "");
   const [isPublic, setIsPublic] = useState(initialFlow.isPublic);
@@ -78,6 +93,19 @@ export function FlowSettingsClient({
         title,
         description: description.trim() || null,
         startAt: new Date(startAt).toISOString(),
+        admissionMode,
+        joinOpensAt:
+          admissionMode === "TIME_WINDOW" && joinOpensAt
+            ? new Date(joinOpensAt).toISOString()
+            : null,
+        joinClosesAt:
+          admissionMode === "TIME_WINDOW" && joinClosesAt
+            ? new Date(joinClosesAt).toISOString()
+            : null,
+        lateJoinMinParticipants:
+          initialFlow.runtimeVersion === "ROOM_BASED" && lateJoinMinParticipants.trim()
+            ? Number(lateJoinMinParticipants)
+            : null,
         timezone: timezone.trim() || null,
         dataspaceId: dataspaceId || null,
         isPublic,
@@ -141,6 +169,24 @@ export function FlowSettingsClient({
           />
         </label>
 
+        <label className="space-y-2 text-sm text-slate-700">
+          <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+            Admission
+          </span>
+          <select
+            className="dr-input w-full rounded px-3 py-2 text-sm"
+            value={admissionMode}
+            onChange={(event) =>
+              setAdmissionMode(
+                event.target.value === "TIME_WINDOW" ? "TIME_WINDOW" : "ALWAYS_OPEN"
+              )
+            }
+          >
+            <option value="ALWAYS_OPEN">Always open</option>
+            <option value="TIME_WINDOW">Time window</option>
+          </select>
+        </label>
+
         <label className="space-y-2 text-sm text-slate-700 md:col-span-2">
           <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
             Description
@@ -163,6 +209,36 @@ export function FlowSettingsClient({
             placeholder="Europe/Berlin"
           />
         </label>
+
+        {admissionMode === "TIME_WINDOW" ? (
+          <>
+            <label className="space-y-2 text-sm text-slate-700">
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                Join opens
+              </span>
+              <input
+                type="datetime-local"
+                className="dr-input w-full rounded px-3 py-2 text-sm"
+                value={joinOpensAt}
+                onChange={(event) => setJoinOpensAt(event.target.value)}
+                required
+              />
+            </label>
+
+            <label className="space-y-2 text-sm text-slate-700">
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                Join closes
+              </span>
+              <input
+                type="datetime-local"
+                className="dr-input w-full rounded px-3 py-2 text-sm"
+                value={joinClosesAt}
+                onChange={(event) => setJoinClosesAt(event.target.value)}
+                required
+              />
+            </label>
+          </>
+        ) : null}
 
         <label className="space-y-2 text-sm text-slate-700">
           <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
@@ -196,6 +272,23 @@ export function FlowSettingsClient({
           />
         </label>
 
+        {initialFlow.runtimeVersion === "ROOM_BASED" ? (
+          <label className="space-y-2 text-sm text-slate-700">
+            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+              Late-join minimum
+            </span>
+            <input
+              type="number"
+              min="2"
+              max="12"
+              className="dr-input w-full rounded px-3 py-2 text-sm"
+              value={lateJoinMinParticipants}
+              onChange={(event) => setLateJoinMinParticipants(event.target.value)}
+              placeholder="3"
+            />
+          </label>
+        ) : null}
+
         <div className="space-y-3 rounded-xl border border-slate-200 bg-white/60 px-4 py-3 md:col-span-2">
           <label className="flex items-center gap-3 text-sm text-slate-700">
             <input
@@ -213,6 +306,11 @@ export function FlowSettingsClient({
             />
             Approval required
           </label>
+          {initialFlow.runtimeVersion === "ROOM_BASED" ? (
+            <p className="text-xs text-slate-500">
+              Late arrivals can start a new discussion wave once the waiting pool reaches the configured minimum.
+            </p>
+          ) : null}
         </div>
       </div>
 

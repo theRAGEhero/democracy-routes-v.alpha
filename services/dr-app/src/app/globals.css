@@ -16,6 +16,45 @@
   --stroke: rgba(0, 0, 0, 0.08);
 }
 
+body.app-theme-classic {
+  --ink: #151515;
+  --muted: #5a5a5a;
+  --paper: #f7f3ea;
+  --accent: #f97316;
+  --accent-deep: #9a3412;
+  --mint: #14b8a6;
+  --sky: #1d4ed8;
+  --shadow: rgba(18, 18, 18, 0.12);
+  --card: rgba(255, 255, 255, 0.78);
+  --stroke: rgba(0, 0, 0, 0.08);
+}
+
+body.app-theme-rainbow {
+  --ink: #1e1631;
+  --muted: #5b4d7a;
+  --paper: #fff8ff;
+  --accent: #ff4d8d;
+  --accent-deep: #a21653;
+  --mint: #14d9b2;
+  --sky: #3f6fff;
+  --shadow: rgba(89, 45, 138, 0.16);
+  --card: rgba(255, 255, 255, 0.74);
+  --stroke: rgba(123, 58, 237, 0.16);
+}
+
+body.app-theme-minimal {
+  --ink: #111111;
+  --muted: #666666;
+  --paper: #f5f5f5;
+  --accent: #111111;
+  --accent-deep: #000000;
+  --mint: #111111;
+  --sky: #111111;
+  --shadow: rgba(0, 0, 0, 0.08);
+  --card: rgba(255, 255, 255, 0.88);
+  --stroke: rgba(0, 0, 0, 0.12);
+}
+
 body {
   font-family: var(--font-sans, "Space Grotesk", "IBM Plex Sans", sans-serif);
   color: var(--ink);
@@ -25,6 +64,21 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
   overflow-x: hidden;
+}
+
+body.app-theme-rainbow {
+  background:
+    radial-gradient(circle at 8% 12%, rgba(255, 87, 160, 0.34), transparent 24%),
+    radial-gradient(circle at 28% 78%, rgba(255, 171, 65, 0.28), transparent 25%),
+    radial-gradient(circle at 54% 18%, rgba(85, 219, 255, 0.34), transparent 24%),
+    radial-gradient(circle at 73% 70%, rgba(83, 242, 177, 0.28), transparent 23%),
+    radial-gradient(circle at 94% 16%, rgba(145, 96, 255, 0.34), transparent 24%),
+    linear-gradient(180deg, #fffafd 0%, #f7f7ff 34%, #f8fff8 68%, #fffaf1 100%);
+}
+
+body.app-theme-minimal {
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f4f4f4 100%);
 }
 
 html {
@@ -74,10 +128,49 @@ iframe {
   background: rgba(0, 0, 0, 0.06);
 }
 
+body.app-theme-rainbow .dr-button-outline {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(255, 77, 141, 0.26);
+}
+
+body.app-theme-rainbow .dr-button-outline:hover {
+  background: rgba(255, 240, 250, 0.96);
+}
+
+body.app-theme-minimal .dr-button-outline {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(0, 0, 0, 0.14);
+}
+
+body.app-theme-minimal .dr-button-outline:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
 .dr-input {
   border: 1px solid var(--stroke);
   background: rgba(255, 255, 255, 0.75);
   color: var(--ink);
+}
+
+body.app-theme-rainbow .dr-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88) 0%, rgba(255, 250, 255, 0.76) 100%);
+  box-shadow: 0 24px 60px rgba(123, 58, 237, 0.12);
+}
+
+body.app-theme-minimal .dr-card {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.06);
+}
+
+body.app-theme-rainbow .dr-input {
+  background: rgba(255, 255, 255, 0.84);
+  border-color: rgba(123, 58, 237, 0.16);
+}
+
+body.app-theme-minimal .dr-input {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(0, 0, 0, 0.12);
 }
 
 .dr-node-card {
