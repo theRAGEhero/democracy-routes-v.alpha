@@ -6,6 +6,7 @@ import { inviteMemberSchema } from "@/lib/validators";
 import bcrypt from "@/lib/bcrypt";
 import crypto from "crypto";
 import { checkRateLimit, getRequestIp } from "@/lib/rateLimit";
+import { sendTelegramInvite } from "@/lib/telegramInvites";
 
 function generateToken() {
   return crypto.randomBytes(24).toString("base64url");
@@ -73,7 +74,15 @@ export async function POST(
   const targetEmail = parsed.data.email.toLowerCase();
   let user = await prisma.user.findUnique({
     where: { email: targetEmail },
-    select: { id: true, email: true, isGuest: true, notifyEmailPlanInvites: true }
+    select: {
+      id: true,
+      email: true,
+      isGuest: true,
+      notifyEmailPlanInvites: true,
+      notifyTelegramPlanInvites: true,
+      telegramHandle: true,
+      telegramChatId: true
+    }
   });
 
   const needsGuestInvite = !user || user.isGuest;
@@ -211,6 +220,13 @@ export async function POST(
         text: `You have been invited to the template ${plan.title}. Open: ${appBaseUrl}/flows/${plan.id}`
       })
     : { ok: false };
+  await sendTelegramInvite(
+    user,
+    user.notifyTelegramPlanInvites,
+    "plan",
+    plan.title,
+    `${appBaseUrl}/flows/${plan.id}`
+  );
 
   return NextResponse.json({
     message: "Invite sent",

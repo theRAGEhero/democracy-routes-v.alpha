@@ -5,6 +5,7 @@ import { getSession } from "@/lib/session";
 import { sendMail } from "@/lib/mailer";
 import { checkRateLimit, getRequestIp } from "@/lib/rateLimit";
 import crypto from "crypto";
+import { sendTelegramInvite } from "@/lib/telegramInvites";
 
 function generateToken() {
   return crypto.randomBytes(24).toString("base64url");
@@ -67,7 +68,16 @@ export async function POST(request: Request, { params }: { params: { id: string 
   }
 
   const invitee = await prisma.user.findUnique({
-    where: { email: parsed.data.email }
+    where: { email: parsed.data.email },
+    select: {
+      id: true,
+      email: true,
+      isGuest: true,
+      notifyEmailMeetingInvites: true,
+      notifyTelegramMeetingInvites: true,
+      telegramHandle: true,
+      telegramChatId: true
+    }
   });
 
   if (!invitee || invitee.isGuest) {
@@ -158,13 +168,21 @@ export async function POST(request: Request, { params }: { params: { id: string 
   }
 
   const appBaseUrl = process.env.APP_BASE_URL || "http://localhost:3000";
+  const meetingLink = `${appBaseUrl}/meetings/${meeting.id}`;
   const emailResult = await sendMail({
     to: invitee.email,
     subject: "You are invited to a meeting",
     html: `<p>You have been invited to the meeting <strong>${meeting.title}</strong>.</p>
-      <p>Open the meeting page: <a href="${appBaseUrl}/meetings/${meeting.id}">${appBaseUrl}/meetings/${meeting.id}</a></p>`,
-    text: `You have been invited to the meeting ${meeting.title}. Open: ${appBaseUrl}/meetings/${meeting.id}`
+      <p>Open the meeting page: <a href="${meetingLink}">${meetingLink}</a></p>`,
+    text: `You have been invited to the meeting ${meeting.title}. Open: ${meetingLink}`
   });
+  await sendTelegramInvite(
+    invitee,
+    invitee.notifyTelegramMeetingInvites,
+    "meeting",
+    meeting.title,
+    meetingLink
+  );
 
   return NextResponse.json({
     message: "User invited",

@@ -6,6 +6,7 @@ import { sendMail } from "@/lib/mailer";
 import crypto from "crypto";
 import { checkRateLimit, getRequestIp } from "@/lib/rateLimit";
 import { isLiveTranscriptionProvider } from "@/lib/transcriptionProviders";
+import { sendTelegramInvite } from "@/lib/telegramInvites";
 
 function generateToken() {
   return crypto.randomBytes(24).toString("base64url");
@@ -239,13 +240,27 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     (email) => email !== session.user.email.toLowerCase()
   );
 
-  let invitedUsers: Array<{ id: string; email: string; isGuest: boolean }> = [];
+  let invitedUsers: Array<{
+    id: string;
+    email: string;
+    isGuest: boolean;
+    notifyTelegramMeetingInvites?: boolean;
+    telegramHandle?: string | null;
+    telegramChatId?: string | null;
+  }> = [];
   let missingUsers: string[] = [];
 
   if (uniqueEmails.length > 0) {
     invitedUsers = await prisma.user.findMany({
       where: { email: { in: uniqueEmails } },
-      select: { id: true, email: true, isGuest: true }
+      select: {
+        id: true,
+        email: true,
+        isGuest: true,
+        notifyTelegramMeetingInvites: true,
+        telegramHandle: true,
+        telegramChatId: true
+      }
     });
 
     if (invitedUsers.length !== uniqueEmails.length) {
@@ -322,15 +337,27 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     }
 
     const appBaseUrl = process.env.APP_BASE_URL || "http://localhost:3000";
+    const meetingLink = `${appBaseUrl}/meetings/${updated.id}`;
     await Promise.all(
       registeredInvites.map((user) =>
         sendMail({
           to: user.email,
           subject: "You are invited to a meeting",
           html: `<p>You have been invited to the meeting <strong>${updated.title}</strong>.</p>
-            <p>Open the meeting page: <a href="${appBaseUrl}/meetings/${updated.id}">${appBaseUrl}/meetings/${updated.id}</a></p>`,
-          text: `You have been invited to the meeting ${updated.title}. Open: ${appBaseUrl}/meetings/${updated.id}`
+            <p>Open the meeting page: <a href="${meetingLink}">${meetingLink}</a></p>`,
+          text: `You have been invited to the meeting ${updated.title}. Open: ${meetingLink}`
         })
+      )
+    );
+    await Promise.all(
+      registeredInvites.map((user) =>
+        sendTelegramInvite(
+          user,
+          user.notifyTelegramMeetingInvites,
+          "meeting",
+          updated.title,
+          meetingLink
+        )
       )
     );
   }

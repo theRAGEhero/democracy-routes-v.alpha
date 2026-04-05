@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireWorkflowKey } from "@/app/api/integrations/workflow/utils";
 import { generateRoomId } from "@/lib/utils";
 import { sendMail } from "@/lib/mailer";
+import { sendTelegramInvite } from "@/lib/telegramInvites";
 
 export const dynamic = "force-dynamic";
 
@@ -188,11 +189,23 @@ export async function POST(request: Request) {
     (email) => email !== creator.email.toLowerCase()
   );
 
-  let invitedUsers: Array<{ id: string; email: string }> = [];
+  let invitedUsers: Array<{
+    id: string;
+    email: string;
+    notifyTelegramMeetingInvites?: boolean;
+    telegramHandle?: string | null;
+    telegramChatId?: string | null;
+  }> = [];
   if (uniqueEmails.length > 0) {
     invitedUsers = await prisma.user.findMany({
       where: { email: { in: uniqueEmails } },
-      select: { id: true, email: true }
+      select: {
+        id: true,
+        email: true,
+        notifyTelegramMeetingInvites: true,
+        telegramHandle: true,
+        telegramChatId: true
+      }
     });
 
     if (invitedUsers.length !== uniqueEmails.length) {
@@ -244,15 +257,27 @@ export async function POST(request: Request) {
     }
 
     const appBaseUrl = process.env.APP_BASE_URL || "http://localhost:3015";
+    const meetingLink = `${appBaseUrl}/meetings/${meeting.id}`;
     await Promise.all(
       invitedUsers.map((user) =>
         sendMail({
           to: user.email,
           subject: "You are invited to a meeting",
           html: `<p>You have been invited to the meeting <strong>${meeting.title}</strong>.</p>
-            <p>Open the meeting page: <a href="${appBaseUrl}/meetings/${meeting.id}">${appBaseUrl}/meetings/${meeting.id}</a></p>`,
-          text: `You have been invited to the meeting ${meeting.title}. Open: ${appBaseUrl}/meetings/${meeting.id}`
+            <p>Open the meeting page: <a href="${meetingLink}">${meetingLink}</a></p>`,
+          text: `You have been invited to the meeting ${meeting.title}. Open: ${meetingLink}`
         })
+      )
+    );
+    await Promise.all(
+      invitedUsers.map((user) =>
+        sendTelegramInvite(
+          user,
+          user.notifyTelegramMeetingInvites,
+          "meeting",
+          meeting.title,
+          meetingLink
+        )
       )
     );
   }

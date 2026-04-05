@@ -4,6 +4,7 @@ import { getSession } from "@/lib/session";
 import { inviteMemberSchema } from "@/lib/validators";
 import { sendMail } from "@/lib/mailer";
 import { checkRateLimit, getRequestIp } from "@/lib/rateLimit";
+import { sendTelegramInvite } from "@/lib/telegramInvites";
 
 export async function POST(
   request: Request,
@@ -53,7 +54,14 @@ export async function POST(
   const normalizedEmail = parsed.data.email.toLowerCase();
   const user = await prisma.user.findUnique({
     where: { email: normalizedEmail },
-    select: { id: true, email: true, notifyEmailDataspaceInvites: true }
+    select: {
+      id: true,
+      email: true,
+      notifyEmailDataspaceInvites: true,
+      notifyTelegramDataspaceInvites: true,
+      telegramHandle: true,
+      telegramChatId: true
+    }
   });
 
   if (user) {
@@ -113,6 +121,13 @@ export async function POST(
           text: `You have been invited to the dataspace ${dataspace.name}. Open: ${dataspaceUrl}`
         })
       : { ok: false };
+    await sendTelegramInvite(
+      user,
+      user.notifyTelegramDataspaceInvites,
+      "dataspace",
+      dataspace.name,
+      dataspaceUrl
+    );
 
     return NextResponse.json({
       message: "Invite sent",
