@@ -322,7 +322,7 @@ model OpenProblem {
   id          String               @id @default(cuid())
   title       String
   description String
-  status      String               @default("OPEN")
+  status      String               @default("TODO")
   createdById String
   dataspaceId String?
   createdAt   DateTime             @default(now())

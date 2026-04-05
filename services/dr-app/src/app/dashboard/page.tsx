@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { DashboardTabs } from "@/app/dashboard/DashboardTabs";
 import { formatDateTime, isMeetingActive } from "@/lib/utils";
+import { OPEN_PROBLEM_ACTIVE_STATUSES } from "@/lib/openProblemStatus";
 import {
   buildLegacySegments,
   buildPlanSegmentsFromBlocks,
@@ -134,7 +135,7 @@ export default async function DashboardPage() {
     }),
     prisma.openProblem.findMany({
       where: {
-        status: "OPEN",
+        status: { in: [...OPEN_PROBLEM_ACTIVE_STATUSES] },
         OR: [
           { createdById: session.user.id },
           { joins: { some: { userId: session.user.id } } },

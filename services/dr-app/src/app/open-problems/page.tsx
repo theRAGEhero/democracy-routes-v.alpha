@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { OpenProblemsClient } from "@/app/open-problems/OpenProblemsClient";
+import { OPEN_PROBLEM_BOARD_STATUSES } from "@/lib/openProblemStatus";
 
 export default async function OpenProblemsPage() {
   const session = await getServerSession(authOptions);
@@ -12,7 +13,7 @@ export default async function OpenProblemsPage() {
   const [problems, dataspaces] = await Promise.all([
     prisma.openProblem.findMany({
       where: {
-        status: "OPEN",
+        status: { in: [...OPEN_PROBLEM_BOARD_STATUSES] },
         OR: [
           { dataspaceId: null },
           { dataspace: { members: { some: { userId: session.user.id } } } }
@@ -36,10 +37,10 @@ export default async function OpenProblemsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
-          Open Problems
+          Open Problems Board
         </h1>
         <p className="mt-2 max-w-3xl text-sm text-slate-600">
-          Write down a problem or idea you would like to discuss, even if you do not yet know who should join the conversation.
+          Capture an open problem, place it in Todo, and move it through In Progress, In Review, and Done as the work advances.
         </p>
       </div>
       <OpenProblemsClient

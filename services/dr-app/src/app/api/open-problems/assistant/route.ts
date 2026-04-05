@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
 import { buildOpenProblemDraft, findSimilarOpenProblems } from "@/lib/openProblems";
+import { OPEN_PROBLEM_ACTIVE_STATUSES } from "@/lib/openProblemStatus";
 
 const messageSchema = z.object({
   role: z.enum(["user", "assistant", "system"]),
@@ -145,7 +146,7 @@ export async function POST(request: Request) {
 
   const candidates = await prisma.openProblem.findMany({
     where: {
-      status: "OPEN",
+      status: { in: [...OPEN_PROBLEM_ACTIVE_STATUSES] },
       OR: [
         { dataspaceId: null },
         { dataspace: { members: { some: { userId: session.user.id } } } }

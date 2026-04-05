@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { OPEN_PROBLEM_BOARD_STATUSES } from "@/lib/openProblemStatus";
 
 const createSchema = z.object({
   title: z.string().trim().min(3).max(160),
@@ -26,7 +27,7 @@ export async function GET() {
 
   const problems = await prisma.openProblem.findMany({
     where: {
-      status: "OPEN",
+      status: { in: [...OPEN_PROBLEM_BOARD_STATUSES] },
       OR: [
         { dataspaceId: null },
         { dataspace: { members: { some: { userId: session.user.id } } } }
@@ -90,6 +91,7 @@ export async function POST(request: Request) {
     data: {
       title: payload.title,
       description: payload.description,
+      status: "TODO",
       createdById: session.user.id,
       dataspaceId: normalizedDataspaceId,
       joins: {

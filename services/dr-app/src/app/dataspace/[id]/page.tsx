@@ -12,6 +12,7 @@ import { DataspaceMembersModal } from "@/app/dataspace/[id]/DataspaceMembersModa
 import { DataspaceRelatedTabs } from "@/app/dataspace/[id]/DataspaceRelatedTabs";
 import { DEFAULT_DATASPACE_COLOR, getDataspaceTheme } from "@/lib/dataspaceColor";
 import { UserProfileLink } from "@/components/UserProfileLink";
+import { OPEN_PROBLEM_ACTIVE_STATUSES } from "@/lib/openProblemStatus";
 
 export default async function DataspaceDetailPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -49,7 +50,7 @@ export default async function DataspaceDetailPage({ params }: { params: { id: st
           }
         },
         openProblems: {
-          where: { status: "OPEN" },
+          where: { status: { in: [...OPEN_PROBLEM_ACTIVE_STATUSES] } },
           orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
           include: {
             createdBy: { select: { email: true } },
