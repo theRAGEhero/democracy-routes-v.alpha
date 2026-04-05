@@ -37,3 +37,6 @@ audio-api/vosk/logs/
 *.tgz
 *.zip
 *.7z
+
+# Local agent metadata
+.codex
