@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type InviteRow = {
   id: string;
@@ -13,6 +13,8 @@ type InviteRow = {
 
 type Props = {
   invites: InviteRow[];
+  title?: string;
+  description?: string;
 };
 
 function formatValue(value: string | null, timeZone?: string | null) {
@@ -27,10 +29,18 @@ function formatValue(value: string | null, timeZone?: string | null) {
   return new Intl.DateTimeFormat(undefined, options).format(new Date(value));
 }
 
-export function UpcomingInvites({ invites }: Props) {
+export function UpcomingInvites({
+  invites,
+  title = "Upcoming invitations",
+  description
+}: Props) {
   const [items, setItems] = useState(invites);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setItems(invites);
+  }, [invites]);
 
   async function handleAction(id: string, action: "accept" | "decline") {
     setError(null);
@@ -52,7 +62,8 @@ export function UpcomingInvites({ invites }: Props) {
 
   return (
     <div className="dr-card p-6">
-      <h2 className="text-sm font-semibold uppercase text-slate-500">Upcoming invitations</h2>
+      <h2 className="text-sm font-semibold uppercase text-slate-500">{title}</h2>
+      {description ? <p className="mt-1 text-sm text-slate-600">{description}</p> : null}
       <div className="mt-3 space-y-3 text-sm text-slate-700">
         {items.length === 0 ? (
           <p className="text-slate-500">No pending invitations.</p>

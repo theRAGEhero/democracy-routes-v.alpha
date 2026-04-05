@@ -68,21 +68,6 @@ type Props = {
 const TABS = ["Overview", "Meetings", "Notifications", "Calendar", "Open Problems"] as const;
 type TabKey = (typeof TABS)[number];
 
-function overviewTypeBadgeClass(type: RecentItem["type"] | UpcomingItem["type"]) {
-  switch (type) {
-    case "Meeting":
-      return "bg-sky-100 text-sky-800 ring-1 ring-sky-200";
-    case "Template":
-      return "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200";
-    default:
-      return "bg-amber-100 text-amber-800 ring-1 ring-amber-200";
-  }
-}
-
-function getDataspaceLabel(key: string, options: Props["dataspaceOptions"]) {
-  return options.find((option) => option.key === key)?.label ?? "Unknown dataspace";
-}
-
 function EmptyState({
   title,
   description
@@ -91,88 +76,78 @@ function EmptyState({
   description: string;
 }) {
   return (
-    <div className="rounded-[28px] border border-dashed border-slate-300/80 bg-white/55 px-5 py-8 text-center">
-      <p className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-400">{title}</p>
-      <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">{description}</p>
+    <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center">
+      <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">{title}</p>
+      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">{description}</p>
     </div>
   );
 }
 
-function OpenProblemsList({
-  problems,
-  joiningProblemId,
-  onJoin
+function SectionCard({
+  eyebrow,
+  title,
+  description,
+  actionHref,
+  actionLabel,
+  children
 }: {
-  problems: OpenProblemRow[];
-  joiningProblemId: string | null;
-  onJoin: (problemId: string) => void;
+  eyebrow: string;
+  title: string;
+  description?: string;
+  actionHref?: string;
+  actionLabel?: string;
+  children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-3">
-      {problems.length === 0 ? (
-        <EmptyState
-          title="No Active Problems"
-          description="Nothing is open in the selected dataspaces right now."
-        />
-      ) : (
-        problems.map((problem) => (
-          <div
-            key={problem.id}
-            className="rounded-[26px] border border-slate-200/80 bg-white/80 p-4 shadow-[0_16px_40px_rgba(15,23,42,0.08)]"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  {problem.dataspaceColor ? (
-                    <span
-                      className="h-2.5 w-2.5 rounded-full border border-white/80 shadow-sm"
-                      style={{ backgroundColor: problem.dataspaceColor }}
-                    />
-                  ) : null}
-                  <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-800 ring-1 ring-amber-200">
-                    Open Problem
-                  </span>
-                  <p className="text-base font-semibold text-slate-950">{problem.title}</p>
-                </div>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{problem.description}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                {!problem.createdByMe && !problem.joinedByMe ? (
-                  <button
-                    type="button"
-                    onClick={() => onJoin(problem.id)}
-                    disabled={joiningProblemId === problem.id}
-                    className="dr-button-outline px-3 py-1.5 text-xs"
-                  >
-                    {joiningProblemId === problem.id ? "Joining..." : "Join"}
-                  </button>
-                ) : null}
-                <Link href={problem.href} className="dr-button px-3 py-1.5 text-xs">
-                  Open
-                </Link>
-              </div>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-500">
-              <span className="rounded-full bg-slate-100 px-2.5 py-1">{problem.updatedLabel ?? "Recently updated"}</span>
-              <span className="rounded-full bg-slate-100 px-2.5 py-1">{problem.dataspaceLabel}</span>
-              <span className="rounded-full bg-slate-100 px-2.5 py-1">{problem.joinCount} joined</span>
-              <span className="rounded-full bg-slate-100 px-2.5 py-1">
-                {problem.createdByMe ? "Created by you" : `By ${problem.createdByEmail}`}
-              </span>
-              {problem.joinedByMe ? (
-                <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-semibold text-emerald-800">
-                  You joined
-                </span>
-              ) : null}
-            </div>
-          </div>
-        ))
-      )}
+    <section className="dr-card border-none bg-white/78 shadow-[0_18px_48px_rgba(15,23,42,0.08)]">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200/80 px-4 py-4 sm:px-5">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">{eyebrow}</p>
+          <h2 className="mt-1 text-xl font-semibold text-slate-950 sm:text-2xl" style={{ fontFamily: "var(--font-serif)" }}>
+            {title}
+          </h2>
+          {description ? <p className="mt-1 text-sm leading-6 text-slate-600">{description}</p> : null}
+        </div>
+        {actionHref && actionLabel ? (
+          <Link href={actionHref} className="dr-button-outline px-3 py-1.5 text-sm">
+            {actionLabel}
+          </Link>
+        ) : null}
+      </div>
+      <div className="px-4 py-4 sm:px-5 sm:py-5">{children}</div>
+    </section>
+  );
+}
+
+function SummaryTile({
+  label,
+  value,
+  note,
+  tone = "neutral"
+}: {
+  label: string;
+  value: string;
+  note: string;
+  tone?: "neutral" | "priority";
+}) {
+  return (
+    <div
+      className={`rounded-[24px] border px-4 py-4 ${
+        tone === "priority"
+          ? "border-rose-200 bg-rose-50"
+          : "border-slate-200 bg-white/85"
+      }`}
+    >
+      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">{label}</p>
+      <p className="mt-2 text-3xl font-semibold text-slate-950" style={{ fontFamily: "var(--font-serif)" }}>
+        {value}
+      </p>
+      <p className="mt-1 text-sm text-slate-500">{note}</p>
     </div>
   );
 }
 
-function DataspaceFilterRail({
+function DataspacePicker({
   options,
   selectedDataspaces,
   onReset,
@@ -184,150 +159,44 @@ function DataspaceFilterRail({
   onToggle: (key: string) => void;
 }) {
   return (
-    <aside className="min-h-0 xl:col-span-3">
-      <div className="dr-card h-full overflow-hidden border-none bg-[linear-gradient(160deg,rgba(15,23,42,0.96),rgba(30,41,59,0.92))] text-white shadow-[0_32px_80px_rgba(15,23,42,0.28)]">
-        <div className="border-b border-white/10 px-5 py-5">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-300">
-            Navigation
-          </p>
-          <h2 className="mt-2 text-2xl font-semibold" style={{ fontFamily: "var(--font-serif)" }}>
-            Dataspaces
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-slate-300">
-            Focus the dashboard on specific communities, or keep the full network in view.
-          </p>
-        </div>
-        <div className="space-y-3 px-4 py-4">
+    <div className="flex gap-2 overflow-x-auto pb-1">
+      <button
+        type="button"
+        onClick={onReset}
+        className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition ${
+          selectedDataspaces.length === 0
+            ? "bg-slate-950 text-white"
+            : "bg-white/80 text-slate-600 ring-1 ring-slate-200 hover:text-slate-950"
+        }`}
+      >
+        All dataspaces
+      </button>
+      {options.map((option) => {
+        const active = selectedDataspaces.includes(option.key);
+        return (
           <button
+            key={option.key}
             type="button"
-            onClick={onReset}
-            className={`w-full rounded-[24px] border px-4 py-3 text-left transition ${
-              selectedDataspaces.length === 0
-                ? "border-white/20 bg-white text-slate-950 shadow-[0_12px_32px_rgba(255,255,255,0.16)]"
-                : "border-white/10 bg-white/5 text-white hover:bg-white/10"
+            onClick={() => onToggle(option.key)}
+            className={`inline-flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+              active
+                ? "bg-slate-950 text-white"
+                : "bg-white/80 text-slate-600 ring-1 ring-slate-200 hover:text-slate-950"
             }`}
           >
-            <span className="block text-[11px] font-semibold uppercase tracking-[0.22em] opacity-70">
-              Full Network
-            </span>
-            <span className="mt-1 block text-base font-semibold">All dataspaces</span>
+            <span
+              className="h-2.5 w-2.5 rounded-full"
+              style={{ backgroundColor: option.color ?? "#94a3b8" }}
+            />
+            <span className="max-w-[180px] truncate">{option.label}</span>
           </button>
-          <div className="max-h-[calc(100dvh-430px)] space-y-2 overflow-auto pr-1">
-            {options.map((option) => {
-              const active = selectedDataspaces.includes(option.key);
-              const initials = option.label.slice(0, 2).toUpperCase();
-              return (
-                <button
-                  key={option.key}
-                  type="button"
-                  onClick={() => onToggle(option.key)}
-                  className={`flex w-full items-center gap-3 rounded-[22px] border px-3 py-3 text-left transition ${
-                    active
-                      ? "border-white/20 bg-white text-slate-950 shadow-[0_16px_36px_rgba(255,255,255,0.16)]"
-                      : "border-white/10 bg-white/5 text-white hover:bg-white/10"
-                  }`}
-                  title={option.label}
-                >
-                  <span
-                    className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-white/10"
-                    style={
-                      option.color
-                        ? {
-                            background: `radial-gradient(circle at 30% 30%, rgba(255,255,255,0.95), ${option.color})`
-                          }
-                        : undefined
-                    }
-                  >
-                    {option.imageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={option.imageUrl} alt={option.label} className="h-full w-full object-cover" />
-                    ) : !option.color ? (
-                      <span className={`text-sm font-semibold ${active ? "text-slate-950" : "text-white"}`}>
-                        {initials}
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold">{option.label}</span>
-                    <span className={`block text-xs ${active ? "text-slate-500" : "text-slate-300"}`}>
-                      {active ? "Included" : "Tap to filter"}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-function SummaryMetric({
-  label,
-  value,
-  tone
-}: {
-  label: string;
-  value: string;
-  tone: "dark" | "light" | "accent";
-}) {
-  const toneClass =
-    tone === "dark"
-      ? "bg-slate-950 text-white"
-      : tone === "accent"
-        ? "bg-amber-300 text-slate-950"
-        : "bg-white/70 text-slate-950";
-
-  return (
-    <div className={`rounded-[28px] border border-slate-200/70 px-4 py-4 shadow-sm ${toneClass}`}>
-      <p className={`text-[11px] font-semibold uppercase tracking-[0.2em] ${tone === "dark" ? "text-white/70" : "text-slate-500"}`}>
-        {label}
-      </p>
-      <p className="mt-2 text-3xl font-semibold" style={{ fontFamily: "var(--font-serif)" }}>
-        {value}
-      </p>
+        );
+      })}
     </div>
   );
 }
 
-function OverviewCard({
-  eyebrow,
-  title,
-  description,
-  actionHref,
-  actionLabel,
-  children
-}: {
-  eyebrow: string;
-  title: string;
-  description: string;
-  actionHref?: string;
-  actionLabel?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="dr-card overflow-hidden border-none bg-white/72 shadow-[0_24px_60px_rgba(15,23,42,0.1)]">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200/80 px-5 py-5 sm:px-6">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">{eyebrow}</p>
-          <h3 className="mt-2 text-2xl font-semibold text-slate-950" style={{ fontFamily: "var(--font-serif)" }}>
-            {title}
-          </h3>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{description}</p>
-        </div>
-        {actionHref && actionLabel ? (
-          <Link href={actionHref} className="dr-button-outline px-4 py-2 text-sm">
-            {actionLabel}
-          </Link>
-        ) : null}
-      </div>
-      <div className="px-5 py-5 sm:px-6">{children}</div>
-    </section>
-  );
-}
-
-function ActivityList({
+function EventList({
   items,
   emptyTitle,
   emptyDescription
@@ -345,30 +214,97 @@ function ActivityList({
       {items.map((item) => (
         <div
           key={`${item.type}-${item.id}`}
-          className="flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(248,250,252,0.88))] px-4 py-4"
+          className="rounded-[22px] border border-slate-200 bg-white/90 px-4 py-4"
         >
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              {item.dataspaceColor ? (
-                <span
-                  className="h-2.5 w-2.5 rounded-full border border-white/80 shadow-sm"
-                  style={{ backgroundColor: item.dataspaceColor }}
-                />
-              ) : null}
-              <span
-                className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${overviewTypeBadgeClass(item.type)}`}
-              >
-                {item.type}
-              </span>
-              <p className="truncate text-sm font-semibold text-slate-950 sm:text-base">{item.title}</p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                {item.dataspaceColor ? (
+                  <span
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: item.dataspaceColor }}
+                  />
+                ) : null}
+                <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-600">
+                  {item.type}
+                </span>
+              </div>
+              <p className="mt-2 text-base font-semibold text-slate-950">{item.title}</p>
+              <p className="mt-1 text-sm text-slate-500">
+                {"date" in item ? item.date : item.startsAt}
+              </p>
             </div>
-            <p className="mt-2 text-xs text-slate-500 sm:text-sm">
-              {"date" in item ? item.date : item.startsAt}
-            </p>
+            <Link href={item.href} className="dr-button-outline shrink-0 px-3 py-1.5 text-xs">
+              Open
+            </Link>
           </div>
-          <Link href={item.href} className="dr-button-outline px-3 py-1.5 text-xs">
-            Open
-          </Link>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OpenProblemsList({
+  problems,
+  joiningProblemId,
+  onJoin
+}: {
+  problems: OpenProblemRow[];
+  joiningProblemId: string | null;
+  onJoin: (problemId: string) => void;
+}) {
+  if (problems.length === 0) {
+    return (
+      <EmptyState
+        title="No Active Problems"
+        description="Nothing in the selected dataspaces currently needs attention."
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {problems.map((problem) => (
+        <div key={problem.id} className="rounded-[22px] border border-slate-200 bg-white/90 px-4 py-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                {problem.dataspaceColor ? (
+                  <span
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: problem.dataspaceColor }}
+                  />
+                ) : null}
+                <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-800 ring-1 ring-amber-200">
+                  Open problem
+                </span>
+              </div>
+              <p className="mt-2 text-base font-semibold text-slate-950">{problem.title}</p>
+              <p className="mt-1 text-sm leading-6 text-slate-600">{problem.description}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {!problem.createdByMe && !problem.joinedByMe ? (
+                <button
+                  type="button"
+                  onClick={() => onJoin(problem.id)}
+                  disabled={joiningProblemId === problem.id}
+                  className="dr-button-outline px-3 py-1.5 text-xs"
+                >
+                  {joiningProblemId === problem.id ? "Joining..." : "Join"}
+                </button>
+              ) : null}
+              <Link href={problem.href} className="dr-button px-3 py-1.5 text-xs">
+                Open
+              </Link>
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
+            <span className="rounded-full bg-slate-100 px-2.5 py-1">{problem.dataspaceLabel}</span>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1">{problem.joinCount} joined</span>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1">
+              {problem.updatedLabel ?? "Recently updated"}
+            </span>
+          </div>
         </div>
       ))}
     </div>
@@ -405,22 +341,19 @@ export function DashboardTabs({
   const scopedInvites = upcomingInvites.filter((row) => includeByDataspace(row.dataspaceKey));
   const scopedCalendar = calendarEvents.filter((row) => includeByDataspace(row.dataspaceKey));
 
-  const activeDataspaceLabels = useMemo(() => {
+  const nextUpcoming = scopedUpcoming.slice(0, 4);
+  const latestActivity = scopedRecent.slice(0, 5);
+  const highlightedProblems = scopedOpenProblems.slice(0, 3);
+
+  const activeFocusLabel = useMemo(() => {
     if (selectedDataspaces.length === 0) {
       return "All dataspaces";
     }
-    return selectedDataspaces.map((key) => getDataspaceLabel(key, dataspaceOptions)).join(", ");
+    if (selectedDataspaces.length === 1) {
+      return dataspaceOptions.find((option) => option.key === selectedDataspaces[0])?.label ?? "Selected dataspace";
+    }
+    return `${selectedDataspaces.length} dataspaces selected`;
   }, [dataspaceOptions, selectedDataspaces]);
-
-  const metrics = useMemo(
-    () => [
-      { label: "Meetings", value: `${scopedMeetings.length}`, tone: "dark" as const },
-      { label: "Templates", value: `${scopedPlans.length}`, tone: "light" as const },
-      { label: "Invites", value: `${scopedInvites.length}`, tone: "accent" as const },
-      { label: "Open Problems", value: `${scopedOpenProblems.length}`, tone: "light" as const }
-    ],
-    [scopedInvites.length, scopedMeetings.length, scopedOpenProblems.length, scopedPlans.length]
-  );
 
   function toggleDataspace(key: string) {
     setSelectedDataspaces((current) =>
@@ -459,185 +392,226 @@ export function DashboardTabs({
   }
 
   return (
-    <div className="grid h-full min-h-0 gap-5 xl:grid-cols-12">
-      <DataspaceFilterRail
-        options={dataspaceOptions}
-        selectedDataspaces={selectedDataspaces}
-        onReset={() => setSelectedDataspaces([])}
-        onToggle={toggleDataspace}
-      />
-
-      <div className="flex min-h-0 flex-col gap-5 xl:col-span-9">
-        <section className="relative overflow-hidden rounded-[36px] border border-slate-200/80 bg-[linear-gradient(135deg,rgba(255,248,237,0.96),rgba(255,255,255,0.84)_48%,rgba(219,234,254,0.78))] px-5 py-6 shadow-[0_28px_70px_rgba(15,23,42,0.12)] sm:px-6">
-          <div className="absolute inset-y-0 right-0 hidden w-1/3 bg-[radial-gradient(circle_at_center,rgba(249,115,22,0.16),transparent_58%)] lg:block" />
-          <div className="relative">
-            <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-              <div className="max-w-3xl">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-500">
-                  Dashboard
-                </p>
-                <h1 className="mt-3 text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl" style={{ fontFamily: "var(--font-serif)" }}>
-                  Coordination view for meetings, templates, and active work.
-                </h1>
-                <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">
-                  Filter by dataspace, review the next actions, and move between live collaboration surfaces without leaving the page.
-                </p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2 xl:w-[360px]">
-                {metrics.map((metric) => (
-                  <SummaryMetric
-                    key={metric.label}
-                    label={metric.label}
-                    value={metric.value}
-                    tone={metric.tone}
-                  />
-                ))}
-              </div>
-            </div>
-            <div className="mt-5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-              <span className="rounded-full bg-white/80 px-3 py-1.5 font-semibold text-slate-700 ring-1 ring-slate-200">
-                Focus: {activeDataspaceLabels}
-              </span>
-              <span className="rounded-full bg-white/60 px-3 py-1.5 ring-1 ring-slate-200/80">
-                {scopedCalendar.length} calendar events in scope
-              </span>
-              {scopedInvites.length > 0 ? (
-                <span className="rounded-full bg-rose-100 px-3 py-1.5 font-semibold text-rose-700 ring-1 ring-rose-200">
-                  {scopedInvites.length} pending invitations
-                </span>
-              ) : null}
-            </div>
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <section className="dr-card border-none bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(248,250,252,0.86))] px-4 py-4 shadow-[0_20px_54px_rgba(15,23,42,0.08)] sm:px-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">
+              Workspace Dashboard
+            </p>
+            <h1 className="mt-2 text-3xl font-semibold text-slate-950 sm:text-4xl" style={{ fontFamily: "var(--font-serif)" }}>
+              Start with what needs action, then move into detail.
+            </h1>
+            <p className="mt-2 text-sm leading-6 text-slate-600 sm:text-base">
+              Invitations and upcoming sessions are prioritized first. Historical activity and open problems stay visible, but secondary.
+            </p>
           </div>
-        </section>
-
-        <div className="dr-card overflow-hidden border-none bg-white/70 p-2 shadow-[0_22px_56px_rgba(15,23,42,0.09)]">
-          <div className="flex min-w-max flex-wrap gap-2">
-            {TABS.map((key) => {
-              const isActive = tab === key;
-              const showCount = key === "Notifications" && scopedInvites.length > 0;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setTab(key)}
-                  className={`rounded-full px-4 py-2.5 text-sm font-semibold transition ${
-                    isActive
-                      ? "bg-slate-950 text-white shadow-[0_12px_28px_rgba(15,23,42,0.22)]"
-                      : "bg-white/80 text-slate-600 ring-1 ring-slate-200 hover:text-slate-950"
-                  }`}
-                >
-                  {key}
-                  {showCount ? (
-                    <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] ${isActive ? "bg-white/15" : "bg-rose-100 text-rose-700"}`}>
-                      {scopedInvites.length}
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
+          <div className="rounded-2xl bg-slate-950 px-4 py-3 text-white">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/60">Current focus</p>
+            <p className="mt-1 text-lg font-semibold">{activeFocusLabel}</p>
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-auto pb-1">
-          {tab === "Overview" ? (
-            <div className="space-y-5">
-              <div className="grid gap-5 2xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-                <OverviewCard
-                  eyebrow="Signal"
-                  title="Recent activity"
-                  description="Latest changes across meetings, templates, and texts in the current scope."
-                >
-                  <ActivityList
-                    items={scopedRecent.slice(0, 6)}
-                    emptyTitle="No Recent Activity"
-                    emptyDescription="Once people start creating or updating content, it will appear here."
-                  />
-                </OverviewCard>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <SummaryTile
+            label="Pending Invites"
+            value={`${scopedInvites.length}`}
+            note={scopedInvites.length > 0 ? "Needs response" : "No blocked invites"}
+            tone={scopedInvites.length > 0 ? "priority" : "neutral"}
+          />
+          <SummaryTile
+            label="Upcoming"
+            value={`${nextUpcoming.length}`}
+            note="Next meetings and templates"
+          />
+          <SummaryTile
+            label="Open Problems"
+            value={`${scopedOpenProblems.length}`}
+            note="Issues needing collaboration"
+          />
+          <SummaryTile
+            label="Library"
+            value={`${scopedTexts.length}`}
+            note="Texts in current scope"
+          />
+        </div>
 
-                <div className="space-y-3">
-                  <div className="px-1">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
-                      Action Queue
-                    </p>
-                    <h3 className="mt-2 text-2xl font-semibold text-slate-950" style={{ fontFamily: "var(--font-serif)" }}>
-                      Upcoming invitations
-                    </h3>
-                    <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600">
-                      Respond to invitations without leaving the dashboard.
-                    </p>
+        <div className="mt-4 border-t border-slate-200/80 pt-4">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+            Filter By Dataspace
+          </p>
+          <DataspacePicker
+            options={dataspaceOptions}
+            selectedDataspaces={selectedDataspaces}
+            onReset={() => setSelectedDataspaces([])}
+            onToggle={toggleDataspace}
+          />
+        </div>
+      </section>
+
+      <div className="dr-card border-none bg-white/72 p-2 shadow-[0_18px_48px_rgba(15,23,42,0.08)]">
+        <div className="flex gap-2 overflow-x-auto">
+          {TABS.map((key) => {
+            const isActive = tab === key;
+            const badge = key === "Notifications" ? scopedInvites.length : null;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setTab(key)}
+                className={`shrink-0 rounded-full px-4 py-2.5 text-sm font-semibold transition ${
+                  isActive
+                    ? "bg-slate-950 text-white"
+                    : "bg-white text-slate-600 ring-1 ring-slate-200 hover:text-slate-950"
+                }`}
+              >
+                {key}
+                {badge ? (
+                  <span className={`ml-2 rounded-full px-2 py-0.5 text-[10px] ${isActive ? "bg-white/15" : "bg-rose-100 text-rose-700"}`}>
+                    {badge}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-auto pb-1">
+        {tab === "Overview" ? (
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_360px]">
+            <div className="space-y-4">
+              <SectionCard
+                eyebrow="Priority"
+                title="Next actions"
+                description="The most important items to respond to or join soon."
+              >
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                        Invitations
+                      </p>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Respond first so collaboration does not stall.
+                      </p>
+                    </div>
+                    <UpcomingInvites
+                      invites={scopedInvites}
+                      title="Pending invitations"
+                      description="Accept or decline directly from here."
+                    />
                   </div>
-                  <UpcomingInvites invites={scopedInvites} />
+
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                        Coming up
+                      </p>
+                      <p className="mt-1 text-sm text-slate-500">
+                        The nearest scheduled meetings and templates in the active scope.
+                      </p>
+                    </div>
+                    <EventList
+                      items={nextUpcoming}
+                      emptyTitle="Nothing Scheduled"
+                      emptyDescription="Upcoming meetings and templates will appear here."
+                    />
+                  </div>
                 </div>
-              </div>
+              </SectionCard>
 
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
-                <OverviewCard
-                  eyebrow="Schedule"
-                  title="Upcoming events"
-                  description="The next meetings and templates approaching in the selected dataspaces."
-                >
-                  <ActivityList
-                    items={scopedUpcoming.slice(0, 6)}
-                    emptyTitle="No Upcoming Events"
-                    emptyDescription="When future items are scheduled, they will be highlighted here."
-                  />
-                </OverviewCard>
-
-                <OverviewCard
-                  eyebrow="Work In Progress"
-                  title="Open problems"
-                  description="Problems requiring attention across the selected network."
-                  actionHref="/open-problems"
-                  actionLabel="Browse all"
-                >
-                  <OpenProblemsList
-                    problems={scopedOpenProblems.slice(0, 4)}
-                    joiningProblemId={joiningProblemId}
-                    onJoin={(problemId) => {
-                      handleJoinOpenProblem(problemId).catch(() => null);
-                    }}
-                  />
-                </OverviewCard>
-              </div>
+              <SectionCard
+                eyebrow="Context"
+                title="Recent activity"
+                description="Use this to regain context after time away from the workspace."
+              >
+                <EventList
+                  items={latestActivity}
+                  emptyTitle="No Recent Activity"
+                  emptyDescription="Newly updated meetings, templates, and texts will show up here."
+                />
+              </SectionCard>
             </div>
-          ) : null}
 
-          {tab === "Meetings" ? (
-            <MeetingsTable
-              initialMeetings={scopedMeetings}
-              dataspaceOptions={dataspaceOptions}
-              flows={scopedPlans}
-              texts={scopedTexts}
-              showCreatedBy={false}
-              showFlagFilters={true}
-              initialMode="MEETINGS"
-              showModeTabs={false}
-              hideDataspaceFilter={true}
+            <div className="space-y-4">
+              <SectionCard
+                eyebrow="Secondary"
+                title="Open problems"
+                description="Visible issues that may need follow-up."
+                actionHref="/open-problems"
+                actionLabel="Browse all"
+              >
+                <OpenProblemsList
+                  problems={highlightedProblems}
+                  joiningProblemId={joiningProblemId}
+                  onJoin={(problemId) => {
+                    handleJoinOpenProblem(problemId).catch(() => null);
+                  }}
+                />
+              </SectionCard>
+
+              <SectionCard
+                eyebrow="Drill Down"
+                title="Calendar and records"
+                description="Use the tabs above for the full meetings table, notification queue, and calendar view."
+              >
+                <div className="space-y-3 text-sm text-slate-600">
+                  <div className="rounded-[22px] border border-slate-200 bg-white/90 px-4 py-4">
+                    <p className="font-semibold text-slate-950">{scopedMeetings.length} meetings</p>
+                    <p className="mt-1">Open the Meetings tab for full search, filters, and management.</p>
+                  </div>
+                  <div className="rounded-[22px] border border-slate-200 bg-white/90 px-4 py-4">
+                    <p className="font-semibold text-slate-950">{scopedCalendar.length} calendar events</p>
+                    <p className="mt-1">Switch to Calendar when you need time-based scanning instead of task-based scanning.</p>
+                  </div>
+                </div>
+              </SectionCard>
+            </div>
+          </div>
+        ) : null}
+
+        {tab === "Meetings" ? (
+          <MeetingsTable
+            initialMeetings={scopedMeetings}
+            dataspaceOptions={dataspaceOptions}
+            flows={scopedPlans}
+            texts={scopedTexts}
+            showCreatedBy={false}
+            showFlagFilters={true}
+            initialMode="MEETINGS"
+            showModeTabs={false}
+            hideDataspaceFilter={true}
+          />
+        ) : null}
+
+        {tab === "Notifications" ? (
+          <UpcomingInvites
+            invites={scopedInvites}
+            title="Invitation queue"
+            description="Respond quickly to keep participation moving."
+          />
+        ) : null}
+
+        {tab === "Calendar" ? <CalendarPanel events={scopedCalendar} /> : null}
+
+        {tab === "Open Problems" ? (
+          <SectionCard
+            eyebrow="Problem Space"
+            title="Open problems"
+            description="Active issues visible in the currently selected dataspaces."
+            actionHref="/open-problems"
+            actionLabel="Browse all"
+          >
+            <OpenProblemsList
+              problems={scopedOpenProblems}
+              joiningProblemId={joiningProblemId}
+              onJoin={(problemId) => {
+                handleJoinOpenProblem(problemId).catch(() => null);
+              }}
             />
-          ) : null}
-
-          {tab === "Notifications" ? <UpcomingInvites invites={scopedInvites} /> : null}
-
-          {tab === "Calendar" ? <CalendarPanel events={scopedCalendar} /> : null}
-
-          {tab === "Open Problems" ? (
-            <OverviewCard
-              eyebrow="Problem Space"
-              title="Open problems"
-              description="Active problems visible in the selected dataspaces."
-              actionHref="/open-problems"
-              actionLabel="Browse all"
-            >
-              <OpenProblemsList
-                problems={scopedOpenProblems}
-                joiningProblemId={joiningProblemId}
-                onJoin={(problemId) => {
-                  handleJoinOpenProblem(problemId).catch(() => null);
-                }}
-              />
-            </OverviewCard>
-          ) : null}
-        </div>
+          </SectionCard>
+        ) : null}
       </div>
     </div>
   );
