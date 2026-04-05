@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getPlanViewer } from "@/lib/planGuests";
 import {
@@ -551,6 +552,23 @@ export async function GET(
       meetingId: string | null;
       isBreak: boolean;
     } | null = null;
+    let activeRound: Prisma.PlanRoundGetPayload<{
+      include: {
+        rooms: {
+          include: {
+            members: {
+              include: {
+                participantSession: {
+                  select: {
+                    id: true;
+                  };
+                };
+              };
+            };
+          };
+        };
+      };
+    }> | null = null;
 
     if (status === "active" && currentSegment?.type === "DISCUSSION" && activeParticipantSession) {
       const roomMember = await prisma.planRoomMember.findFirst({
@@ -588,9 +606,35 @@ export async function GET(
       };
     }
 
-    if (status === "active" && currentSegment?.type === "DISCUSSION" && round) {
+    if (status === "active" && currentSegment?.type === "DISCUSSION") {
+      activeRound = await prisma.planRound.findUnique({
+        where: {
+          planId_roundNumber: {
+            planId: plan.id,
+            roundNumber: currentRound
+          }
+        },
+        include: {
+          rooms: {
+            include: {
+              members: {
+                include: {
+                  participantSession: {
+                    select: {
+                      id: true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    if (status === "active" && currentSegment?.type === "DISCUSSION" && activeRound) {
       const assignedSessionIds = new Set(
-        round.rooms.flatMap((room) =>
+        activeRound.rooms.flatMap((room) =>
           room.members.map((member) => member.participantSession.id)
         )
       );
