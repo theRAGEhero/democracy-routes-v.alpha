@@ -9,7 +9,7 @@ export function AppFooter() {
   }
 
   return (
-    <footer className="mx-auto w-full max-w-5xl px-4 pb-8 text-xs text-slate-500">
+    <footer className="dr-shell dr-shell-pad w-full pb-8 text-xs text-slate-500">
       <div className="flex flex-wrap items-center gap-4">
         <a href="/privacy" className="hover:text-slate-700">
           Privacy Policy

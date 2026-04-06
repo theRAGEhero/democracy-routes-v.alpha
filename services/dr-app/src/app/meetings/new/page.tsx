@@ -15,7 +15,7 @@ export default async function NewMeetingPage() {
 
   return (
     <div className="w-full">
-      <div className="mx-auto w-full max-w-6xl space-y-4 px-2 sm:px-4 lg:px-5 xl:px-6">
+      <div className="w-full space-y-4">
         <div className="text-center sm:text-left">
           <h1 className="text-2xl font-semibold text-slate-900 sm:text-[2rem]" style={{ fontFamily: "var(--font-serif)" }}>
             New meeting

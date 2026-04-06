@@ -99,6 +99,15 @@ iframe {
   backdrop-filter: blur(12px);
 }
 
+.dr-shell {
+  width: min(100%, 1680px);
+  margin-inline: auto;
+}
+
+.dr-shell-pad {
+  padding-inline: clamp(0.75rem, 0.4rem + 1.2vw, 2rem);
+}
+
 .dr-card-no-filter {
   backdrop-filter: none;
 }

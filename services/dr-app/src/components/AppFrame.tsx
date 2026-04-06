@@ -24,7 +24,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
       <Suspense>
         <AppHeader />
       </Suspense>
-      <main className="mx-auto w-full max-w-[1400px] px-3 py-6 md:px-4">{children}</main>
+      <main className="dr-shell dr-shell-pad w-full py-6 lg:py-8">{children}</main>
       <AppFooter />
       <FirstTimeTutorial />
       <Suspense>

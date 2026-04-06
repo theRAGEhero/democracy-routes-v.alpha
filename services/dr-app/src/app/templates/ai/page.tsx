@@ -10,7 +10,7 @@ export default async function TemplateAiPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-3 pb-8 pt-4">
+    <div className="w-full pb-8 pt-4">
       <TemplateAiClient />
     </div>
   );

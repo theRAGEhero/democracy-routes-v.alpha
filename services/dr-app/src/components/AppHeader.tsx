@@ -158,7 +158,7 @@ export function AppHeader() {
   if (!session?.user) {
     return (
       <header className="sticky top-3 z-20">
-        <div className="relative mx-auto w-full max-w-6xl rounded-[28px] border border-[color:var(--stroke)] bg-[color:var(--card)] px-3 py-3 shadow-[0_18px_45px_rgba(15,23,42,0.12)] backdrop-blur sm:px-5">
+        <div className="dr-shell dr-shell-pad relative w-full rounded-[28px] border border-[color:var(--stroke)] bg-[color:var(--card)] py-3 shadow-[0_18px_45px_rgba(15,23,42,0.12)] backdrop-blur">
           <div className="flex items-center justify-between gap-3">
           <a
             href="https://democracyroutes.com"
@@ -244,7 +244,7 @@ export function AppHeader() {
     const isTemplateShell = isTemplateWorkspace;
     return (
       <header className="pointer-events-none fixed inset-x-0 top-0 z-[120]">
-        <div className="flex w-full items-center justify-end px-2 py-2 sm:px-3 sm:py-3">
+        <div className="dr-shell dr-shell-pad flex w-full items-center justify-end py-2 sm:py-3">
           <button
             type="button"
             onClick={() => setShowMobileMenu((prev) => !prev)}
@@ -414,7 +414,7 @@ export function AppHeader() {
 
   return (
     <header className="sticky top-3 z-20">
-      <div className="relative mx-auto w-full max-w-6xl rounded-[28px] border border-[color:var(--stroke)] bg-[color:var(--card)] px-3 py-3 shadow-[0_18px_45px_rgba(15,23,42,0.12)] backdrop-blur sm:px-5">
+      <div className="dr-shell dr-shell-pad relative w-full rounded-[28px] border border-[color:var(--stroke)] bg-[color:var(--card)] py-3 shadow-[0_18px_45px_rgba(15,23,42,0.12)] backdrop-blur">
         <div className="flex items-center justify-between gap-3">
           <a
             href="https://democracyroutes.com"
