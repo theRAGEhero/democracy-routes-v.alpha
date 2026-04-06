@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { MeetingsTable } from "@/app/dashboard/MeetingsTable";
 import { UpcomingInvites } from "@/app/dashboard/UpcomingInvites";
@@ -77,10 +77,6 @@ function overviewTypeBadgeClass(type: RecentItem["type"] | UpcomingItem["type"])
     default:
       return "bg-amber-100 text-amber-800 ring-1 ring-amber-200";
   }
-}
-
-function getDataspaceLabel(key: string, options: Props["dataspaceOptions"]) {
-  return options.find((option) => option.key === key)?.label ?? "Unknown dataspace";
 }
 
 function EmptyState({
@@ -284,34 +280,6 @@ function DataspaceFilterRail({
   );
 }
 
-function SummaryMetric({
-  label,
-  value,
-  tone
-}: {
-  label: string;
-  value: string;
-  tone: "dark" | "light" | "accent";
-}) {
-  const toneClass =
-    tone === "dark"
-      ? "bg-slate-950 text-white"
-      : tone === "accent"
-        ? "bg-amber-300 text-slate-950"
-        : "bg-white/70 text-slate-950";
-
-  return (
-    <div className={`rounded-[26px] border border-slate-200/70 px-4 py-4 shadow-sm ${toneClass}`}>
-      <p className={`text-[11px] font-semibold uppercase tracking-[0.2em] ${tone === "dark" ? "text-white/70" : "text-slate-500"}`}>
-        {label}
-      </p>
-      <p className="mt-2 text-3xl font-semibold" style={{ fontFamily: "var(--font-serif)" }}>
-        {value}
-      </p>
-    </div>
-  );
-}
-
 function OverviewCard({
   title,
   actionHref,
@@ -418,23 +386,6 @@ export function DashboardTabs({
   const scopedInvites = upcomingInvites.filter((row) => includeByDataspace(row.dataspaceKey));
   const scopedCalendar = calendarEvents.filter((row) => includeByDataspace(row.dataspaceKey));
 
-  const activeDataspaceLabels = useMemo(() => {
-    if (selectedDataspaces.length === 0) {
-      return "All dataspaces";
-    }
-    return selectedDataspaces.map((key) => getDataspaceLabel(key, dataspaceOptions)).join(", ");
-  }, [dataspaceOptions, selectedDataspaces]);
-
-  const metrics = useMemo(
-    () => [
-      { label: "Meetings", value: `${scopedMeetings.length}`, tone: "dark" as const },
-      { label: "Templates", value: `${scopedPlans.length}`, tone: "light" as const },
-      { label: "Invites", value: `${scopedInvites.length}`, tone: "accent" as const },
-      { label: "Open Problems", value: `${scopedOpenProblems.length}`, tone: "light" as const }
-    ],
-    [scopedInvites.length, scopedMeetings.length, scopedOpenProblems.length, scopedPlans.length]
-  );
-
   function toggleDataspace(key: string) {
     setSelectedDataspaces((current) =>
       current.includes(key) ? current.filter((entry) => entry !== key) : [...current, key]
@@ -481,29 +432,6 @@ export function DashboardTabs({
       />
 
       <div className="order-1 flex min-h-0 flex-1 flex-col gap-4 overflow-hidden lg:order-2 lg:min-w-0">
-        <section className="dr-card border-none bg-[linear-gradient(135deg,rgba(255,248,237,0.96),rgba(255,255,255,0.84)_48%,rgba(219,234,254,0.78))] px-4 py-4 shadow-[0_28px_70px_rgba(15,23,42,0.12)] sm:px-5">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">
-                Dashboard
-              </p>
-              <p className="mt-2 text-sm font-semibold text-slate-900 sm:text-base">
-                {activeDataspaceLabels}
-              </p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:w-[360px]">
-              {metrics.map((metric) => (
-                <SummaryMetric
-                  key={metric.label}
-                  label={metric.label}
-                  value={metric.value}
-                  tone={metric.tone}
-                />
-              ))}
-            </div>
-          </div>
-        </section>
-
         <div className="dr-card flex-shrink-0 overflow-x-auto border-none bg-white/70 p-2 shadow-[0_22px_56px_rgba(15,23,42,0.09)]">
           <div className="flex min-w-max items-center gap-2">
             {TABS.map((key) => {

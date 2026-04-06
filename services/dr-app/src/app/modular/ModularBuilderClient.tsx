@@ -2099,22 +2099,27 @@ export function ModularBuilderClient({
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden lg:flex-row">
         <div
-          className={`dr-card flex flex-col gap-3 p-3 ${
+          className={`dr-card flex flex-col gap-3 overflow-hidden border-none bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(241,245,249,0.92))] p-3 shadow-[0_24px_60px_rgba(15,23,42,0.1)] ${
             isMobile
               ? "w-full"
               : modulesCollapsed
                 ? "w-[56px]"
-                : "w-[200px]"
+                : "w-[280px]"
           }`}
         >
-          <div className="flex items-center justify-between">
-            <div className={`text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 ${modulesCollapsed ? "sr-only" : ""}`}>
-              Modules
+          <div className="flex items-center justify-between gap-2">
+            <div className={modulesCollapsed ? "sr-only" : ""}>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+                Modules
+              </div>
+              <div className="mt-1 text-sm font-semibold text-slate-900">
+                Drag into canvas
+              </div>
             </div>
             <button
               type="button"
               onClick={() => setModulesCollapsed((prev) => !prev)}
-              className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 hover:text-slate-900"
+              className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 shadow-sm hover:text-slate-900"
             >
               {modulesCollapsed ? ">" : "<"}
             </button>
@@ -2129,9 +2134,9 @@ export function ModularBuilderClient({
                   onDragStart={(event) => handleDragStart(event, module.type)}
                   onClick={() => (isMobile ? addNodeAtCenter(module.type) : undefined)}
                   title={module.label}
-                  className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white text-[10px] font-semibold ${module.color}`}
+                  className={`flex h-11 w-11 cursor-pointer items-center justify-center rounded-2xl border border-slate-200 bg-white text-[10px] font-semibold shadow-sm transition hover:-translate-y-0.5 ${module.color}`}
                 >
-                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="currentColor" aria-hidden="true">
                     <path d={module.icon} />
                   </svg>
                 </button>
@@ -2144,9 +2149,9 @@ export function ModularBuilderClient({
                   onDragStart={(event) => handleDragStart(event, module.type)}
                   onClick={() => (isMobile ? addNodeAtCenter(module.type) : undefined)}
                   title={module.label}
-                  className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white text-[10px] font-semibold ${module.color}`}
+                  className={`flex h-11 w-11 cursor-pointer items-center justify-center rounded-2xl border border-slate-200 bg-white text-[10px] font-semibold shadow-sm transition hover:-translate-y-0.5 ${module.color}`}
                 >
-                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="currentColor" aria-hidden="true">
                     <path d={module.icon} />
                   </svg>
                 </button>
@@ -2154,8 +2159,8 @@ export function ModularBuilderClient({
             </div>
           ) : (
             <>
-              <div className={`${isMobile ? "space-y-3" : "space-y-3 overflow-auto"}`}>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-2">
+              <div className={`${isMobile ? "space-y-3" : "space-y-3 overflow-auto pr-1"}`}>
+                <div className="rounded-[24px] border border-slate-200/80 bg-white/70 p-2.5">
                   <div className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                     Basic modules
                   </div>
@@ -2169,17 +2174,27 @@ export function ModularBuilderClient({
                         onClick={() => (isMobile ? addNodeAtCenter(module.type) : undefined)}
                         onMouseEnter={(event) => showModuleTooltip(event, module)}
                         onMouseLeave={hideModuleTooltip}
-                        className={`group relative flex cursor-pointer items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold ${module.color}`}
+                        className="group relative flex w-full cursor-pointer items-start gap-3 rounded-[20px] border border-slate-200 bg-white/95 px-3 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
                       >
-                        <svg viewBox="0 0 24 24" className="mr-2 h-4 w-4" fill="currentColor" aria-hidden="true">
-                          <path d={module.icon} />
-                        </svg>
-                        {module.label}
+                        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${module.color}`}>
+                          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
+                            <path d={module.icon} />
+                          </svg>
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-semibold text-slate-900">{module.label}</span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-500">
+                            {module.description}
+                          </span>
+                        </span>
+                        <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                          {isMobile ? "Add" : "Drag"}
+                        </span>
                       </button>
                     ))}
                   </div>
                 </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-2">
+                <div className="rounded-[24px] border border-slate-200/80 bg-white/70 p-2.5">
                   <div className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                     Participation platforms
                   </div>
@@ -2193,12 +2208,22 @@ export function ModularBuilderClient({
                         onClick={() => (isMobile ? addNodeAtCenter(module.type) : undefined)}
                         onMouseEnter={(event) => showModuleTooltip(event, module)}
                         onMouseLeave={hideModuleTooltip}
-                        className={`group relative flex cursor-pointer items-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold ${module.color}`}
+                        className="group relative flex w-full cursor-pointer items-start gap-3 rounded-[20px] border border-slate-200 bg-white/95 px-3 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
                       >
-                        <svg viewBox="0 0 24 24" className="mr-2 h-4 w-4" fill="currentColor" aria-hidden="true">
-                          <path d={module.icon} />
-                        </svg>
-                        {module.label}
+                        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${module.color}`}>
+                          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
+                            <path d={module.icon} />
+                          </svg>
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-semibold text-slate-900">{module.label}</span>
+                          <span className="mt-1 block text-xs leading-5 text-slate-500">
+                            {module.description}
+                          </span>
+                        </span>
+                        <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                          {isMobile ? "Add" : "Drag"}
+                        </span>
                       </button>
                     ))}
                   </div>
@@ -2212,8 +2237,8 @@ export function ModularBuilderClient({
                   </Link>
                 ) : null}
               </div>
-              <p className="mt-auto text-[11px] text-slate-500">
-                {isMobile ? "Tap a module to add it to the canvas." : "Drag a module into the canvas to add it to your template."}
+              <p className="mt-auto px-1 text-[11px] text-slate-500">
+                {isMobile ? "Tap to add." : "Drag into the canvas."}
               </p>
             </>
           )}

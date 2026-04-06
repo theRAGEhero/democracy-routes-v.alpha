@@ -538,7 +538,7 @@ export default async function DashboardPage() {
   ];
 
   return (
-    <div className="h-[calc(100dvh-140px)] max-h-[calc(100dvh-140px)] overflow-hidden">
+    <div className="relative left-1/2 right-1/2 h-[calc(100dvh-140px)] max-h-[calc(100dvh-140px)] w-screen -mx-[50vw] overflow-hidden">
       <DashboardTabs
         meetingRows={rows}
         planRows={planRows}
