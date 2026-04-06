@@ -52,6 +52,7 @@ type Props = {
 };
 
 type FeedbackProvider = "NONE" | "DEEPGRAM" | "VOSK";
+type ViewMode = "TABLE" | "KANBAN";
 
 const INITIAL_MESSAGE = "What is your problem or idea?";
 
@@ -92,13 +93,38 @@ function formatUpdatedLabel(value: string) {
   })}`;
 }
 
+function formatCreatedLabel(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown";
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  });
+}
+
 function normalizeStatus(value: string): OpenProblemStatus {
+  if (value === "OPEN") return "TODO";
   return OPEN_PROBLEM_BOARD_STATUSES.includes(value as OpenProblemStatus)
     ? (value as OpenProblemStatus)
     : "TODO";
 }
 
+function statusBadgeClass(status: OpenProblemStatus) {
+  switch (status) {
+    case "IN_PROGRESS":
+      return "bg-sky-100 text-sky-700 ring-1 ring-sky-200";
+    case "IN_REVIEW":
+      return "bg-amber-100 text-amber-700 ring-1 ring-amber-200";
+    case "DONE":
+      return "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200";
+    default:
+      return "bg-slate-100 text-slate-700 ring-1 ring-slate-200";
+  }
+}
+
 export function OpenProblemsClient({ initialProblems, dataspaces }: Props) {
+  const [viewMode, setViewMode] = useState<ViewMode>("TABLE");
   const [problems, setProblems] = useState(
     initialProblems.map((problem) => ({
       ...problem,
@@ -464,63 +490,28 @@ export function OpenProblemsClient({ initialProblems, dataspaces }: Props) {
     }
   }
 
-  return (
-    <div className="space-y-6">
-      <section className="rounded-[28px] border border-[color:var(--stroke)] bg-[color:var(--card)] p-4 shadow-[0_18px_45px_rgba(15,23,42,0.08)] sm:p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Draft</div>
-            <h2 className="mt-1 text-xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
-              New open problem
-            </h2>
-            <p className="mt-2 max-w-2xl text-sm text-slate-600">
-              Describe the issue first. When you publish it, the card will start in Todo and can be routed through the board.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={resetComposer}
-            className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900"
-          >
-            Reset
-          </button>
-        </div>
-
-        <div className="mt-5 grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
-          <div>
-            <div className="rounded-3xl border border-slate-200 bg-slate-50/70 p-3 sm:p-4">
-              <div
-                ref={chatScrollRef}
-                className="max-h-[420px] space-y-3 overflow-y-auto pr-1 sm:max-h-[520px]"
-              >
-                {messages.map((message, index) => (
-                  <div
-                    key={`${message.role}-${index}`}
-                    className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className={`max-w-[92%] rounded-3xl px-4 py-3 text-sm leading-relaxed shadow-sm ${
-                        message.role === "user"
-                          ? "bg-emerald-600 text-white"
-                          : "border border-slate-200 bg-white text-slate-800"
-                      }`}
-                    >
-                      {message.text}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-3 sm:p-4">
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Dataspace
-                </label>
+  function renderCard(problem: ProblemEntry) {
+    return (
+      <article key={problem.id} className="rounded-3xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            {editingProblemId === problem.id ? (
+              <div className="space-y-3">
+                <input
+                  value={editTitle}
+                  onChange={(event) => setEditTitle(event.target.value)}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-300"
+                />
+                <textarea
+                  value={editDescription}
+                  onChange={(event) => setEditDescription(event.target.value)}
+                  rows={4}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-emerald-300"
+                />
                 <select
-                  value={dataspaceId}
-                  onChange={(event) => setDataspaceId(event.target.value)}
-                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-emerald-300"
+                  value={editDataspaceId}
+                  onChange={(event) => setEditDataspaceId(event.target.value)}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-emerald-300"
                 >
                   <option value="">No dataspace</option>
                   {dataspaces.map((space) => (
@@ -530,50 +521,393 @@ export function OpenProblemsClient({ initialProblems, dataspaces }: Props) {
                   ))}
                 </select>
               </div>
-              <div className="mt-3 flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={handleMicToggle}
-                  disabled={provider === "NONE" || providerLoading || transcribing}
-                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${
-                    recording
-                      ? "border-red-300 bg-red-50 text-red-700"
-                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:text-slate-900"
-                  } disabled:cursor-not-allowed disabled:opacity-50`}
-                >
-                  <span>{transcribing ? "Transcribing..." : recording ? "Stop mic" : "Mic"}</span>
-                </button>
-              </div>
-              <textarea
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                className="mt-3 min-h-[150px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-emerald-300"
-                placeholder="Describe what is happening, why it matters, and what kind of conversation you hope to have."
-              />
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                <div className="text-xs text-slate-500">
-                  {provider === "NONE"
-                    ? "Mic transcription disabled in admin settings."
-                    : `Mic transcription via ${provider}.`}
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-semibold text-slate-900">{problem.title}</h3>
+                  <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${statusBadgeClass(normalizeStatus(problem.status))}`}>
+                    {OPEN_PROBLEM_STATUS_LABELS[normalizeStatus(problem.status)]}
+                  </span>
                 </div>
+                <p className="mt-2 text-sm text-slate-600">{problem.description}</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <span
+                    className="inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700"
+                    style={{
+                      borderColor: problem.dataspaceColor ?? "#cbd5e1",
+                      backgroundColor: `${problem.dataspaceColor ?? "#e2e8f0"}22`
+                    }}
+                  >
+                    {problem.dataspaceName || "No dataspace"}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="flex flex-col items-end gap-2">
+            {problem.createdByMe ? (
+              editingProblemId === problem.id ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleSaveEdit(problem.id)}
+                    disabled={editSaving || editTitle.trim().length < 3 || editDescription.trim().length < 10}
+                    className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {editSaving ? "Saving..." : "Save"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelEditing}
+                    className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
                 <button
                   type="button"
-                  onClick={handleSend}
-                  disabled={!draft.trim() || sending}
-                  className="dr-button px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={() => startEditing(problem)}
+                  className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:text-slate-900"
                 >
-                  {sending ? "Thinking..." : "Send"}
+                  Edit
                 </button>
-              </div>
+              )
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleJoin(problem.id)}
+                disabled={problem.joinedByMe}
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:text-slate-900 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-500"
+              >
+                {problem.joinedByMe ? "Joined" : "Join"}
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {OPEN_PROBLEM_BOARD_STATUSES.map((status) => (
+            <button
+              key={status}
+              type="button"
+              onClick={() => handleMoveProblem(problem.id, status)}
+              disabled={
+                normalizeStatus(problem.status) === status ||
+                movingProblemId === problem.id ||
+                editingProblemId === problem.id ||
+                (!problem.createdByMe && !problem.joinedByMe)
+              }
+              className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${
+                normalizeStatus(problem.status) === status
+                  ? "bg-slate-900 text-white"
+                  : "border border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900"
+              } disabled:cursor-not-allowed disabled:opacity-60`}
+            >
+              {OPEN_PROBLEM_STATUS_LABELS[status]}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] uppercase tracking-[0.18em] text-slate-500">
+          <span>{problem.createdByMe ? "Created by you" : problem.createdByEmail}</span>
+          <span>{problem.joinCount} joined</span>
+          <span>{formatUpdatedLabel(problem.updatedAt)}</span>
+          {problem.joinedByMe ? <span className="font-semibold text-emerald-700">You joined</span> : null}
+        </div>
+      </article>
+    );
+  }
+
+  return (
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_380px]">
+      <div className="space-y-6">
+        <section className="rounded-[28px] border border-[color:var(--stroke)] bg-[color:var(--card)] p-4 shadow-[0_18px_45px_rgba(15,23,42,0.08)] sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Browse</div>
+              <h2 className="mt-1 text-xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
+                Existing open problems
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm text-slate-600">
+                Switch between a table view for all previously created problems and a Kanban workflow view.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white p-1">
+              <button
+                type="button"
+                onClick={() => setViewMode("TABLE")}
+                className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] ${
+                  viewMode === "TABLE" ? "bg-slate-900 text-white" : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Table
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("KANBAN")}
+                className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] ${
+                  viewMode === "KANBAN" ? "bg-slate-900 text-white" : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Kanban
+              </button>
             </div>
           </div>
 
-          <div className="space-y-4">
+          {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
+          {saveStatus ? <p className="mt-4 text-sm text-emerald-600">{saveStatus}</p> : null}
+
+          {viewMode === "TABLE" ? (
+            <div className="mt-5 overflow-hidden rounded-3xl border border-slate-200 bg-white">
+              {problems.length === 0 ? (
+                <div className="px-6 py-8 text-sm text-slate-500">No open problems yet.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-200 text-sm">
+                    <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      <tr>
+                        <th className="px-4 py-3">Problem</th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3">Dataspace</th>
+                        <th className="px-4 py-3">Owner</th>
+                        <th className="px-4 py-3">Created</th>
+                        <th className="px-4 py-3">Updated</th>
+                        <th className="px-4 py-3">Joined</th>
+                        <th className="px-4 py-3">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {problems.map((problem) => (
+                        <tr key={problem.id} className="align-top">
+                          <td className="px-4 py-4">
+                            <div className="font-semibold text-slate-900">{problem.title}</div>
+                            <div className="mt-1 max-w-xl text-slate-600">{problem.description}</div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${statusBadgeClass(normalizeStatus(problem.status))}`}>
+                              {OPEN_PROBLEM_STATUS_LABELS[normalizeStatus(problem.status)]}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 text-slate-600">{problem.dataspaceName || "No dataspace"}</td>
+                          <td className="px-4 py-4 text-slate-600">{problem.createdByMe ? "You" : problem.createdByEmail}</td>
+                          <td className="px-4 py-4 text-slate-600">{formatCreatedLabel(problem.createdAt)}</td>
+                          <td className="px-4 py-4 text-slate-600">{formatUpdatedLabel(problem.updatedAt).replace("Updated ", "")}</td>
+                          <td className="px-4 py-4 text-slate-600">{problem.joinCount}</td>
+                          <td className="px-4 py-4">
+                            <div className="flex flex-wrap gap-2">
+                              {problem.createdByMe ? (
+                                <button
+                                  type="button"
+                                  onClick={() => startEditing(problem)}
+                                  className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:text-slate-900"
+                                >
+                                  Edit
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleJoin(problem.id)}
+                                  disabled={problem.joinedByMe}
+                                  className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:text-slate-900 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-500"
+                                >
+                                  {problem.joinedByMe ? "Joined" : "Join"}
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="mt-5 overflow-x-auto">
+              <div className="grid min-w-[1100px] gap-4 xl:min-w-0 xl:grid-cols-4">
+                {BOARD_META.map((column) => {
+                  const columnProblems = groupedProblems[column.status];
+                  return (
+                    <div
+                      key={column.status}
+                      className={`rounded-[24px] border ${column.borderClass} bg-slate-50/80 p-3`}
+                    >
+                      <div className="flex items-center justify-between gap-3 px-1">
+                        <span className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${column.badgeClass}`}>
+                          {OPEN_PROBLEM_STATUS_LABELS[column.status]}
+                        </span>
+                        <span className="text-xs font-semibold text-slate-500">{columnProblems.length}</span>
+                      </div>
+                      <div className="mt-3 space-y-3">
+                        {columnProblems.length === 0 ? (
+                          <div className="rounded-2xl border border-dashed border-slate-200 bg-white/80 px-4 py-6 text-sm text-slate-500">
+                            No cards in {OPEN_PROBLEM_STATUS_LABELS[column.status]}.
+                          </div>
+                        ) : (
+                          columnProblems.map((problem) => renderCard(problem))
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {editingProblemId && viewMode === "TABLE" ? (
+            <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50/70 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Edit problem</div>
+              <div className="mt-3 space-y-3">
+                <input
+                  value={editTitle}
+                  onChange={(event) => setEditTitle(event.target.value)}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-300"
+                />
+                <textarea
+                  value={editDescription}
+                  onChange={(event) => setEditDescription(event.target.value)}
+                  rows={4}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-emerald-300"
+                />
+                <select
+                  value={editDataspaceId}
+                  onChange={(event) => setEditDataspaceId(event.target.value)}
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-emerald-300"
+                >
+                  <option value="">No dataspace</option>
+                  {dataspaces.map((space) => (
+                    <option key={space.id} value={space.id}>
+                      {space.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSaveEdit(editingProblemId)}
+                    disabled={editSaving || editTitle.trim().length < 3 || editDescription.trim().length < 10}
+                    className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {editSaving ? "Saving..." : "Save"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelEditing}
+                    className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </section>
+      </div>
+
+      <aside className="xl:sticky xl:top-6 xl:self-start">
+        <section className="rounded-[28px] border border-[color:var(--stroke)] bg-[color:var(--card)] p-4 shadow-[0_18px_45px_rgba(15,23,42,0.08)] sm:p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Draft</div>
+              <h2 className="mt-1 text-xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
+                AI problem composer
+              </h2>
+              <p className="mt-2 text-sm text-slate-600">
+                Use the assistant to shape a new problem, then publish it into Todo.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={resetComposer}
+              className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 hover:text-slate-900"
+            >
+              Reset
+            </button>
+          </div>
+
+          <div className="mt-5 rounded-3xl border border-slate-200 bg-slate-50/70 p-3 sm:p-4">
+            <div
+              ref={chatScrollRef}
+              className="max-h-[320px] space-y-3 overflow-y-auto pr-1"
+            >
+              {messages.map((message, index) => (
+                <div
+                  key={`${message.role}-${index}`}
+                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[94%] rounded-3xl px-4 py-3 text-sm leading-relaxed shadow-sm ${
+                      message.role === "user"
+                        ? "bg-emerald-600 text-white"
+                        : "border border-slate-200 bg-white text-slate-800"
+                    }`}
+                  >
+                    {message.text}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-3 sm:p-4">
+            <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Dataspace
+            </label>
+            <select
+              value={dataspaceId}
+              onChange={(event) => setDataspaceId(event.target.value)}
+              className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-emerald-300"
+            >
+              <option value="">No dataspace</option>
+              {dataspaces.map((space) => (
+                <option key={space.id} value={space.id}>
+                  {space.name}
+                </option>
+              ))}
+            </select>
+            <div className="mt-3 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={handleMicToggle}
+                disabled={provider === "NONE" || providerLoading || transcribing}
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold ${
+                  recording
+                    ? "border-red-300 bg-red-50 text-red-700"
+                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:text-slate-900"
+                } disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                <span>{transcribing ? "Transcribing..." : recording ? "Stop mic" : "Mic"}</span>
+              </button>
+            </div>
+            <textarea
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              className="mt-3 min-h-[150px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-emerald-300"
+              placeholder="Describe what is happening, why it matters, and what kind of conversation you hope to have."
+            />
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="text-xs text-slate-500">
+                {provider === "NONE"
+                  ? "Mic transcription disabled in admin settings."
+                  : `Mic transcription via ${provider}.`}
+              </div>
+              <button
+                type="button"
+                onClick={handleSend}
+                disabled={!draft.trim() || sending}
+                className="dr-button px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {sending ? "Thinking..." : "Send"}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-4">
             <div className="rounded-3xl border border-slate-200 bg-white p-4">
               <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Draft title</div>
-              <div className="mt-2 text-sm font-semibold text-slate-900">
-                {suggestedTitle || "Not ready yet"}
-              </div>
+              <div className="mt-2 text-sm font-semibold text-slate-900">{suggestedTitle || "Not ready yet"}</div>
             </div>
             <div className="rounded-3xl border border-slate-200 bg-white p-4">
               <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Draft description</div>
@@ -581,7 +915,6 @@ export function OpenProblemsClient({ initialProblems, dataspaces }: Props) {
                 {suggestedDescription || "Continue the conversation to let the assistant shape the draft."}
               </div>
             </div>
-
             {similarProblems.length > 0 ? (
               <div className="rounded-3xl border border-amber-200 bg-amber-50/80 p-4">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700">
@@ -590,25 +923,11 @@ export function OpenProblemsClient({ initialProblems, dataspaces }: Props) {
                 <div className="mt-3 space-y-3">
                   {similarProblems.map((problem) => (
                     <div key={problem.id} className="rounded-2xl border border-amber-200 bg-white px-4 py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-semibold text-slate-900">{problem.title}</div>
-                          <div className="mt-1 text-sm text-slate-600">{problem.description}</div>
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <span
-                              className="inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700"
-                              style={{
-                                borderColor: problem.dataspaceColor ?? "#cbd5e1",
-                                backgroundColor: `${problem.dataspaceColor ?? "#e2e8f0"}22`
-                              }}
-                            >
-                              {problem.dataspaceName || "No dataspace"}
-                            </span>
-                          </div>
-                          <div className="mt-2 text-[11px] uppercase tracking-[0.18em] text-slate-500">
-                            {Math.round(problem.similarity * 100)}% similar
-                            {problem.createdByEmail ? ` · ${problem.createdByEmail}` : ""}
-                          </div>
+                      <div className="text-sm font-semibold text-slate-900">{problem.title}</div>
+                      <div className="mt-1 text-sm text-slate-600">{problem.description}</div>
+                      <div className="mt-2 flex items-center justify-between gap-3">
+                        <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                          {Math.round(problem.similarity * 100)}% similar
                         </div>
                         <button
                           type="button"
@@ -625,7 +944,7 @@ export function OpenProblemsClient({ initialProblems, dataspaces }: Props) {
             ) : null}
 
             <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-600">
-              Joined participants can move cards across the board. Only the original poster can edit title, description, and dataspace.
+              Legacy `OPEN` records are shown in the table and mapped to Todo in the Kanban view.
             </div>
 
             <div className="flex justify-end">
@@ -639,180 +958,8 @@ export function OpenProblemsClient({ initialProblems, dataspaces }: Props) {
               </button>
             </div>
           </div>
-        </div>
-
-        {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
-        {saveStatus ? <p className="mt-4 text-sm text-emerald-600">{saveStatus}</p> : null}
-      </section>
-
-      <section className="rounded-[28px] border border-[color:var(--stroke)] bg-[color:var(--card)] p-4 shadow-[0_18px_45px_rgba(15,23,42,0.08)] sm:p-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Workflow</div>
-            <h2 className="mt-1 text-xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
-              Kanban board
-            </h2>
-            <p className="mt-2 max-w-3xl text-sm text-slate-600">
-              Move problems from Todo to In Progress, then In Review, and finally Done when the route is complete.
-            </p>
-          </div>
-          <div className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-            {problems.length} total cards
-          </div>
-        </div>
-
-        <div className="mt-5 overflow-x-auto">
-          <div className="grid min-w-[1100px] gap-4 xl:min-w-0 xl:grid-cols-4">
-            {BOARD_META.map((column) => {
-              const columnProblems = groupedProblems[column.status];
-              return (
-                <div
-                  key={column.status}
-                  className={`rounded-[24px] border ${column.borderClass} bg-slate-50/80 p-3`}
-                >
-                  <div className="flex items-center justify-between gap-3 px-1">
-                    <span className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${column.badgeClass}`}>
-                      {OPEN_PROBLEM_STATUS_LABELS[column.status]}
-                    </span>
-                    <span className="text-xs font-semibold text-slate-500">{columnProblems.length}</span>
-                  </div>
-
-                  <div className="mt-3 space-y-3">
-                    {columnProblems.length === 0 ? (
-                      <div className="rounded-2xl border border-dashed border-slate-200 bg-white/80 px-4 py-6 text-sm text-slate-500">
-                        No cards in {OPEN_PROBLEM_STATUS_LABELS[column.status]}.
-                      </div>
-                    ) : (
-                      columnProblems.map((problem) => (
-                        <article key={problem.id} className="rounded-3xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                              {editingProblemId === problem.id ? (
-                                <div className="space-y-3">
-                                  <input
-                                    value={editTitle}
-                                    onChange={(event) => setEditTitle(event.target.value)}
-                                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-300"
-                                  />
-                                  <textarea
-                                    value={editDescription}
-                                    onChange={(event) => setEditDescription(event.target.value)}
-                                    rows={4}
-                                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-emerald-300"
-                                  />
-                                  <select
-                                    value={editDataspaceId}
-                                    onChange={(event) => setEditDataspaceId(event.target.value)}
-                                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-emerald-300"
-                                  >
-                                    <option value="">No dataspace</option>
-                                    {dataspaces.map((space) => (
-                                      <option key={space.id} value={space.id}>
-                                        {space.name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                              ) : (
-                                <>
-                                  <h3 className="text-sm font-semibold text-slate-900">{problem.title}</h3>
-                                  <p className="mt-2 text-sm text-slate-600">{problem.description}</p>
-                                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                                    <span
-                                      className="inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700"
-                                      style={{
-                                        borderColor: problem.dataspaceColor ?? "#cbd5e1",
-                                        backgroundColor: `${problem.dataspaceColor ?? "#e2e8f0"}22`
-                                      }}
-                                    >
-                                      {problem.dataspaceName || "No dataspace"}
-                                    </span>
-                                  </div>
-                                </>
-                              )}
-                            </div>
-
-                            <div className="flex flex-col items-end gap-2">
-                              {problem.createdByMe ? (
-                                editingProblemId === problem.id ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleSaveEdit(problem.id)}
-                                      disabled={editSaving || editTitle.trim().length < 3 || editDescription.trim().length < 10}
-                                      className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                    >
-                                      {editSaving ? "Saving..." : "Save"}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={cancelEditing}
-                                      className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700"
-                                    >
-                                      Cancel
-                                    </button>
-                                  </>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => startEditing(problem)}
-                                    className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:text-slate-900"
-                                  >
-                                    Edit
-                                  </button>
-                                )
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => handleJoin(problem.id)}
-                                  disabled={problem.joinedByMe}
-                                  className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:text-slate-900 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-500"
-                                >
-                                  {problem.joinedByMe ? "Joined" : "Join"}
-                                </button>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="mt-4 flex flex-wrap gap-2">
-                            {OPEN_PROBLEM_BOARD_STATUSES.map((status) => (
-                              <button
-                                key={status}
-                                type="button"
-                                onClick={() => handleMoveProblem(problem.id, status)}
-                                disabled={
-                                  problem.status === status ||
-                                  movingProblemId === problem.id ||
-                                  editingProblemId === problem.id ||
-                                  (!problem.createdByMe && !problem.joinedByMe)
-                                }
-                                className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${
-                                  problem.status === status
-                                    ? "bg-slate-900 text-white"
-                                    : "border border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900"
-                                } disabled:cursor-not-allowed disabled:opacity-60`}
-                              >
-                                {OPEN_PROBLEM_STATUS_LABELS[status]}
-                              </button>
-                            ))}
-                          </div>
-
-                          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] uppercase tracking-[0.18em] text-slate-500">
-                            <span>{problem.createdByMe ? "Created by you" : problem.createdByEmail}</span>
-                            <span>{problem.joinCount} joined</span>
-                            <span>{formatUpdatedLabel(problem.updatedAt)}</span>
-                            {problem.joinedByMe ? <span className="font-semibold text-emerald-700">You joined</span> : null}
-                          </div>
-                        </article>
-                      ))
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
+        </section>
+      </aside>
     </div>
   );
 }

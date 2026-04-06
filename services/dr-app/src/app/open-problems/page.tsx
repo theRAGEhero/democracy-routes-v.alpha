@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { OpenProblemsClient } from "@/app/open-problems/OpenProblemsClient";
-import { OPEN_PROBLEM_BOARD_STATUSES } from "@/lib/openProblemStatus";
+import { OPEN_PROBLEM_VISIBLE_STATUSES } from "@/lib/openProblemStatus";
 
 export default async function OpenProblemsPage() {
   const session = await getServerSession(authOptions);
@@ -13,7 +13,7 @@ export default async function OpenProblemsPage() {
   const [problems, dataspaces] = await Promise.all([
     prisma.openProblem.findMany({
       where: {
-        status: { in: [...OPEN_PROBLEM_BOARD_STATUSES] },
+        status: { in: [...OPEN_PROBLEM_VISIBLE_STATUSES] },
         OR: [
           { dataspaceId: null },
           { dataspace: { members: { some: { userId: session.user.id } } } }
