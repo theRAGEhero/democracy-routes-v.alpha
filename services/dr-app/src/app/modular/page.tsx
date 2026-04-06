@@ -65,7 +65,7 @@ export default async function ModularBuilderPage({ searchParams }: PageProps) {
   });
 
   return (
-    <div className="relative left-1/2 right-1/2 h-[calc(100dvh-72px)] w-screen -mx-[50vw] overflow-hidden px-2">
+    <div className="relative left-1/2 right-1/2 h-[calc(100dvh-72px)] w-screen -mx-[50vw] overflow-hidden">
       <ModularBuilderClient
         templates={parsedTemplates}
         dataspaces={dataspaces}
