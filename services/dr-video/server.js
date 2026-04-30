@@ -49,6 +49,9 @@ const TRANSCRIPTION_HUB_URL = String(process.env.TRANSCRIPTION_HUB_URL || "").tr
 const TRANSCRIPTION_HUB_API_KEY = String(process.env.TRANSCRIPTION_HUB_API_KEY || "").trim();
 const HUB_PENDING_DIR = path.resolve(RECORDINGS_DIR, "_hub_pending");
 const HUB_RETRY_SCAN_MS = Number(process.env.HUB_RETRY_SCAN_MS || 15000);
+const HUB_REQUEST_TIMEOUT_MS = Number(process.env.HUB_REQUEST_TIMEOUT_MS || 8000);
+const HUB_RETRY_MIN_MS = Number(process.env.HUB_RETRY_MIN_MS || 15000);
+const HUB_RETRY_MAX_MS = Number(process.env.HUB_RETRY_MAX_MS || 5 * 60 * 1000);
 const ACCESS_SECRET = String(process.env.DR_VIDEO_ACCESS_SECRET || "").trim();
 const REQUIRE_ACCESS = String(process.env.DR_VIDEO_REQUIRE_ACCESS || "true") === "true";
 const ADMIN_API_KEY = String(process.env.DR_VIDEO_ADMIN_API_KEY || ACCESS_SECRET || "").trim();
@@ -263,6 +266,56 @@ function getPendingFiles() {
     .sort();
 }
 
+function getRetryDelayMs(attempts) {
+  const count = Math.max(0, Number(attempts || 0));
+  return Math.min(HUB_RETRY_MIN_MS * Math.pow(2, count), HUB_RETRY_MAX_MS);
+}
+
+function summarizePendingHubQueue(roomId = "") {
+  const normalizedRoomId = String(roomId || "").trim();
+  const files = getPendingFiles();
+  let pendingCount = 0;
+  let retryingCount = 0;
+  let lastQueuedAt = null;
+  let nextRetryAt = null;
+  let lastError = "";
+
+  for (const filename of files) {
+    const fullPath = path.join(HUB_PENDING_DIR, filename);
+    let wrapped = null;
+    try {
+      wrapped = JSON.parse(fs.readFileSync(fullPath, "utf8"));
+    } catch {
+      continue;
+    }
+    const payloadRoomId = String(wrapped?.payload?.roomId || "").trim();
+    if (normalizedRoomId && payloadRoomId !== normalizedRoomId) continue;
+    pendingCount += 1;
+    const currentNextRetryAt = String(wrapped?.nextRetryAt || "").trim() || null;
+    const currentQueuedAt = String(wrapped?.queuedAt || "").trim() || null;
+    if (currentNextRetryAt && Date.parse(currentNextRetryAt) > Date.now()) {
+      retryingCount += 1;
+    }
+    if (currentQueuedAt && (!lastQueuedAt || Date.parse(currentQueuedAt) > Date.parse(lastQueuedAt))) {
+      lastQueuedAt = currentQueuedAt;
+    }
+    if (currentNextRetryAt && (!nextRetryAt || Date.parse(currentNextRetryAt) < Date.parse(nextRetryAt))) {
+      nextRetryAt = currentNextRetryAt;
+    }
+    if (!lastError && wrapped?.lastError) {
+      lastError = String(wrapped.lastError);
+    }
+  }
+
+  return {
+    pendingCount,
+    retryingCount,
+    lastQueuedAt,
+    nextRetryAt,
+    lastError: lastError || null
+  };
+}
+
 function queueHubPayload(payload, reason = "") {
   try {
     const eventId = sanitizePendingFileName(payload?.eventId || createId("hub"));
@@ -272,6 +325,7 @@ function queueHubPayload(payload, reason = "") {
       queuedAt: new Date().toISOString(),
       reason,
       attempts: 0,
+      nextRetryAt: new Date(Date.now() + HUB_RETRY_MIN_MS).toISOString(),
       payload
     };
     fs.writeFileSync(fullPath, JSON.stringify(wrapped, null, 2));
@@ -303,11 +357,15 @@ async function postTranscriptionFinalizeToHub(payload) {
     hubMetrics.totalAttempts += 1;
     hubMetrics.lastAttemptAt = new Date().toISOString();
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), HUB_REQUEST_TIMEOUT_MS);
       const response = await fetch(endpoint, {
         method: "POST",
         headers,
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: controller.signal
       });
+      clearTimeout(timeout);
 
       if (response.ok) {
         hubMetrics.successCount += 1;
@@ -327,15 +385,26 @@ async function postTranscriptionFinalizeToHub(payload) {
       logger.warn("transcription_hub_ingest_failed", {
         endpoint,
         attempt,
+        timeoutMs: HUB_REQUEST_TIMEOUT_MS,
+        roomId: payload?.roomId || null,
+        sessionId: payload?.sessionId || null,
         status: response.status,
         body: String(text || "").slice(0, 500)
       });
     } catch (error) {
       hubMetrics.failedCount += 1;
-      hubMetrics.lastError = error instanceof Error ? error.message : String(error);
+      const isAbort = error?.name === "AbortError";
+      hubMetrics.lastError = isAbort
+        ? `timeout_after_${HUB_REQUEST_TIMEOUT_MS}ms`
+        : error instanceof Error
+          ? error.message
+          : String(error);
       logger.warn("transcription_hub_ingest_error", {
         endpoint,
         attempt,
+        timeoutMs: HUB_REQUEST_TIMEOUT_MS,
+        roomId: payload?.roomId || null,
+        sessionId: payload?.sessionId || null,
         error: hubMetrics.lastError
       });
     }
@@ -384,6 +453,11 @@ async function processPendingHubQueue() {
         continue;
       }
 
+      const nextRetryAtMs = Date.parse(String(wrapped?.nextRetryAt || ""));
+      if (Number.isFinite(nextRetryAtMs) && nextRetryAtMs > Date.now()) {
+        continue;
+      }
+
       const ok = await sendTranscriptionFinalizeToHub(payload, false);
       if (ok) {
         hubMetrics.drainedCount += 1;
@@ -392,6 +466,7 @@ async function processPendingHubQueue() {
         wrapped.attempts = Number(wrapped?.attempts || 0) + 1;
         wrapped.lastRetryAt = new Date().toISOString();
         wrapped.lastError = hubMetrics.lastError || "retry_failed";
+        wrapped.nextRetryAt = new Date(Date.now() + getRetryDelayMs(wrapped.attempts)).toISOString();
         try {
           fs.writeFileSync(fullPath, JSON.stringify(wrapped, null, 2));
         } catch {}
@@ -665,6 +740,186 @@ function broadcastToRoom(roomId, event, data, exceptPeerId = null) {
   }
 }
 
+function getPeerMediaHealth(peer) {
+  const producerKinds = {
+    audio: 0,
+    video: 0
+  };
+  const consumerKinds = {
+    audio: 0,
+    video: 0
+  };
+
+  for (const producer of peer?.producers?.values?.() || []) {
+    if (producer?.kind === "audio") producerKinds.audio += 1;
+    if (producer?.kind === "video") producerKinds.video += 1;
+  }
+
+  for (const consumer of peer?.consumers?.values?.() || []) {
+    if (consumer?.kind === "audio") consumerKinds.audio += 1;
+    if (consumer?.kind === "video") consumerKinds.video += 1;
+  }
+
+  return {
+    peerId: peer.id,
+    name: peer.name,
+    connected: peer.ws?.readyState === 1,
+    publishedAudio: producerKinds.audio > 0,
+    publishedVideo: producerKinds.video > 0,
+    audioConsumerCount: consumerKinds.audio,
+    videoConsumerCount: consumerKinds.video,
+    receivingAudio: consumerKinds.audio > 0,
+    receivingVideo: consumerKinds.video > 0
+  };
+}
+
+function getRoomMediaHealth(roomId) {
+  const room = rooms.get(roomId);
+  if (!room) {
+    return {
+      roomId,
+      exists: false,
+      participantCount: 0,
+      peers: [],
+      connectedPeerIds: []
+    };
+  }
+
+  const peersInRoom = Array.from(room.peers)
+    .map((peerId) => peers.get(peerId))
+    .filter(Boolean);
+
+  const peerHealth = peersInRoom.map((peer) => getPeerMediaHealth(peer));
+  const connectedPeerIds = peerHealth.filter((peer) => peer.connected).map((peer) => peer.peerId);
+
+  return {
+    roomId: room.id,
+    exists: true,
+    participantCount: connectedPeerIds.length,
+    peers: peerHealth,
+    connectedPeerIds
+  };
+}
+
+function broadcastRoomHealth(roomId) {
+  const health = getRoomMediaHealth(roomId);
+  broadcastToRoom(roomId, "room-health", health);
+}
+
+function listSpeakerSegments(session, options = {}) {
+  const now = Number(options.now || Date.now());
+  const includeOpen = options.includeOpen !== false;
+  const recentOnlyMs = Number(options.recentOnlyMs || 0);
+  const minStartMs = recentOnlyMs > 0 ? now - recentOnlyMs : 0;
+  const out = [];
+  const windowsByPeer = session?.peerSpeechWindows || {};
+  const openByPeer = session?.peerSpeechOpen || {};
+  const peerNameById = session?.peerNameById || {};
+  const room = rooms.get(String(session?.roomId || "").trim());
+
+  for (const [peerId, windows] of Object.entries(windowsByPeer)) {
+    if (!Array.isArray(windows)) continue;
+    const peer = peers.get(peerId) || (room?.peers?.has(peerId) ? peers.get(peerId) : null);
+    const displayName = String(peer?.name || peerNameById[peerId] || "").trim() || null;
+    for (const window of windows) {
+      const startMs = Number(window?.startMs || 0);
+      const endMs = Number(window?.endMs || 0);
+      if (!startMs || !endMs || endMs < startMs) continue;
+      if (minStartMs && endMs < minStartMs) continue;
+      out.push({
+        peerId,
+        displayName,
+        startMs,
+        endMs,
+        durationMs: endMs - startMs,
+        isOpen: false,
+        source: "voice_activity"
+      });
+    }
+  }
+
+  if (includeOpen) {
+    for (const [peerId, entry] of Object.entries(openByPeer)) {
+      const peer = peers.get(peerId) || (room?.peers?.has(peerId) ? peers.get(peerId) : null);
+      const displayName = String(peer?.name || peerNameById[peerId] || "").trim() || null;
+      const startMs = Number(entry?.startMs || 0);
+      const endMs = Math.max(Number(entry?.lastTsMs || startMs || now), now);
+      if (!startMs || endMs < startMs) continue;
+      if (minStartMs && endMs < minStartMs) continue;
+      out.push({
+        peerId,
+        displayName,
+        startMs,
+        endMs,
+        durationMs: endMs - startMs,
+        isOpen: true,
+        source: "voice_activity"
+      });
+    }
+  }
+
+  out.sort((a, b) => a.startMs - b.startMs);
+  return out;
+}
+
+function buildRecentSpeakerHistory(session, limit = 8) {
+  const now = Date.now();
+  const recent = listSpeakerSegments(session, {
+    now,
+    includeOpen: true,
+    recentOnlyMs: 3 * 60 * 1000
+  })
+    .slice(-Math.max(limit * 2, 12))
+    .sort((a, b) => b.endMs - a.endMs)
+    .slice(0, limit)
+    .map((segment) => ({
+      peerId: segment.peerId,
+      displayName: segment.displayName,
+      startMs: segment.startMs,
+      endMs: segment.endMs,
+      durationMs: segment.durationMs,
+      startedAtSec: session?.startedAtMs ? Math.max(0, (segment.startMs - session.startedAtMs) / 1000) : null,
+      endedAtSec: session?.startedAtMs ? Math.max(0, (segment.endMs - session.startedAtMs) / 1000) : null,
+      secondsAgo: Math.max(0, Math.round((now - segment.endMs) / 1000)),
+      isOpen: segment.isOpen
+    }));
+
+  return {
+    roomId: String(session?.roomId || ""),
+    generatedAtMs: now,
+    items: recent
+  };
+}
+
+function broadcastSpeakerHistory(roomId) {
+  const session = transcriptionSessions.get(roomId);
+  if (!session) return;
+  broadcastToRoom(roomId, "speaker-history", buildRecentSpeakerHistory(session));
+}
+
+function clearPeerTransportCleanup(peer) {
+  if (!peer?.transportCleanupTimer) return;
+  clearTimeout(peer.transportCleanupTimer);
+  peer.transportCleanupTimer = null;
+}
+
+function schedulePeerTransportCleanup(peer, reason = "transport_orphaned", delayMs = 5000) {
+  if (!peer) return;
+  clearPeerTransportCleanup(peer);
+  peer.transportCleanupTimer = setTimeout(() => {
+    const current = peers.get(peer.id);
+    if (!current) return;
+    const hasOpenTransport = Array.from(current.transports.values()).some((transport) => !transport.closed);
+    if (hasOpenTransport) return;
+    logger.warn("peer_transport_cleanup", {
+      peerId: current.id,
+      roomId: current.roomId,
+      reason
+    });
+    closePeer(current.id);
+  }, delayMs);
+}
+
 function pickRecordingOwner(room, excludedPeerId = null) {
   for (const candidateId of room.peers) {
     if (candidateId === excludedPeerId) continue;
@@ -687,7 +942,8 @@ function getRoomSummary(roomId) {
       recordingEnabled: false,
       recordingOwnerPeerId: null,
       transcriptionActive: false,
-      canClose: false
+      canClose: false,
+      speakerHistory: null
     };
   }
 
@@ -700,6 +956,57 @@ function getRoomSummary(roomId) {
       connected: peer.ws?.readyState === 1
     }));
 
+  const pendingHub = summarizePendingHubQueue(room.id);
+  const transcriptionSession = transcriptionSessions.get(room.id) || null;
+  const now = Date.now();
+  const lastChunkAtMs = Date.parse(String(transcriptionSession?.lastChunkAt || ""));
+  const lastTranscriptAtMs = Date.parse(String(transcriptionSession?.lastTranscriptAt || ""));
+  let transcriptionHealth = {
+    state: "idle",
+    label: "Idle",
+    detail: "",
+    lastChunkAt: transcriptionSession?.lastChunkAt || null,
+    lastTranscriptAt: transcriptionSession?.lastTranscriptAt || null,
+    pendingFinalizeCount: pendingHub.pendingCount,
+    retryingFinalizeCount: pendingHub.retryingCount,
+    nextRetryAt: pendingHub.nextRetryAt,
+    lastError: pendingHub.lastError || null
+  };
+
+  if (pendingHub.pendingCount > 0) {
+    transcriptionHealth = {
+      ...transcriptionHealth,
+      state: "finalize_retrying",
+      label: "Finalizing",
+      detail: pendingHub.lastError ? `Retrying finalize: ${pendingHub.lastError}` : "Retrying transcript finalize"
+    };
+  } else if (transcriptionSession) {
+    const chunkAgeMs = Number.isFinite(lastChunkAtMs) ? now - lastChunkAtMs : null;
+    const transcriptAgeMs = Number.isFinite(lastTranscriptAtMs) ? now - lastTranscriptAtMs : null;
+    if (chunkAgeMs !== null && chunkAgeMs > 8000) {
+      transcriptionHealth = {
+        ...transcriptionHealth,
+        state: "chunk_stalled",
+        label: "Degraded",
+        detail: "Audio chunks have stalled"
+      };
+    } else if (transcriptAgeMs !== null && transcriptAgeMs > 12000) {
+      transcriptionHealth = {
+        ...transcriptionHealth,
+        state: "provider_silent",
+        label: "Degraded",
+        detail: "Transcription provider has not returned lines recently"
+      };
+    } else {
+      transcriptionHealth = {
+        ...transcriptionHealth,
+        state: "live",
+        label: "Live",
+        detail: "Receiving transcription normally"
+      };
+    }
+  }
+
   return {
     roomId: room.id,
     exists: true,
@@ -708,7 +1015,11 @@ function getRoomSummary(roomId) {
     recordingEnabled: Boolean(room.recordingState.enabled),
     recordingOwnerPeerId: room.recordingState.ownerPeerId || null,
     transcriptionActive: transcriptionSessions.has(room.id),
-    canClose: participants.filter((peer) => peer.connected).length === 0
+    transcriptionHealth,
+    canClose: participants.filter((peer) => peer.connected).length === 0,
+    speakerHistory: transcriptionSessions.has(room.id)
+      ? buildRecentSpeakerHistory(transcriptionSessions.get(room.id))
+      : null
   };
 }
 
@@ -907,6 +1218,8 @@ function recordTranscriptionActiveSpeaker(roomId, senderPeerId, activePeerIdRaw,
     tsMs,
     bufferSize: session.activeSpeakerEvents.length
   });
+
+  broadcastSpeakerHistory(roomId);
 }
 
 function trimPeerSpeechWindows(session, now = Date.now()) {
@@ -999,6 +1312,8 @@ function recordTranscriptionVoiceActivity(roomId, senderPeerId, payload) {
     tsMs,
     openCount: Object.keys(session.peerSpeechOpen || {}).length
   });
+
+  broadcastSpeakerHistory(roomId);
 }
 
 function collectPeerOverlapScores(session, segStartMs, segEndMs) {
@@ -1938,6 +2253,71 @@ function buildSpeakerNameByNumber(session) {
   return out;
 }
 
+function buildSpeakerActivityTimeline(session) {
+  const baseSegments = listSpeakerSegments(session, {
+    now: Date.now(),
+    includeOpen: true
+  });
+
+  return baseSegments.map((segment) => ({
+    peerId: segment.peerId,
+    displayName: segment.displayName,
+    startMs: segment.startMs,
+    endMs: segment.endMs,
+    durationMs: segment.durationMs,
+    startedAtSec: session?.startedAtMs ? Math.max(0, (segment.startMs - session.startedAtMs) / 1000) : null,
+    endedAtSec: session?.startedAtMs ? Math.max(0, (segment.endMs - session.startedAtMs) / 1000) : null,
+    isOpen: segment.isOpen,
+    source: segment.source
+  }));
+}
+
+function resolveEntryTimingMs(entry, session) {
+  const startMsFromSeconds = Number.isFinite(Number(entry?.startSec))
+    ? Math.round(Number(entry.startSec) * 1000)
+    : null;
+  const endMsFromSeconds = Number.isFinite(Number(entry?.endSec))
+    ? Math.round(Number(entry.endSec) * 1000)
+    : null;
+
+  if (startMsFromSeconds !== null || endMsFromSeconds !== null) {
+    return {
+      startMs: startMsFromSeconds,
+      endMs: endMsFromSeconds
+    };
+  }
+
+  const startMsLegacy = Number.isFinite(Number(entry?.start_time))
+    ? Math.round(Number(entry.start_time) * 1000)
+    : null;
+  const endMsLegacy = Number.isFinite(Number(entry?.end_time))
+    ? Math.round(Number(entry.end_time) * 1000)
+    : null;
+  if (startMsLegacy !== null || endMsLegacy !== null) {
+    return {
+      startMs: startMsLegacy,
+      endMs: endMsLegacy
+    };
+  }
+
+  const sessionStartedAtMs = Number.isFinite(Number(session?.startedAtMs))
+    ? Number(session.startedAtMs)
+    : null;
+  const absoluteTsMs = Date.parse(String(entry?.ts || ""));
+  if (sessionStartedAtMs && Number.isFinite(absoluteTsMs)) {
+    const relativeStartMs = Math.max(0, absoluteTsMs - sessionStartedAtMs);
+    return {
+      startMs: relativeStartMs,
+      endMs: relativeStartMs
+    };
+  }
+
+  return {
+    startMs: null,
+    endMs: null
+  };
+}
+
 function persistTranscriptionSession(session, reason = "manual_stop") {
   const recordingSessionId = String(session?.recordingSessionId || "").trim();
   const roomId = String(session?.roomId || "").trim();
@@ -1971,6 +2351,8 @@ function persistTranscriptionSession(session, reason = "manual_stop") {
       events: Array.isArray(session.rawEvents) ? session.rawEvents : [],
       entries: Array.isArray(session.entries) ? session.entries : [],
       words: Array.isArray(session.finalWords) ? session.finalWords : [],
+      speaker_activity_timeline: buildSpeakerActivityTimeline(session),
+      active_speaker_events: Array.isArray(session.activeSpeakerEvents) ? session.activeSpeakerEvents : [],
       speaker_peer_votes: session.speakerPeerVotes || {},
       speaker_name_by_number: speakerNameByNumber
     };
@@ -1991,18 +2373,23 @@ function persistTranscriptionSession(session, reason = "manual_stop") {
     fs.writeFileSync(legacyPath, JSON.stringify(rawPayload, null, 2));
 
     const finalizedAt = new Date().toISOString();
-    const segments = rawPayload.entries.map((entry, idx) => ({
-      seq: idx + 1,
-      text: String(entry?.text || "").trim(),
-      isFinal: Boolean(entry?.isFinal ?? true),
-      startMs: Number.isFinite(Number(entry?.start_time)) ? Math.round(Number(entry.start_time) * 1000) : null,
-      endMs: Number.isFinite(Number(entry?.end_time)) ? Math.round(Number(entry.end_time) * 1000) : null,
-      speakerTag: entry?.speakerId ? String(entry.speakerId) : null,
-      mappedUserId: entry?.mappedPeerId ? String(entry.mappedPeerId) : null,
-      mappedUserName: entry?.mappedPeerName ? String(entry.mappedPeerName) : null,
-      confidence: Number.isFinite(Number(entry?.confidence)) ? Number(entry.confidence) : null,
-      payload: entry
-    })).filter((s) => Boolean(s.text));
+    const segments = rawPayload.entries
+      .map((entry, idx) => {
+        const timing = resolveEntryTimingMs(entry, session);
+        return {
+          seq: idx + 1,
+          text: String(entry?.text || "").trim(),
+          isFinal: Boolean(entry?.isFinal ?? true),
+          startMs: timing.startMs,
+          endMs: timing.endMs,
+          speakerTag: entry?.speakerId ? String(entry.speakerId) : null,
+          mappedUserId: entry?.mappedPeerId ? String(entry.mappedPeerId) : null,
+          mappedUserName: entry?.mappedPeerName ? String(entry.mappedPeerName) : null,
+          confidence: Number.isFinite(Number(entry?.confidence)) ? Number(entry.confidence) : null,
+          payload: entry
+        };
+      })
+      .filter((s) => Boolean(s.text));
 
     const artifacts = [
       { type: "deliberation", uri: deliberationPath, payload: deliberationPayload },
@@ -2379,6 +2766,12 @@ async function getOrCreateTranscriptionSession(roomId, ownerPeerId, languageRaw,
       transcriptionSessions.delete(roomId);
     }
 
+    broadcastToRoom(roomId, "speaker-history", {
+      roomId,
+      generatedAtMs: Date.now(),
+      items: []
+    });
+
     logger.info("transcription_session_closed", {
       roomId,
       sessionId,
@@ -2456,6 +2849,7 @@ function pushTranscriptionChunk(session, chunk) {
 function closePeer(peerId) {
   const peer = peers.get(peerId);
   if (!peer) return;
+  clearPeerTransportCleanup(peer);
 
   const roomId = peer.roomId;
   const now = Date.now();
@@ -2463,7 +2857,6 @@ function closePeer(peerId) {
   if (transcriptionSession) {
     closePeerSpeechWindow(transcriptionSession, peerId, now);
     delete transcriptionSession.peerSpeechOpen?.[peerId];
-    delete transcriptionSession.peerSpeechWindows?.[peerId];
   }
 
   for (const consumer of peer.consumers.values()) {
@@ -2525,6 +2918,10 @@ function closePeer(peerId) {
     }
 
     broadcastToRoom(roomId, "peer-left", { peerId }, peerId);
+    broadcastRoomHealth(roomId);
+    if (transcriptionSession) {
+      broadcastSpeakerHistory(roomId);
+    }
 
     if (room.peers.size === 0) {
       closeRoomById(roomId, "room_closed");
@@ -3239,6 +3636,88 @@ app.get("/api/rooms/state", (req, res) => {
   });
 });
 
+app.get("/api/rooms/chat", (req, res) => {
+  if (!requireAdminApiKey(req)) {
+    return json(res, 403, { error: "Access denied" });
+  }
+
+  const roomId = String(req.query.roomId || req.query.room || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 64);
+
+  if (!roomId) {
+    return json(res, 400, { error: "roomId is required" });
+  }
+
+  const after = String(req.query.after || "").trim();
+  const chatSession = getOrCreateChatSession(roomId);
+  const allMessages = Array.isArray(chatSession?.messages) ? chatSession.messages : [];
+  const messages =
+    after && allMessages.length
+      ? (() => {
+          const index = allMessages.findIndex((message) => message.ts === after);
+          return index >= 0 ? allMessages.slice(index + 1) : allMessages;
+        })()
+      : allMessages;
+
+  return json(res, 200, {
+    ok: true,
+    roomId,
+    chatSessionId: chatSession?.chatSessionId || null,
+    messages: messages.slice(-200)
+  });
+});
+
+app.post("/api/rooms/chat", express.json(), (req, res) => {
+  if (!requireAdminApiKey(req)) {
+    return json(res, 403, { error: "Access denied" });
+  }
+
+  const roomId = String(req.body?.roomId || req.body?.room || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 64);
+  const peerId = String(req.body?.peerId || "").trim() || createId("chatpeer");
+  const name = String(req.body?.name || "participant").trim() || "participant";
+  const text = String(req.body?.text || "").trim();
+
+  if (!roomId) {
+    return json(res, 400, { error: "roomId is required" });
+  }
+  if (!text) {
+    return json(res, 400, { error: "chat text is required" });
+  }
+  if (text.length > 800) {
+    return json(res, 400, { error: "chat text too long" });
+  }
+
+  const entry = appendChatMessage(roomId, peerId, name, text);
+  if (!entry) {
+    return json(res, 500, { error: "chat send failed" });
+  }
+
+  const payload = {
+    ts: entry.ts,
+    peerId: entry.peerId,
+    name: entry.name,
+    text: entry.text,
+    chatSessionId: entry.chatSessionId
+  };
+  broadcastToRoom(roomId, "chat-message", payload);
+
+  return json(res, 200, {
+    ok: true,
+    message: payload
+  });
+});
+
 app.post("/api/rooms/close-if-empty", express.json(), (req, res) => {
   if (!requireAdminApiKey(req)) {
     return json(res, 403, { error: "Access denied" });
@@ -3439,7 +3918,8 @@ wss.on("connection", (ws) => {
           wsId,
           transports: new Map(),
           producers: new Map(),
-          consumers: new Map()
+          consumers: new Map(),
+          transportCleanupTimer: null
         };
 
         peers.set(peerId, peer);
@@ -3507,7 +3987,11 @@ wss.on("connection", (ws) => {
           meetingId: room.meetingId || null,
           chatMessages,
           chatSessionId: chatSession?.chatSessionId || null,
-          transcriptHistory
+          transcriptHistory,
+          roomHealth: getRoomMediaHealth(roomId),
+          speakerHistory: transcriptionSessions.has(roomId)
+            ? buildRecentSpeakerHistory(transcriptionSessions.get(roomId))
+            : null
         });
 
         logger.info("peer_joined", {
@@ -3521,6 +4005,7 @@ wss.on("connection", (ws) => {
         });
 
         broadcastToRoom(roomId, "peer-joined", { peerId, name }, peerId);
+        broadcastRoomHealth(roomId);
         return;
       }
 
@@ -3533,6 +4018,7 @@ wss.on("connection", (ws) => {
 
         const direction = data?.direction === "recv" ? "recv" : "send";
         const transport = await createWebRtcTransport(room.router);
+        clearPeerTransportCleanup(peer);
         peer.transports.set(transport.id, transport);
 
         transport.on("icestatechange", (state) => {
@@ -3543,6 +4029,13 @@ wss.on("connection", (ws) => {
             direction,
             state
           });
+          if (state === "connected" || state === "completed") {
+            clearPeerTransportCleanup(peer);
+          } else if (state === "disconnected") {
+            schedulePeerTransportCleanup(peer, `transport_${direction}_ice_disconnected`, 5000);
+          } else if (state === "closed") {
+            schedulePeerTransportCleanup(peer, `transport_${direction}_ice_closed`, 1500);
+          }
         });
 
         transport.on("iceselectedtuplechange", (tuple) => {
@@ -3564,7 +4057,9 @@ wss.on("connection", (ws) => {
             state
           });
 
-          if (state === "closed") {
+          if (state === "connected") {
+            clearPeerTransportCleanup(peer);
+          } else if (state === "closed" || state === "failed") {
             try {
               transport.close();
             } catch {}
@@ -3575,6 +4070,7 @@ wss.on("connection", (ws) => {
               transportId: transport.id,
               reason: "dtls_closed"
             });
+            schedulePeerTransportCleanup(peer, `transport_${direction}_dtls_${state}`, 1500);
           }
         });
 
@@ -3600,6 +4096,7 @@ wss.on("connection", (ws) => {
         if (!transport) throw new Error("transport not found");
 
         await transport.connect({ dtlsParameters: data?.dtlsParameters });
+        clearPeerTransportCleanup(peer);
         ok(ws, requestId);
 
         logger.debug("transport_connected", {
@@ -3639,6 +4136,7 @@ wss.on("connection", (ws) => {
             producerId: producer.id,
             reason: "transport_close"
           });
+          broadcastRoomHealth(peer.roomId);
         });
 
         ok(ws, requestId, { producerId: producer.id });
@@ -3655,6 +4153,7 @@ wss.on("connection", (ws) => {
           producerId: producer.id,
           kind: producer.kind
         });
+        broadcastRoomHealth(peer.roomId);
         return;
       }
 
@@ -3699,6 +4198,7 @@ wss.on("connection", (ws) => {
             consumerId: consumer.id,
             reason: "transport_close"
           });
+          broadcastRoomHealth(peer.roomId);
         });
 
         consumer.on("producerclose", () => {
@@ -3715,6 +4215,7 @@ wss.on("connection", (ws) => {
             producerId,
             reason: "producer_close"
           });
+          broadcastRoomHealth(peer.roomId);
         });
 
         ok(ws, requestId, {
@@ -3731,6 +4232,7 @@ wss.on("connection", (ws) => {
           producerId,
           kind: consumer.kind
         });
+        broadcastRoomHealth(peer.roomId);
         return;
       }
 
@@ -3745,6 +4247,7 @@ wss.on("connection", (ws) => {
           roomId: peer.roomId,
           consumerId: consumer.id
         });
+        broadcastRoomHealth(peer.roomId);
         return;
       }
 

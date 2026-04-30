@@ -276,6 +276,175 @@
         padding: 12px;
       }
 
+      .recovery-banner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+        padding: 10px 12px;
+        border: 1px solid rgba(194, 65, 12, 0.22);
+        border-radius: 14px;
+        background: rgba(255, 247, 237, 0.96);
+        color: #7c2d12;
+      }
+
+      .recovery-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+      }
+
+      .recovery-title {
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .recovery-text {
+        font-size: 12px;
+        color: #9a3412;
+      }
+
+      .recovery-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      .recovery-btn {
+        white-space: nowrap;
+      }
+
+      .device-sheet-toggle {
+        display: none;
+      }
+
+      .device-sheet-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 115;
+        background: rgba(15, 23, 42, 0.44);
+        backdrop-filter: blur(6px);
+        padding: 18px 12px calc(18px + env(safe-area-inset-bottom, 0px));
+        align-items: flex-end;
+        justify-content: center;
+      }
+
+      .device-sheet {
+        width: min(100%, 540px);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.98);
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.24);
+        overflow: hidden;
+      }
+
+      .device-sheet-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 14px 14px 10px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .device-sheet-title {
+        font-size: 16px;
+        font-weight: 700;
+      }
+
+      .device-sheet-body {
+        display: grid;
+        gap: 12px;
+        padding: 14px;
+      }
+
+      .device-sheet-field {
+        display: grid;
+        gap: 6px;
+      }
+
+      .device-sheet-field label {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .device-sheet-field select {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .device-help {
+        font-size: 11px;
+        line-height: 1.45;
+        color: #64748b;
+      }
+
+      .playback-banner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+        padding: 10px 12px;
+        border: 1px solid rgba(29, 78, 216, 0.18);
+        border-radius: 14px;
+        background: rgba(239, 246, 255, 0.96);
+        color: #1e3a8a;
+      }
+
+      .media-health-banner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+        padding: 10px 12px;
+        border: 1px solid rgba(180, 83, 9, 0.2);
+        border-radius: 14px;
+        background: rgba(255, 247, 237, 0.96);
+        color: #9a3412;
+      }
+
+      .media-health-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+      }
+
+      .media-health-title {
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .media-health-text {
+        font-size: 12px;
+        color: #c2410c;
+      }
+
+      .playback-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+      }
+
+      .playback-title {
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .playback-text {
+        font-size: 12px;
+        color: #1d4ed8;
+      }
+
       .tiles {
         display: grid;
         --grid-cols: 2;
@@ -332,6 +501,43 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+
+      .tile-badges {
+        position: absolute;
+        right: 10px;
+        bottom: 10px;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 6px;
+        max-width: calc(100% - 20px);
+        pointer-events: none;
+      }
+
+      .tile-badge {
+        border-radius: 999px;
+        padding: 4px 7px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        backdrop-filter: blur(8px);
+        background: rgba(15, 23, 42, 0.72);
+        color: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+      }
+
+      .tile-badge.ok {
+        background: rgba(5, 150, 105, 0.82);
+      }
+
+      .tile-badge.warn {
+        background: rgba(180, 83, 9, 0.86);
+      }
+
+      .tile-badge.off {
+        background: rgba(71, 85, 105, 0.78);
       }
 
       .tile video {
@@ -455,6 +661,44 @@
         font-size: 14px;
       }
 
+      .panel-switcher {
+        display: none;
+      }
+
+      .panel-switcher-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.9);
+      }
+
+      .panel-tab {
+        border: none;
+        background: transparent;
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        min-height: 0;
+      }
+
+      .panel-tab.is-active {
+        background: #0f172a;
+        color: #fff;
+      }
+
+      .panel-switcher-meta {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+
       .participants {
         margin: 0;
         padding: 0;
@@ -472,8 +716,171 @@
         border-bottom: 1px solid var(--line);
       }
 
+      .participant-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .participant-name {
+        min-width: 0;
+        font-weight: 600;
+        color: #0f172a;
+      }
+      .participant-badges {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 6px;
+      }
+      .participant-badge {
+        border-radius: 999px;
+        padding: 4px 8px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+      .participant-badge.ok {
+        background: rgba(16, 185, 129, 0.12);
+        color: #047857;
+        border: 1px solid rgba(16, 185, 129, 0.18);
+      }
+      .participant-badge.warn {
+        background: rgba(245, 158, 11, 0.12);
+        color: #b45309;
+        border: 1px solid rgba(245, 158, 11, 0.2);
+      }
+      .participant-badge.off {
+        background: rgba(148, 163, 184, 0.14);
+        color: #475569;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+      }
+
       .participants li:last-child {
         border-bottom: 0;
+      }
+
+      .diagnostics-card {
+        margin-top: 14px;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.72);
+        padding: 14px;
+      }
+      .diagnostics-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .diagnostics-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .diagnostics-title {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: #64748b;
+      }
+      .diagnostics-grid {
+        margin-top: 12px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .diagnostics-item {
+        border-radius: 16px;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        background: rgba(248, 250, 252, 0.9);
+        padding: 10px 12px;
+      }
+      .diagnostics-label {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #64748b;
+      }
+      .diagnostics-value {
+        margin-top: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #0f172a;
+      }
+      .diagnostics-summary {
+        margin-top: 12px;
+        border-radius: 16px;
+        background: rgba(15, 23, 42, 0.04);
+        padding: 10px 12px;
+        font-size: 12px;
+        line-height: 1.5;
+        color: #475569;
+      }
+      .speaker-history {
+        margin-top: 12px;
+        border-radius: 18px;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        background: rgba(248, 250, 252, 0.82);
+        padding: 12px;
+      }
+      .speaker-history-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .speaker-history-title {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: #64748b;
+      }
+      .speaker-history-meta {
+        font-size: 11px;
+        color: #64748b;
+      }
+      .speaker-history-list {
+        margin-top: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .speaker-history-item {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.88);
+        padding: 10px 12px;
+      }
+      .speaker-history-name {
+        font-size: 12px;
+        font-weight: 700;
+        color: #0f172a;
+      }
+      .speaker-history-range {
+        margin-top: 3px;
+        font-size: 11px;
+        color: #64748b;
+      }
+      .speaker-history-state {
+        margin-top: 2px;
+        font-size: 11px;
+        color: #475569;
+      }
+      .speaker-history-duration {
+        white-space: nowrap;
+        font-size: 11px;
+        font-weight: 700;
+        color: #334155;
       }
 
       .logs {
@@ -960,76 +1367,97 @@
 
       @media (max-width: 760px) {
         :root {
-          --call-top-overlay: 64px;
-          --call-bottom-overlay: 100px;
+          --call-top-overlay: 80px;
+          --call-bottom-overlay: 118px;
         }
 
         .app {
-          padding: 10px 10px calc(118px + env(safe-area-inset-bottom, 0px));
+          padding: 8px 8px calc(126px + env(safe-area-inset-bottom, 0px));
         }
 
         .header {
-          padding: 9px 10px;
+          padding: 10px 12px;
           flex-direction: column;
           align-items: flex-start;
+          gap: 8px;
+          border-radius: 16px;
         }
 
         body.in-call .header {
           flex-direction: row;
           align-items: center;
-          padding: 8px 10px;
+          justify-content: space-between;
+          padding: 10px 12px;
+          gap: 8px;
+          top: 8px;
+          left: 8px;
+          right: 8px;
+          border-radius: 16px;
+          background: rgba(255, 255, 255, 0.82);
         }
 
         body.in-call .header-right {
           width: auto;
+          justify-content: flex-end;
         }
 
         .header-right {
           width: 100%;
           flex-wrap: wrap;
+          gap: 6px;
         }
 
         .badge {
           font-size: 11px;
-          padding: 6px 10px;
+          padding: 7px 10px;
         }
 
         #lobbyPanel {
-          padding: 12px;
+          margin-top: 10px;
+          padding: 14px;
+          border-radius: 20px;
         }
 
         .lobby-title {
-          font-size: 20px;
+          font-size: 22px;
+          line-height: 1.1;
         }
 
         .lobby-text {
-          font-size: 13px;
-          margin-bottom: 12px;
+          font-size: 14px;
+          line-height: 1.45;
+          margin-bottom: 14px;
         }
 
         input,
         select,
         button {
           font-size: 16px;
+          min-height: 48px;
+          border-radius: 14px;
         }
 
         .preview {
           min-height: 0;
+          gap: 10px;
         }
 
         .preview-head {
           flex-wrap: wrap;
-          gap: 6px;
+          gap: 8px;
+          margin-bottom: 0;
         }
 
         .auto-rec {
           display: flex;
           width: 100%;
+          align-items: flex-start;
         }
 
         .transcription-row {
           width: 100%;
           flex-wrap: wrap;
+          align-items: flex-start;
         }
 
         .transcription-row select {
@@ -1042,48 +1470,128 @@
           grid-template-columns: 1fr;
         }
 
+        .join-row .btn-primary,
+        .preview-head .btn-outline {
+          width: 100%;
+        }
+
+        .label {
+          margin-top: 14px;
+          margin-bottom: 8px;
+        }
+
+        .preview video {
+          border-radius: 16px;
+          aspect-ratio: 16 / 11;
+        }
+
         .call-grid {
-          gap: 8px;
+          gap: 6px;
         }
 
         .stage {
-          padding: 8px;
+          padding: 6px;
         }
 
         .tiles {
-          grid-template-columns: repeat(auto-fill, minmax(142px, 1fr));
-          gap: 8px;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 6px;
+        }
+
+        body.in-call .tiles.mode-auto[data-count="1"],
+        body.in-call .tiles.mode-auto[data-count="2"] {
+          grid-template-columns: 1fr;
         }
 
         .tile video {
-          aspect-ratio: 16 / 10;
+          aspect-ratio: 4 / 5;
         }
 
         body.in-call .tile video {
           aspect-ratio: auto;
         }
 
+        body.in-call .tiles.mode-auto[data-count="1"] .tile video,
+        body.in-call .tiles.mode-auto[data-count="2"] .tile video {
+          object-fit: cover;
+          object-position: center center;
+        }
+
+        body.in-call .tiles.mode-auto[data-count="1"] .tile,
+        body.in-call .tiles.mode-auto[data-count="2"] .tile {
+          min-height: 0;
+        }
+
+        .tile {
+          border-radius: 12px;
+        }
+
+        .tile-meta {
+          padding: 7px 8px;
+          font-size: 11px;
+        }
+
+        .recovery-banner,
+        .playback-banner,
+        .media-health-banner {
+          flex-direction: column;
+          align-items: stretch;
+          gap: 10px;
+          padding: 12px;
+          border-radius: 16px;
+          margin-bottom: 8px;
+        }
+
+        .recovery-actions {
+          width: 100%;
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .recovery-btn {
+          width: 100%;
+        }
+
         .panel {
           display: block;
-          padding: 10px;
+          padding: 12px;
+          border-radius: 18px 18px 0 0;
         }
 
         body.in-call .panel {
           top: auto;
-          right: 10px;
-          left: 10px;
+          right: 0;
+          left: 0;
           bottom: calc(var(--call-bottom-overlay) + env(safe-area-inset-bottom, 0px));
           width: auto;
-          height: min(34vh, 280px);
+          height: min(42vh, 340px);
+          padding: 12px 12px calc(14px + env(safe-area-inset-bottom, 0px));
+          border-radius: 18px 18px 0 0;
+          border-left: none;
+          border-top: 1px solid rgba(15, 23, 42, 0.16);
+          box-shadow: 0 -14px 36px rgba(15, 23, 42, 0.16);
         }
 
         body.in-call.transcript-open .stage {
-          padding-right: 8px;
-          padding-bottom: calc(var(--call-bottom-overlay) + min(34vh, 280px) + 8px);
+          padding-right: 6px;
+          padding-bottom: calc(var(--call-bottom-overlay) + min(42vh, 340px) + 6px);
         }
 
         .participants {
           max-height: 140px;
+        }
+
+        .panel-switcher {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+
+        .transcript-header,
+        .chat-header {
+          display: none;
         }
 
         .logs {
@@ -1092,19 +1600,20 @@
         }
 
         .dock {
-          width: calc(100% - 20px);
-          left: 10px;
-          right: 10px;
-          bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+          width: calc(100% - 12px);
+          left: 6px;
+          right: 6px;
+          bottom: calc(6px + env(safe-area-inset-bottom, 0px));
           transform: none;
           flex-wrap: nowrap;
           justify-content: flex-start;
           overflow-x: auto;
           overflow-y: visible;
           -webkit-overflow-scrolling: touch;
-          gap: 6px;
-          padding: 8px;
-          border-radius: 14px;
+          gap: 8px;
+          padding: 8px 8px 10px;
+          border-radius: 18px;
+          scroll-padding-inline: 8px;
         }
 
         .dock-group {
@@ -1112,7 +1621,27 @@
           justify-content: flex-start;
           flex-wrap: nowrap;
           flex: 0 0 auto;
-          gap: 6px;
+          gap: 8px;
+          padding: 5px;
+          border-radius: 14px;
+        }
+
+        .device-sheet-toggle {
+          display: inline-flex;
+        }
+
+        .dock-btn.with-gear {
+          min-width: 46px;
+          width: 46px;
+          padding-right: 8px;
+        }
+
+        .dock-btn .gear-suffix {
+          display: none;
+        }
+
+        .dock-device-popover {
+          display: none !important;
         }
 
         .dock-control-with-device {
@@ -1136,12 +1665,13 @@
 
         .dock-btn {
           flex: 0 0 auto;
-          min-width: 44px;
-          width: 44px;
-          min-height: 44px;
-          height: 44px;
+          min-width: 50px;
+          width: 50px;
+          min-height: 50px;
+          height: 50px;
           justify-content: center;
           padding: 8px;
+          border-radius: 14px;
         }
 
         .dock-device-mini {
@@ -1151,12 +1681,43 @@
         }
 
         .transcript-lines {
-          max-height: 180px;
+          max-height: 220px;
         }
 
         .dock-btn.with-gear {
           min-width: 72px;
           width: 72px;
+        }
+
+        .device-sheet-backdrop {
+          padding: 10px 8px calc(10px + env(safe-area-inset-bottom, 0px));
+        }
+
+        .device-sheet {
+          width: 100%;
+          border-radius: 20px;
+        }
+
+        .device-sheet-head {
+          padding: 14px 14px 12px;
+        }
+
+        .device-sheet-body {
+          padding: 14px;
+          gap: 14px;
+        }
+
+        body.in-call .tiles.mode-speaker {
+          grid-template-columns: 1fr;
+          grid-auto-rows: minmax(0, 1fr);
+        }
+
+        body.in-call .tiles.mode-speaker .tile {
+          min-height: 0;
+        }
+
+        body.in-call .tiles.mode-speaker .tile.active-speaker {
+          min-height: 0;
         }
       }
 
@@ -1284,12 +1845,89 @@
       <section id="callShell" class="hidden">
         <div class="call-grid">
           <section class="card stage">
+            <div id="recoveryBanner" class="recovery-banner hidden" aria-live="polite">
+              <div class="recovery-copy">
+                <div class="recovery-title">Recovering room connection</div>
+                <div id="recoveryText" class="recovery-text">Reconnecting audio and video…</div>
+              </div>
+              <div class="recovery-actions">
+                <button id="recoveryRestart" type="button" class="btn-outline recovery-btn">Restart camera and microphone</button>
+                <button id="recoveryRejoin" type="button" class="btn-outline recovery-btn">Rejoin room</button>
+              </div>
+            </div>
+            <div id="playbackBanner" class="playback-banner hidden" aria-live="polite">
+              <div class="playback-copy">
+                <div class="playback-title">Remote media needs attention</div>
+                <div id="playbackText" class="playback-text">Your browser paused room audio or video. Resume playback to hear and see others.</div>
+              </div>
+              <div class="recovery-actions">
+                <button id="playbackResume" type="button" class="btn-outline recovery-btn">Resume room audio/video</button>
+              </div>
+            </div>
+            <div id="mediaHealthBanner" class="media-health-banner hidden" aria-live="polite">
+              <div class="media-health-copy">
+                <div class="media-health-title">Room media is one-way</div>
+                <div id="mediaHealthText" class="media-health-text">You are connected, but media from the room is not arriving yet.</div>
+              </div>
+              <div class="recovery-actions">
+                <button id="mediaHealthRejoin" type="button" class="btn-outline recovery-btn">Rejoin room</button>
+              </div>
+            </div>
             <div id="videos" class="tiles"></div>
           </section>
 
           <aside class="card panel">
+            <div class="panel-switcher">
+              <div class="panel-switcher-group">
+                <button id="panelTabTranscript" type="button" class="panel-tab is-active">Transcript</button>
+                <button id="panelTabChat" type="button" class="panel-tab">Chat</button>
+              </div>
+              <div class="panel-switcher-meta"><span id="panelParticipantCount">0</span> people</div>
+            </div>
             <h3 class="panel-title">Participants (<span id="participantCount">0</span>)</h3>
             <ul id="participantList" class="participants"></ul>
+            <section id="diagnosticsCard" class="diagnostics-card">
+              <div class="diagnostics-head">
+                <div class="diagnostics-title">Diagnostics</div>
+                <div class="diagnostics-actions">
+                  <button id="copyDiagnostics" type="button" class="btn-outline">Copy</button>
+                </div>
+              </div>
+              <div class="diagnostics-grid">
+                <div class="diagnostics-item">
+                  <div class="diagnostics-label">WebSocket</div>
+                  <div id="diagWebSocket" class="diagnostics-value">Disconnected</div>
+                </div>
+                <div class="diagnostics-item">
+                  <div class="diagnostics-label">Send transport</div>
+                  <div id="diagSendTransport" class="diagnostics-value">Not ready</div>
+                </div>
+                <div class="diagnostics-item">
+                  <div class="diagnostics-label">Receive transport</div>
+                  <div id="diagRecvTransport" class="diagnostics-value">Not ready</div>
+                </div>
+                <div class="diagnostics-item">
+                  <div class="diagnostics-label">Local publish</div>
+                  <div id="diagLocalPublish" class="diagnostics-value">No media</div>
+                </div>
+                <div class="diagnostics-item">
+                  <div class="diagnostics-label">Remote receive</div>
+                  <div id="diagRemoteReceive" class="diagnostics-value">Waiting</div>
+                </div>
+                <div class="diagnostics-item">
+                  <div class="diagnostics-label">Room peers</div>
+                  <div id="diagRoomPeers" class="diagnostics-value">0 connected</div>
+                </div>
+              </div>
+              <div id="diagSummary" class="diagnostics-summary">Join a room to see connection and media health.</div>
+              <div id="speakerHistoryCard" class="speaker-history">
+                <div class="speaker-history-head">
+                  <div class="speaker-history-title">Recent speakers</div>
+                  <div id="speakerHistoryMeta" class="speaker-history-meta">No activity yet</div>
+                </div>
+                <div id="speakerHistoryList" class="speaker-history-list"></div>
+              </div>
+            </section>
             <section id="transcriptBox" class="transcript-box" aria-live="polite" aria-atomic="false">
               <div class="transcript-header">Live transcription</div>
               <div id="transcriptLines" class="transcript-lines"></div>
@@ -1333,11 +1971,36 @@
               </label>
             </div>
           </div>
+          <button id="deviceSheetToggle" type="button" class="dock-btn btn-outline device-sheet-toggle"><span class="ctrl-icon"></span><span class="ctrl-label">Devices</span></button>
           <button id="toggleRecAudio" type="button" class="dock-btn btn-outline"><span class="ctrl-icon"></span><span class="ctrl-label">Record audio</span></button>
           <button id="toggleRecVideo" type="button" class="dock-btn btn-outline"><span class="ctrl-icon"></span><span class="ctrl-label">Record video+audio</span></button>
           <button id="dockLeave" type="button" class="dock-btn btn-danger"><span class="ctrl-icon"></span><span class="ctrl-label">Leave</span></button>
         </div>
       </div>
+
+      <div id="deviceSheetBackdrop" class="device-sheet-backdrop hidden">
+        <section class="device-sheet">
+          <div class="device-sheet-head">
+            <div class="device-sheet-title">Devices</div>
+            <button id="deviceSheetClose" type="button" class="btn-outline">Close</button>
+          </div>
+            <div class="device-sheet-body">
+              <div class="device-sheet-field">
+                <label for="mobileAudioDevice">Microphone</label>
+                <select id="mobileAudioDevice"></select>
+              </div>
+              <div class="device-sheet-field">
+                <label for="mobileVideoDevice">Camera</label>
+                <select id="mobileVideoDevice"></select>
+              </div>
+              <div class="device-sheet-field">
+                <label for="mobileOutputDevice">Audio output</label>
+                <select id="mobileOutputDevice"></select>
+                <div id="mobileOutputHelp" class="device-help">Not available in this browser.</div>
+              </div>
+            </div>
+          </section>
+        </div>
 
       <div class="hidden">
         <button id="dockMic" type="button">dock mic</button>

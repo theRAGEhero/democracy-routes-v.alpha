@@ -30,8 +30,15 @@ const transcriptionEnabledEl = document.getElementById("transcriptionEnabled");
 const transcriptionLanguageInputEl = document.getElementById("transcriptionLanguageInput");
 const dockAudioDeviceEl = document.getElementById("dockAudioDevice");
 const dockVideoDeviceEl = document.getElementById("dockVideoDevice");
+const mobileAudioDeviceEl = document.getElementById("mobileAudioDevice");
+const mobileVideoDeviceEl = document.getElementById("mobileVideoDevice");
+const mobileOutputDeviceEl = document.getElementById("mobileOutputDevice");
+const mobileOutputHelpEl = document.getElementById("mobileOutputHelp");
 const micDevicePopover = document.getElementById("micDevicePopover");
 const camDevicePopover = document.getElementById("camDevicePopover");
+const deviceSheetToggleBtn = document.getElementById("deviceSheetToggle");
+const deviceSheetBackdropEl = document.getElementById("deviceSheetBackdrop");
+const deviceSheetCloseBtn = document.getElementById("deviceSheetClose");
 
 const dockMicBtn = document.getElementById("dockMic") || micToggleBtn;
 const dockCamBtn = document.getElementById("dockCam") || camToggleBtn;
@@ -43,6 +50,16 @@ const dockEl = document.getElementById("dock");
 const previewVideoEl = document.getElementById("previewVideo");
 const lobbyPanelEl = document.getElementById("lobbyPanel");
 const callShellEl = document.getElementById("callShell");
+const recoveryBannerEl = document.getElementById("recoveryBanner");
+const recoveryTextEl = document.getElementById("recoveryText");
+const recoveryRestartBtn = document.getElementById("recoveryRestart");
+const recoveryRejoinBtn = document.getElementById("recoveryRejoin");
+const playbackBannerEl = document.getElementById("playbackBanner");
+const playbackTextEl = document.getElementById("playbackText");
+const playbackResumeBtn = document.getElementById("playbackResume");
+const mediaHealthBannerEl = document.getElementById("mediaHealthBanner");
+const mediaHealthTextEl = document.getElementById("mediaHealthText");
+const mediaHealthRejoinBtn = document.getElementById("mediaHealthRejoin");
 const transcriptBoxEl = document.getElementById("transcriptBox");
 const transcriptLinesEl = document.getElementById("transcriptLines");
 const transcriptLiveEl = document.getElementById("transcriptLive");
@@ -50,6 +67,20 @@ const chatBoxEl = document.getElementById("chatBox");
 const chatMessagesEl = document.getElementById("chatMessages");
 const chatInputEl = document.getElementById("chatInput");
 const chatSendBtn = document.getElementById("chatSend");
+const panelTabTranscriptBtn = document.getElementById("panelTabTranscript");
+const panelTabChatBtn = document.getElementById("panelTabChat");
+const panelParticipantCountEl = document.getElementById("panelParticipantCount");
+const diagWebSocketEl = document.getElementById("diagWebSocket");
+const diagSendTransportEl = document.getElementById("diagSendTransport");
+const diagRecvTransportEl = document.getElementById("diagRecvTransport");
+const diagLocalPublishEl = document.getElementById("diagLocalPublish");
+const diagRemoteReceiveEl = document.getElementById("diagRemoteReceive");
+const diagRoomPeersEl = document.getElementById("diagRoomPeers");
+const diagSummaryEl = document.getElementById("diagSummary");
+const speakerHistoryCardEl = document.getElementById("speakerHistoryCard");
+const speakerHistoryMetaEl = document.getElementById("speakerHistoryMeta");
+const speakerHistoryListEl = document.getElementById("speakerHistoryList");
+const copyDiagnosticsBtn = document.getElementById("copyDiagnostics");
 const roomBadgeEl = document.getElementById("roomBadge");
 const inviteBtn = document.getElementById("inviteBtn");
 const participantCountEl = document.getElementById("participantCount");
@@ -258,6 +289,24 @@ let hideRecordingButtonsByUrl = false;
 let transcriptionLanguage = "";
 let transcriptionProvider = "DEEPGRAMLIVE";
 let transcriptionRecorder = null;
+let reconnectTimer = null;
+let reconnectAttempts = 0;
+let reconnectEligible = false;
+let intentionalDisconnect = false;
+let reconnectInFlight = false;
+let reconnectReason = "";
+let mediaRestartInFlight = false;
+let playbackResumeNeeded = false;
+let playbackResumeInFlight = false;
+let roomConnectedAt = 0;
+let mediaHealthWarning = "";
+let mediaHealthCheckAt = 0;
+let roomHealthSnapshot = null;
+let speakerHistorySnapshot = null;
+let sendTransportState = "not-ready";
+let recvTransportState = "not-ready";
+let selectedOutputDeviceId = "";
+const RECONNECT_DELAYS_MS = [1200, 2500, 5000, 8000];
 let transcriptionRecorderSeq = 0;
 let transcriptionRecorderSessionId = "";
 let transcriptionUploadPending = [];
@@ -271,6 +320,7 @@ const MAX_TRANSCRIPT_LINES = 500;
 let transcriptFinalItems = [];
 let transcriptInterimItem = "";
 let lastTranscriptSpeakerKey = "";
+const transcriptSpeakerNameByDiarizedId = new Map();
 let lastActiveSpeakerEmitAt = 0;
 let lastActiveSpeakerPeerKey = "";
 let transcriptPanelVisible = !EMBED_MODE;
@@ -833,7 +883,7 @@ function initializeJoinFields() {
   updateRoomBadge(initialRoom);
 }
 
-async function postLiveTranscriptLine(text, speaker, time) {
+async function postLiveTranscriptLine(text, speaker, time, metadata = {}) {
   if (!drAppTranscriptTarget || !meetingId) return;
   const now = Date.now();
   if (now - lastTranscriptPushAt < TRANSCRIPT_PUSH_INTERVAL_MS) return;
@@ -845,7 +895,8 @@ async function postLiveTranscriptLine(text, speaker, time) {
       body: JSON.stringify({
         text,
         speaker,
-        time
+        time,
+        ...metadata
       })
     });
   } catch {
@@ -1017,16 +1068,27 @@ function clearTranscriptBox() {
   transcriptFinalItems = [];
   transcriptInterimItem = "";
   lastTranscriptSpeakerKey = "";
+  transcriptSpeakerNameByDiarizedId.clear();
   renderTranscriptBox();
 }
 
+function rememberTranscriptSpeakerMapping(payload = {}) {
+  const diarizedSpeakerId = String(payload.speakerId || "").trim();
+  const mappedPeerName = String(payload.mappedPeerName || "").trim();
+  if (!diarizedSpeakerId || !mappedPeerName) return;
+  if (!/^speaker[_-]/i.test(diarizedSpeakerId)) return;
+  transcriptSpeakerNameByDiarizedId.set(diarizedSpeakerId, mappedPeerName);
+}
+
 function resolveTranscriptSourceName(payload = {}) {
+  rememberTranscriptSpeakerMapping(payload);
   const mappedPeerName = String(payload.mappedPeerName || "").trim();
   const mappedPeerId = String(payload.mappedPeerId || "").trim();
   const diarizedSpeakerId = String(payload.speakerId || "").trim();
   const sourcePeerId = String(payload.peerId || "").trim();
   return (
     mappedPeerName ||
+    transcriptSpeakerNameByDiarizedId.get(diarizedSpeakerId) ||
     mappedPeerId ||
     diarizedSpeakerId ||
     (sourcePeerId === peerId ? "you" : (peerNames.get(sourcePeerId) || sourcePeerId || "participant"))
@@ -1034,12 +1096,17 @@ function resolveTranscriptSourceName(payload = {}) {
 }
 
 function resolveTranscriptSpeakerToken(payload = {}) {
+  rememberTranscriptSpeakerMapping(payload);
   const mappedPeerId = String(payload.mappedPeerId || "").trim();
   const mappedPeerName = String(payload.mappedPeerName || "").trim();
+  const diarizedSpeakerId = String(payload.speakerId || "").trim();
   const sourcePeerId = String(payload.peerId || "").trim();
   const sourceName = resolveTranscriptSourceName(payload);
 
   if (mappedPeerName) return mappedPeerName;
+  if (diarizedSpeakerId && transcriptSpeakerNameByDiarizedId.has(diarizedSpeakerId)) {
+    return transcriptSpeakerNameByDiarizedId.get(diarizedSpeakerId) || sourceName;
+  }
   if (mappedPeerId) return peerNames.get(mappedPeerId) || mappedPeerName || sourceName;
   if (sourcePeerId) return peerNames.get(sourcePeerId) || sourceName;
   return sourceName;
@@ -1063,6 +1130,7 @@ function loadTranscriptHistory(entries = []) {
   transcriptFinalItems = [];
   transcriptInterimItem = "";
   lastTranscriptSpeakerKey = "";
+  transcriptSpeakerNameByDiarizedId.clear();
   if (!Array.isArray(entries) || entries.length === 0) {
     renderTranscriptBox();
     return;
@@ -1102,6 +1170,447 @@ function setStatus(text) {
   statusEl.textContent = text;
 }
 
+function setReconnectStatus(reason = "") {
+  const suffix = reason ? ` (${String(reason).replace(/_/g, " ")})` : "";
+  setStatus(`Reconnecting audio/video...${suffix}`);
+}
+
+function describeRecoveryReason(reason = "") {
+  const normalized = String(reason || "")
+    .replace(/^media_restart_failed_/, "")
+    .replace(/^(send|recv)_transport_/, "")
+    .replace(/^retry_after_failed_reconnect$/, "retry")
+    .replace(/_/g, " ")
+    .trim();
+  if (!normalized) return "Reconnecting audio and video.";
+  return `Reconnecting after ${normalized}.`;
+}
+
+function refreshRecoveryBanner() {
+  if (!recoveryBannerEl || !recoveryTextEl || !recoveryRestartBtn) return;
+  const visible = document.body.classList.contains("in-call") && (reconnectInFlight || reconnectTimer || mediaRestartInFlight);
+  recoveryBannerEl.classList.toggle("hidden", !visible);
+  if (!visible) return;
+  recoveryTextEl.textContent = mediaRestartInFlight
+    ? "Refreshing camera and microphone to recover the room."
+    : describeRecoveryReason(reconnectReason);
+  recoveryRestartBtn.disabled = mediaRestartInFlight || reconnectInFlight;
+  recoveryRestartBtn.textContent = mediaRestartInFlight ? "Restarting..." : "Restart camera and microphone";
+  if (recoveryRejoinBtn) {
+    recoveryRejoinBtn.disabled = reconnectInFlight;
+    recoveryRejoinBtn.textContent = reconnectInFlight ? "Rejoining..." : "Rejoin room";
+  }
+}
+
+function notePlaybackIssue(kind, peerKey, error) {
+  playbackResumeNeeded = true;
+  trace("warn", "remote_playback_issue", {
+    kind,
+    peer: peerKey,
+    error: error ? String(error) : null
+  });
+  refreshAllControls();
+}
+
+function clearPlaybackIssueIfRecovered() {
+  const blocked = [...peerTiles.values()].some((tile) => {
+    if (!tile || tile.isLocal) return false;
+    const hasAudioTrack = tile.audioStream?.getAudioTracks?.().length > 0;
+    const hasVideoTrack = tile.videoStream?.getVideoTracks?.().length > 0;
+    const audioBlocked = hasAudioTrack && tile.audio && tile.audio.paused;
+    const videoBlocked = hasVideoTrack && tile.video && tile.video.paused;
+    return audioBlocked || videoBlocked;
+  });
+  playbackResumeNeeded = blocked;
+}
+
+async function resumeRemotePlayback(reason = "manual_resume") {
+  if (playbackResumeInFlight) return;
+  playbackResumeInFlight = true;
+  try {
+    trace("info", "remote_playback_resume_start", { reason });
+    const attempts = [];
+    for (const [peerKey, tile] of peerTiles.entries()) {
+      if (!tile || tile.isLocal) continue;
+      if (tile.audioStream?.getAudioTracks?.().length) {
+        attempts.push(
+          tile.audio.play().then(() => {
+            trace("info", "remote_audio_resume_ok", { peer: peerKey, reason });
+          }).catch((error) => {
+            notePlaybackIssue("audio", peerKey, error);
+          })
+        );
+      }
+      if (tile.videoStream?.getVideoTracks?.().length) {
+        attempts.push(
+          tile.video.play().then(() => {
+            trace("info", "remote_video_resume_ok", { peer: peerKey, reason });
+          }).catch((error) => {
+            notePlaybackIssue("video", peerKey, error);
+          })
+        );
+      }
+    }
+    await Promise.allSettled(attempts);
+    clearPlaybackIssueIfRecovered();
+    refreshAllControls();
+  } finally {
+    playbackResumeInFlight = false;
+    refreshAllControls();
+  }
+}
+
+function refreshPlaybackBanner() {
+  if (!playbackBannerEl || !playbackTextEl || !playbackResumeBtn) return;
+  const visible = document.body.classList.contains("in-call") && playbackResumeNeeded;
+  playbackBannerEl.classList.toggle("hidden", !visible);
+  if (!visible) return;
+  playbackTextEl.textContent = playbackResumeInFlight
+    ? "Trying to resume room audio and video."
+    : "Your browser paused room audio or video. Resume playback to hear and see others.";
+  playbackResumeBtn.disabled = playbackResumeInFlight;
+  playbackResumeBtn.textContent = playbackResumeInFlight ? "Resuming..." : "Resume room audio/video";
+}
+
+function getCurrentRoomHealthPeer() {
+  if (!roomHealthSnapshot || !Array.isArray(roomHealthSnapshot.peers)) return null;
+  return roomHealthSnapshot.peers.find((entry) => entry && entry.peerId === peerId) || null;
+}
+
+function getRemoteRoomHealthPeers() {
+  if (!roomHealthSnapshot || !Array.isArray(roomHealthSnapshot.peers)) return [];
+  return roomHealthSnapshot.peers.filter((entry) => entry && entry.peerId !== peerId && entry.connected);
+}
+
+function evaluateMediaHealthWarning() {
+  if (!document.body.classList.contains("in-call") || !isSocketOpen()) {
+    mediaHealthWarning = "";
+    return;
+  }
+  if (!roomConnectedAt || Date.now() - roomConnectedAt < 6000) {
+    mediaHealthWarning = "";
+    return;
+  }
+
+  const remoteTiles = [...peerTiles.values()].filter((tile) => tile && !tile.isLocal);
+  if (remoteTiles.length === 0) {
+    mediaHealthWarning = "";
+    return;
+  }
+
+  const selfHealth = getCurrentRoomHealthPeer();
+  const remoteHealthPeers = getRemoteRoomHealthPeers();
+  const localAudioTrack = localStream?.getAudioTracks?.()[0] || null;
+  const localVideoTrack = localStream?.getVideoTracks?.()[0] || null;
+  const sendingAudio = Boolean(audioProducer && localAudioTrack && localAudioTrack.readyState === "live" && micEnabled);
+  const sendingVideo = Boolean(videoProducer && localVideoTrack && localVideoTrack.readyState === "live" && camEnabled);
+
+  const receivingRemoteAudio = remoteTiles.some((tile) => {
+    const track = tile.audioStream?.getAudioTracks?.()[0];
+    return Boolean(track && track.readyState === "live" && tile.audio && !tile.audio.paused);
+  });
+  const receivingRemoteVideo = remoteTiles.some((tile) => {
+    const track = tile.videoStream?.getVideoTracks?.()[0];
+    return Boolean(
+      track &&
+      track.readyState === "live" &&
+      tile.video &&
+      !tile.video.paused &&
+      (tile.video.readyState >= 2 || tile.video.videoWidth > 0)
+    );
+  });
+
+  const remotePublishingAudio = remoteHealthPeers.some((entry) => entry.publishedAudio);
+  const remotePublishingVideo = remoteHealthPeers.some((entry) => entry.publishedVideo);
+  const serverSeesAudioConsumers = Boolean(selfHealth?.audioConsumerCount > 0);
+  const serverSeesVideoConsumers = Boolean(selfHealth?.videoConsumerCount > 0);
+
+  if (remoteHealthPeers.length > 0 && !remotePublishingAudio && !remotePublishingVideo) {
+    mediaHealthWarning = "Others are connected, but they are not publishing room audio or video yet.";
+    return;
+  }
+
+  if (remotePublishingAudio && !serverSeesAudioConsumers && remotePublishingVideo && !serverSeesVideoConsumers) {
+    mediaHealthWarning = "Others are sending audio and video, but your client is not receiving either stream yet.";
+    return;
+  }
+  if (remotePublishingAudio && !serverSeesAudioConsumers) {
+    mediaHealthWarning = "Others are sending audio, but your client is not receiving room audio yet.";
+    return;
+  }
+  if (remotePublishingVideo && !serverSeesVideoConsumers) {
+    mediaHealthWarning = "Others are sending video, but your client is not receiving room video yet.";
+    return;
+  }
+
+  if (sendingAudio && !receivingRemoteAudio && sendingVideo && !receivingRemoteVideo) {
+    mediaHealthWarning = "You are sending audio and video, but media from others is not arriving yet.";
+    return;
+  }
+  if (sendingAudio && !receivingRemoteAudio) {
+    mediaHealthWarning = "You are connected, but room audio from others is not arriving yet.";
+    return;
+  }
+  if (sendingVideo && !receivingRemoteVideo) {
+    mediaHealthWarning = "You are connected, but room video from others is not arriving yet.";
+    return;
+  }
+
+  mediaHealthWarning = "";
+}
+
+function refreshMediaHealthBanner() {
+  if (!mediaHealthBannerEl || !mediaHealthTextEl || !mediaHealthRejoinBtn) return;
+  const visible = document.body.classList.contains("in-call") && Boolean(mediaHealthWarning);
+  mediaHealthBannerEl.classList.toggle("hidden", !visible);
+  if (!visible) return;
+  mediaHealthTextEl.textContent = mediaHealthWarning;
+  mediaHealthRejoinBtn.disabled = reconnectInFlight;
+  mediaHealthRejoinBtn.textContent = reconnectInFlight ? "Rejoining..." : "Rejoin room";
+}
+
+function summarizeLocalPublishState() {
+  const audioTrack = localStream?.getAudioTracks?.()[0] || null;
+  const videoTrack = localStream?.getVideoTracks?.()[0] || null;
+  const audioLive = Boolean(audioProducer && audioTrack && audioTrack.readyState === "live");
+  const videoLive = Boolean(videoProducer && videoTrack && videoTrack.readyState === "live");
+  if (audioLive && videoLive) return "Audio + video";
+  if (audioLive) return "Audio only";
+  if (videoLive) return "Video only";
+  return "No media";
+}
+
+function summarizeRemoteReceiveState() {
+  const selfHealth = getCurrentRoomHealthPeer();
+  const remoteTiles = [...peerTiles.values()].filter((tile) => tile && !tile.isLocal);
+  if (!remoteTiles.length) return "Waiting";
+  const receivingAudio = Boolean(selfHealth?.audioConsumerCount > 0);
+  const receivingVideo = Boolean(selfHealth?.videoConsumerCount > 0);
+  if (receivingAudio && receivingVideo) return "Audio + video";
+  if (receivingAudio) return "Audio only";
+  if (receivingVideo) return "Video only";
+  return "Nothing yet";
+}
+
+function summarizeRoomPeersState() {
+  const connectedCount = Number(roomHealthSnapshot?.participantCount || 0);
+  if (!connectedCount) return "0 connected";
+  return connectedCount === 1 ? "1 connected" : `${connectedCount} connected`;
+}
+
+function browserSupportsAudioOutputSelection() {
+  const probe = document.createElement("audio");
+  return typeof probe.setSinkId === "function";
+}
+
+async function applyOutputDeviceToMediaElements(deviceId) {
+  if (!browserSupportsAudioOutputSelection()) return false;
+  const targets = [];
+  for (const tile of peerTiles.values()) {
+    if (tile?.audio && !tile.isLocal) targets.push(tile.audio);
+  }
+  if (!targets.length) return true;
+  await Promise.allSettled(
+    targets.map((mediaEl) =>
+      typeof mediaEl.setSinkId === "function" ? mediaEl.setSinkId(deviceId || "") : Promise.resolve()
+    )
+  );
+  return true;
+}
+
+function diagnosticsSnapshot() {
+  const selfHealth = getCurrentRoomHealthPeer();
+  return {
+    roomId: roomId || sanitizeRoomId(roomEl?.value),
+    meetingId: meetingId || null,
+    peerId: peerId || null,
+    wsOpen: isSocketOpen(),
+    reconnectInFlight,
+    reconnectReason,
+    sendTransportState,
+    recvTransportState,
+    localPublish: summarizeLocalPublishState(),
+    remoteReceive: summarizeRemoteReceiveState(),
+    roomPeers: summarizeRoomPeersState(),
+    mediaHealthWarning: mediaHealthWarning || null,
+    playbackResumeNeeded,
+    outputDeviceId: selectedOutputDeviceId || null,
+    selfHealth: selfHealth || null,
+    roomHealth: roomHealthSnapshot || null,
+    speakerHistory: speakerHistorySnapshot || null,
+    userAgent: navigator.userAgent
+  };
+}
+
+function formatHistorySeconds(seconds) {
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  if (total < 60) return `${total}s`;
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  return secs ? `${mins}m ${secs}s` : `${mins}m`;
+}
+
+function refreshSpeakerHistoryPanel() {
+  if (!speakerHistoryCardEl || !speakerHistoryMetaEl || !speakerHistoryListEl) return;
+  const items = Array.isArray(speakerHistorySnapshot?.items) ? speakerHistorySnapshot.items : [];
+  speakerHistoryMetaEl.textContent = items.length ? `${items.length} recent segments` : "No activity yet";
+  speakerHistoryListEl.innerHTML = "";
+
+  if (!items.length) {
+    const empty = document.createElement("div");
+    empty.className = "speaker-history-item";
+    empty.innerHTML = `
+      <div>
+        <div class="speaker-history-name">Waiting for speech</div>
+        <div class="speaker-history-state">The room has not produced enough voice activity yet.</div>
+      </div>
+      <div class="speaker-history-duration">--</div>
+    `;
+    speakerHistoryListEl.appendChild(empty);
+    return;
+  }
+
+  items.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "speaker-history-item";
+    const displayName = item?.displayName || item?.peerId || "Unknown speaker";
+    const startedAtSec = Number(item?.startedAtSec);
+    const endedAtSec = Number(item?.endedAtSec);
+    const range =
+      Number.isFinite(startedAtSec) && Number.isFinite(endedAtSec)
+        ? `${startedAtSec.toFixed(1)}s - ${endedAtSec.toFixed(1)}s`
+        : "Timing unavailable";
+    const state = item?.isOpen
+      ? "Speaking now"
+      : Number.isFinite(Number(item?.secondsAgo))
+        ? `${formatHistorySeconds(item.secondsAgo)} ago`
+        : "Recent";
+    row.innerHTML = `
+      <div>
+        <div class="speaker-history-name">${displayName}</div>
+        <div class="speaker-history-range">${range}</div>
+        <div class="speaker-history-state">${state}</div>
+      </div>
+      <div class="speaker-history-duration">${formatHistorySeconds(item?.durationMs / 1000)}</div>
+    `;
+    speakerHistoryListEl.appendChild(row);
+  });
+}
+
+function buildDiagnosticsText() {
+  const snapshot = diagnosticsSnapshot();
+  return JSON.stringify(snapshot, null, 2);
+}
+
+function getParticipantHealth(peerKey) {
+  if (peerKey === "local") {
+    const audioTrack = localStream?.getAudioTracks?.()[0] || null;
+    const videoTrack = localStream?.getVideoTracks?.()[0] || null;
+    return {
+      connected: isSocketOpen(),
+      publishedAudio: Boolean(audioProducer && audioTrack && audioTrack.readyState === "live" && micEnabled),
+      publishedVideo: Boolean(videoProducer && videoTrack && videoTrack.readyState === "live" && camEnabled),
+      receivingAudio: Boolean(getCurrentRoomHealthPeer()?.audioConsumerCount > 0),
+      receivingVideo: Boolean(getCurrentRoomHealthPeer()?.videoConsumerCount > 0)
+    };
+  }
+  if (!roomHealthSnapshot || !Array.isArray(roomHealthSnapshot.peers)) return null;
+  return roomHealthSnapshot.peers.find((entry) => entry && entry.peerId === peerKey) || null;
+}
+
+function createParticipantBadge(label, tone = "off") {
+  const badge = document.createElement("span");
+  badge.className = `participant-badge ${tone}`;
+  badge.textContent = label;
+  return badge;
+}
+
+function buildTileBadges(peerKey) {
+  const health = getParticipantHealth(peerKey);
+  const wrap = document.createElement("div");
+  wrap.className = "tile-badges";
+  if (!health) return wrap;
+  if (!health.connected) {
+    wrap.appendChild(createParticipantBadge("Reconnecting", "warn"));
+    return wrap;
+  }
+  wrap.appendChild(createParticipantBadge(health.publishedAudio ? "Mic" : "Muted", health.publishedAudio ? "ok" : "off"));
+  wrap.appendChild(createParticipantBadge(health.publishedVideo ? "Cam" : "No cam", health.publishedVideo ? "ok" : "off"));
+  return wrap;
+}
+
+function refreshTileMediaBadges() {
+  for (const [peerKey, tile] of peerTiles.entries()) {
+    if (!tile) continue;
+    tile.badges?.remove?.();
+    const badges = buildTileBadges(peerKey);
+    tile.badges = badges;
+    tile.wrap.appendChild(badges);
+  }
+}
+
+function buildParticipantBadges(peerKey) {
+  const health = getParticipantHealth(peerKey);
+  const wrap = document.createElement("div");
+  wrap.className = "participant-badges";
+  if (!health) return wrap;
+
+  if (!health.connected) {
+    wrap.appendChild(createParticipantBadge("Reconnecting", "warn"));
+    return wrap;
+  }
+
+  wrap.appendChild(createParticipantBadge(health.publishedAudio ? "Mic on" : "Mic off", health.publishedAudio ? "ok" : "off"));
+  wrap.appendChild(createParticipantBadge(health.publishedVideo ? "Cam on" : "Cam off", health.publishedVideo ? "ok" : "off"));
+  wrap.appendChild(createParticipantBadge(health.receivingAudio ? "Recv audio" : "No recv audio", health.receivingAudio ? "ok" : "warn"));
+  wrap.appendChild(createParticipantBadge(health.receivingVideo ? "Recv video" : "No recv video", health.receivingVideo ? "ok" : "warn"));
+  return wrap;
+}
+
+function summarizeDiagnosticsText() {
+  if (!document.body.classList.contains("in-call")) {
+    return "Join a room to see connection and media health.";
+  }
+  if (!isSocketOpen()) {
+    return reconnectInFlight
+      ? "The room connection is being restored."
+      : "The websocket is not connected. Rejoin if the room does not recover.";
+  }
+  if (mediaHealthWarning) return mediaHealthWarning;
+  if (playbackResumeNeeded) return "Remote media is present, but your browser needs playback resumed.";
+  if (reconnectInFlight || mediaRestartInFlight) return "Recovering room media after a transport or device interruption.";
+  return "Connection and room media look healthy.";
+}
+
+function refreshDiagnosticsPanel() {
+  if (diagWebSocketEl) {
+    diagWebSocketEl.textContent = isSocketOpen() ? "Connected" : reconnectInFlight ? "Reconnecting" : "Disconnected";
+  }
+  if (diagSendTransportEl) {
+    diagSendTransportEl.textContent = sendTransportState === "not-ready" ? "Not ready" : sendTransportState;
+  }
+  if (diagRecvTransportEl) {
+    diagRecvTransportEl.textContent = recvTransportState === "not-ready" ? "Not ready" : recvTransportState;
+  }
+  if (diagLocalPublishEl) {
+    diagLocalPublishEl.textContent = summarizeLocalPublishState();
+  }
+  if (diagRemoteReceiveEl) {
+    diagRemoteReceiveEl.textContent = summarizeRemoteReceiveState();
+  }
+  if (diagRoomPeersEl) {
+    diagRoomPeersEl.textContent = summarizeRoomPeersState();
+  }
+  if (diagSummaryEl) {
+    diagSummaryEl.textContent = summarizeDiagnosticsText();
+  }
+  refreshSpeakerHistoryPanel();
+  if (copyDiagnosticsBtn) {
+    copyDiagnosticsBtn.disabled = false;
+    copyDiagnosticsBtn.textContent = "Copy";
+  }
+}
+
 function setControlButton(button, icon, label, options = {}) {
   if (!button) return;
   const iconMarkup = ICONS[icon] || "";
@@ -1119,6 +1628,40 @@ function setControlButton(button, icon, label, options = {}) {
 function closeDevicePopovers() {
   micDevicePopover?.classList.add("hidden");
   camDevicePopover?.classList.add("hidden");
+}
+
+function openDeviceSheet() {
+  deviceSheetBackdropEl?.classList.remove("hidden");
+}
+
+function closeDeviceSheet() {
+  deviceSheetBackdropEl?.classList.add("hidden");
+}
+
+function syncDeviceSheetSelects() {
+  if (mobileAudioDeviceEl) {
+    mobileAudioDeviceEl.innerHTML = audioDeviceEl.innerHTML;
+    mobileAudioDeviceEl.value = audioDeviceEl.value;
+    mobileAudioDeviceEl.disabled = audioDeviceEl.disabled;
+    mobileAudioDeviceEl.title = audioDeviceEl.title;
+  }
+  if (mobileVideoDeviceEl) {
+    mobileVideoDeviceEl.innerHTML = videoDeviceEl.innerHTML;
+    mobileVideoDeviceEl.value = videoDeviceEl.value;
+    mobileVideoDeviceEl.disabled = videoDeviceEl.disabled;
+    mobileVideoDeviceEl.title = videoDeviceEl.title;
+  }
+  if (mobileOutputDeviceEl) {
+    mobileOutputDeviceEl.disabled = !browserSupportsAudioOutputSelection();
+    mobileOutputDeviceEl.title = browserSupportsAudioOutputSelection()
+      ? "Choose audio output"
+      : "Audio output selection is not available in this browser";
+  }
+  if (mobileOutputHelpEl) {
+    mobileOutputHelpEl.textContent = browserSupportsAudioOutputSelection()
+      ? "Choose where remote room audio should play."
+      : "Audio output selection is not available in this browser.";
+  }
 }
 
 function toggleDevicePopover(kind) {
@@ -1187,6 +1730,15 @@ function refreshChatToggleButton() {
   chatToggleBtn.disabled = !document.body.classList.contains("in-call");
 }
 
+function refreshPanelTabs() {
+  if (panelTabTranscriptBtn) {
+    panelTabTranscriptBtn.classList.toggle("is-active", transcriptPanelVisible && !chatPanelVisible);
+  }
+  if (panelTabChatBtn) {
+    panelTabChatBtn.classList.toggle("is-active", transcriptPanelVisible && chatPanelVisible);
+  }
+}
+
 function setTranscriptPanelVisible(visible) {
   transcriptPanelVisible = Boolean(visible);
   document.body.classList.toggle(
@@ -1199,6 +1751,7 @@ function setTranscriptPanelVisible(visible) {
   );
   refreshTranscriptToggleButton();
   refreshChatToggleButton();
+  refreshPanelTabs();
 }
 
 function setChatPanelVisible(visible) {
@@ -1208,6 +1761,7 @@ function setChatPanelVisible(visible) {
     document.body.classList.contains("in-call") && transcriptPanelVisible && chatPanelVisible
   );
   refreshChatToggleButton();
+  refreshPanelTabs();
 }
 
 function updateVideosLayout() {
@@ -1315,6 +1869,11 @@ function pollActiveSpeaker() {
   }
 
   void postParticipationStats(false);
+  if (!mediaHealthCheckAt || now - mediaHealthCheckAt > 1200) {
+    mediaHealthCheckAt = now;
+    evaluateMediaHealthWarning();
+    refreshMediaHealthBanner();
+  }
 
   if (!winner) return;
   if (!isSocketOpen()) return;
@@ -1344,6 +1903,264 @@ function pollActiveSpeaker() {
 
 function isSocketOpen() {
   return Boolean(ws && ws.readyState === WebSocket.OPEN);
+}
+
+function clearReconnectTimer() {
+  if (!reconnectTimer) return;
+  clearTimeout(reconnectTimer);
+  reconnectTimer = null;
+}
+
+function isRecoverableTransportState(state) {
+  return state === "failed" || state === "closed" || state === "disconnected";
+}
+
+function verifyProducerHealth(context = "unknown") {
+  const audioTrack = localStream?.getAudioTracks?.()[0] || null;
+  const videoTrack = localStream?.getVideoTracks?.()[0] || null;
+  const audioHealthy = !audioTrack || Boolean(audioProducer);
+  const videoHealthy = !videoTrack || Boolean(videoProducer);
+  trace("info", "producer_health_check", {
+    context,
+    audioTrack: summarizeTrack(audioTrack),
+    videoTrack: summarizeTrack(videoTrack),
+    audioProducerId: audioProducer?.id || null,
+    videoProducerId: videoProducer?.id || null,
+    audioHealthy,
+    videoHealthy
+  });
+  return audioHealthy && videoHealthy;
+}
+
+function verifyRemotePlayback(peerKey, kind) {
+  const tile = peerTiles.get(peerKey);
+  if (!tile || tile.isLocal) return;
+  window.setTimeout(() => {
+    const mediaEl = kind === "audio" ? tile.audio : tile.video;
+    if (!mediaEl) return;
+    trace("info", kind === "audio" ? "remote_audio_verify" : "remote_video_verify", kind === "audio"
+      ? {
+          peer: peerKey,
+          paused: mediaEl.paused,
+          readyState: mediaEl.readyState,
+          currentTime: mediaEl.currentTime
+        }
+      : {
+          peer: peerKey,
+          paused: mediaEl.paused,
+          readyState: mediaEl.readyState,
+          currentTime: mediaEl.currentTime,
+          width: mediaEl.videoWidth,
+          height: mediaEl.videoHeight
+        });
+  }, 1200);
+}
+
+async function restartLocalMedia(reason = "unknown") {
+  if (mediaRestartInFlight) {
+    trace("debug", "media_restart_skipped_busy", { reason });
+    return;
+  }
+  if (!sendTransport || !device) {
+    trace("debug", "media_restart_skipped_no_transport", { reason });
+    return;
+  }
+
+  mediaRestartInFlight = true;
+  try {
+    setReconnectStatus(reason);
+    refreshAllControls();
+    trace("info", "media_restart_start", {
+      reason,
+      audioConstraint: selectedAudioConstraint(),
+      videoConstraint: selectedVideoConstraint()
+    });
+
+    const freshStream = await navigator.mediaDevices.getUserMedia({
+      audio: selectedAudioConstraint(),
+      video: selectedVideoConstraint()
+    });
+    const newAudioTrack = freshStream.getAudioTracks()[0] || null;
+    const newVideoTrack = freshStream.getVideoTracks()[0] || null;
+    const oldAudioTrack = localStream?.getAudioTracks?.()[0] || null;
+    const oldVideoTrack = localStream?.getVideoTracks?.()[0] || null;
+
+    if (!localStream) localStream = new MediaStream();
+
+    if (newAudioTrack) {
+      if (oldAudioTrack) {
+        try {
+          localStream.removeTrack(oldAudioTrack);
+          oldAudioTrack.stop();
+        } catch {}
+      }
+      localStream.addTrack(newAudioTrack);
+      setTileTrack("local", "audio", newAudioTrack);
+      if (audioProducer) {
+        await audioProducer.replaceTrack({ track: newAudioTrack });
+        if (!micEnabled) audioProducer.pause();
+      }
+    }
+
+    if (newVideoTrack) {
+      if (oldVideoTrack) {
+        try {
+          localStream.removeTrack(oldVideoTrack);
+          oldVideoTrack.stop();
+        } catch {}
+      }
+      localStream.addTrack(newVideoTrack);
+      setTileTrack("local", "video", newVideoTrack);
+      if (videoProducer) {
+        await videoProducer.replaceTrack({ track: newVideoTrack });
+        if (!camEnabled) videoProducer.pause();
+      }
+    }
+
+    await updateDeviceLists();
+    verifyProducerHealth(`media_restart:${reason}`);
+    trace("info", "media_restart_ok", {
+      reason,
+      audioTrack: summarizeTrack(newAudioTrack),
+      videoTrack: summarizeTrack(newVideoTrack)
+    });
+    refreshAllControls();
+  } catch (error) {
+    trace("warn", "media_restart_failed", {
+      reason,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    scheduleReconnect(`media_restart_failed_${reason}`);
+  } finally {
+    mediaRestartInFlight = false;
+    refreshAllControls();
+  }
+}
+
+async function forceRejoinRoom(reason = "manual_rejoin") {
+  if (reconnectInFlight) return;
+  clearReconnectTimer();
+  reconnectReason = reason;
+  reconnectEligible = true;
+  reconnectInFlight = true;
+  intentionalDisconnect = false;
+  mediaHealthWarning = "";
+  refreshAllControls();
+  trace("info", "manual_rejoin_start", {
+    reason,
+    roomId: sanitizeRoomId(roomEl?.value)
+  });
+
+  try {
+    if (ws) {
+      try {
+        ws.onclose = null;
+      } catch {}
+      try {
+        ws.close();
+      } catch {}
+      ws = null;
+    }
+
+    [audioProducer, videoProducer].forEach((producer) => {
+      if (!producer) return;
+      try {
+        producer.close();
+      } catch {}
+    });
+    audioProducer = null;
+    videoProducer = null;
+
+    if (sendTransport) {
+      try {
+        sendTransport.close();
+      } catch {}
+      sendTransport = null;
+    }
+    if (recvTransport) {
+      try {
+        recvTransport.close();
+      } catch {}
+      recvTransport = null;
+    }
+
+    if (localStream) {
+      localStream.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {}
+      });
+      localStream = null;
+    }
+
+    resetRtcState();
+    setConnectedView(false);
+    clearTranscriptBox();
+    await refreshPreview();
+    await joinRoom();
+    trace("info", "manual_rejoin_completed", {
+      reason,
+      roomId: sanitizeRoomId(roomEl?.value)
+    });
+  } catch (error) {
+    trace("warn", "manual_rejoin_failed", {
+      reason,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    log(`Rejoin failed: ${String(error)}`);
+    scheduleReconnect("manual_rejoin_failed");
+  } finally {
+    reconnectInFlight = false;
+    refreshAllControls();
+  }
+}
+
+function scheduleReconnect(reason = "unknown") {
+  if (!reconnectEligible || intentionalDisconnect || reconnectInFlight) return;
+  if (!sanitizeRoomId(roomEl?.value) || !String(nameEl?.value || "").trim()) return;
+  if (reconnectTimer) return;
+
+  const delay = RECONNECT_DELAYS_MS[Math.min(reconnectAttempts, RECONNECT_DELAYS_MS.length - 1)];
+  reconnectAttempts += 1;
+  reconnectReason = reason;
+  setReconnectStatus(reason);
+  refreshAllControls();
+  log(`Connection lost. Reconnecting in ${Math.round(delay / 1000)}s...`);
+  trace("warn", "reconnect_scheduled", {
+    reason,
+    attempt: reconnectAttempts,
+    delayMs: delay,
+    roomId: sanitizeRoomId(roomEl?.value)
+  });
+
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    reconnectInFlight = true;
+    refreshAllControls();
+    trace("info", "reconnect_started", {
+      reason,
+      attempt: reconnectAttempts,
+      roomId: sanitizeRoomId(roomEl?.value)
+    });
+    joinRoom()
+      .then(() => {
+        reconnectInFlight = false;
+        trace("info", "reconnect_completed", {
+          attempt: reconnectAttempts,
+          roomId: sanitizeRoomId(roomEl?.value)
+        });
+        refreshAllControls();
+      })
+      .catch((error) => {
+        reconnectInFlight = false;
+        trace("warn", "reconnect_failed", {
+          attempt: reconnectAttempts,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        refreshAllControls();
+        scheduleReconnect("retry_after_failed_reconnect");
+      });
+  }, delay);
 }
 
 function updateRoomBadge(room = roomId || roomEl.value) {
@@ -1378,12 +2195,20 @@ function renderParticipants() {
   } else {
     participants.forEach((p) => {
       const li = document.createElement("li");
-      li.textContent = p.label;
+      const row = document.createElement("div");
+      row.className = "participant-row";
+      const name = document.createElement("div");
+      name.className = "participant-name";
+      name.textContent = p.label;
+      row.appendChild(name);
+      row.appendChild(buildParticipantBadges(p.id));
+      li.appendChild(row);
       participantListEl.appendChild(li);
     });
   }
 
   participantCountEl.textContent = String(participants.length);
+  if (panelParticipantCountEl) panelParticipantCountEl.textContent = String(participants.length);
   postHostEvent("participants", { count: participants.length, participants: participants.map((p) => p.label) });
 }
 
@@ -1467,8 +2292,13 @@ function createTile(peerKey, label, { isLocal = false } = {}) {
     );
   }
 
-  const tile = { wrap, meta, video, audio, stream, videoStream, audioStream, isLocal };
+  const tile = { wrap, meta, video, audio, stream, videoStream, audioStream, isLocal, badges: null };
   peerTiles.set(peerKey, tile);
+  tile.badges = buildTileBadges(peerKey);
+  wrap.appendChild(tile.badges);
+  if (!isLocal && browserSupportsAudioOutputSelection()) {
+    void applyOutputDeviceToMediaElements(selectedOutputDeviceId).catch(() => {});
+  }
   updateVoiceActivityParticipant(peerKey, label.replace(/\s*\(you\)\s*$/i, "").trim() || label);
   logRtcDebug("tile_created", {
     peer: peerKey,
@@ -1491,6 +2321,7 @@ function ensureTile(peerKey, label, opts) {
   const existing = peerTiles.get(peerKey);
   if (existing) {
     existing.meta.textContent = label;
+    refreshTileMediaBadges();
     updateVoiceActivityParticipant(peerKey, label.replace(/\s*\(you\)\s*$/i, "").trim() || label);
     return existing;
   }
@@ -1570,6 +2401,7 @@ function setTileTrack(peerKey, kind, track) {
 
   if (kind === "video") {
     tile.video.play().then(() => {
+      clearPlaybackIssueIfRecovered();
       logRtcDebug("remote_video_play_called", {
         peer: peerKey,
         paused: tile.video.paused,
@@ -1578,6 +2410,7 @@ function setTileTrack(peerKey, kind, track) {
         height: tile.video.videoHeight
       });
     }).catch((error) => {
+      notePlaybackIssue("video", peerKey, error);
       logRtcDebug("remote_video_play_failed", {
         peer: peerKey,
         error: String(error)
@@ -1585,17 +2418,22 @@ function setTileTrack(peerKey, kind, track) {
     });
   } else if (kind === "audio" && !tile.isLocal) {
     tile.audio.play().then(() => {
+      clearPlaybackIssueIfRecovered();
       logRtcDebug("remote_audio_play_called", {
         peer: peerKey,
         paused: tile.audio.paused,
         readyState: tile.audio.readyState
       });
     }).catch((error) => {
+      notePlaybackIssue("audio", peerKey, error);
       logRtcDebug("remote_audio_play_failed", {
         peer: peerKey,
         error: String(error)
       });
     });
+    if (browserSupportsAudioOutputSelection()) {
+      void applyOutputDeviceToMediaElements(selectedOutputDeviceId).catch(() => {});
+    }
   }
 
   if (kind === "audio" && recordingAudioMix?.sync) {
@@ -1629,6 +2467,7 @@ function removePeerTile(peerKey) {
   detachSpeakerAnalyser(peerKey);
   if (activeSpeakerPeerId === peerKey) activeSpeakerPeerId = null;
   if (pinnedSpeakerPeerId === peerKey) pinnedSpeakerPeerId = null;
+  clearPlaybackIssueIfRecovered();
   if (recordingAudioMix?.sync) recordingAudioMix.sync();
   updateVideosLayout();
 }
@@ -1710,6 +2549,23 @@ function refreshLeaveButtons() {
   setControlButton(dockLeaveBtn, "leave", "Leave");
   leaveBtn.disabled = !connected;
   dockLeaveBtn.disabled = !connected;
+  if (connected) {
+    joinBtn.textContent = "Join room";
+    joinBtn.title = "Already connected";
+    joinBtn.disabled = true;
+    return;
+  }
+  if (reconnectEligible || reconnectInFlight) {
+    joinBtn.textContent = reconnectInFlight ? "Rejoining..." : "Rejoin room";
+    joinBtn.title = reconnectReason
+      ? `Reconnect after ${String(reconnectReason).replace(/_/g, " ")}`
+      : "Rejoin room";
+    joinBtn.disabled = reconnectInFlight;
+    return;
+  }
+  joinBtn.textContent = "Join room";
+  joinBtn.title = "Join room";
+  joinBtn.disabled = false;
 }
 
 function refreshInviteButton() {
@@ -1732,12 +2588,13 @@ function cleanDeviceLabel(label, fallback) {
 
 function buildSelectOptions(selectEl, devices, kind, previousValue) {
   selectEl.innerHTML = "";
-  const fallbackPrefix = kind === "audio" ? "Microphone" : "Camera";
+  const fallbackPrefix = kind === "audio" ? "Microphone" : kind === "output" ? "Speaker" : "Camera";
 
   if (!devices.length) {
     const empty = document.createElement("option");
     empty.value = "";
-    empty.textContent = kind === "audio" ? "No microphone detected" : "No camera detected";
+    empty.textContent =
+      kind === "audio" ? "No microphone detected" : kind === "output" ? "No audio output detected" : "No camera detected";
     selectEl.appendChild(empty);
     selectEl.dataset.realCount = "0";
     selectEl.disabled = true;
@@ -1771,6 +2628,7 @@ function refreshDevicePickerState() {
   videoDeviceEl.title = videoCount <= 1 ? "Only one camera available" : "Choose camera";
   dockAudioDeviceEl.title = audioCount <= 1 ? "Only one microphone available" : "Choose microphone";
   dockVideoDeviceEl.title = videoCount <= 1 ? "Only one camera available" : "Choose camera";
+  syncDeviceSheetSelects();
 }
 
 function refreshAllControls() {
@@ -1783,6 +2641,11 @@ function refreshAllControls() {
   refreshInviteButton();
   refreshDevicePickerState();
   refreshOverlayAutoHideState();
+  refreshRecoveryBanner();
+  refreshPlaybackBanner();
+  refreshMediaHealthBanner();
+  refreshDiagnosticsPanel();
+  refreshTileMediaBadges();
   updateVideosLayout();
 }
 
@@ -1857,24 +2720,35 @@ async function updateDeviceLists() {
   const devices = await navigator.mediaDevices.enumerateDevices();
   const audioInputs = devices.filter((d) => d.kind === "audioinput");
   const videoInputs = devices.filter((d) => d.kind === "videoinput");
+  const audioOutputs = devices.filter((d) => d.kind === "audiooutput");
 
   const prevAudio = audioDeviceEl.value;
   const prevVideo = videoDeviceEl.value;
+  const prevOutput = selectedOutputDeviceId;
 
   buildSelectOptions(audioDeviceEl, audioInputs, "audio", prevAudio);
   buildSelectOptions(videoDeviceEl, videoInputs, "video", prevVideo);
   buildSelectOptions(dockAudioDeviceEl, audioInputs, "audio", prevAudio);
   buildSelectOptions(dockVideoDeviceEl, videoInputs, "video", prevVideo);
+  if (mobileOutputDeviceEl) {
+    buildSelectOptions(mobileOutputDeviceEl, audioOutputs, "output", prevOutput);
+    mobileOutputDeviceEl.disabled = !browserSupportsAudioOutputSelection() || audioOutputs.length <= 1;
+  }
 
   if (audioDeviceEl.value) dockAudioDeviceEl.value = audioDeviceEl.value;
   if (videoDeviceEl.value) dockVideoDeviceEl.value = videoDeviceEl.value;
+  if (mobileOutputDeviceEl && prevOutput && [...mobileOutputDeviceEl.options].some((o) => o.value === prevOutput)) {
+    mobileOutputDeviceEl.value = prevOutput;
+  }
 
   refreshDevicePickerState();
   trace("info", "media_devices_enumerated", {
     audioInputCount: audioInputs.length,
     videoInputCount: videoInputs.length,
+    audioOutputCount: audioOutputs.length,
     selectedAudioDeviceId: audioDeviceEl.value || null,
-    selectedVideoDeviceId: videoDeviceEl.value || null
+    selectedVideoDeviceId: videoDeviceEl.value || null,
+    selectedOutputDeviceId: selectedOutputDeviceId || null
   });
 }
 
@@ -2019,12 +2893,33 @@ async function switchVideoDevice() {
   }
 }
 
+async function switchOutputDevice() {
+  if (!browserSupportsAudioOutputSelection()) return;
+  const nextDeviceId = String(mobileOutputDeviceEl?.value || "").trim();
+  selectedOutputDeviceId = nextDeviceId;
+  try {
+    await applyOutputDeviceToMediaElements(nextDeviceId);
+    trace("info", "audio_output_switched", {
+      selectedOutputDeviceId: nextDeviceId || null
+    });
+    refreshDiagnosticsPanel();
+  } catch (error) {
+    trace("warn", "audio_output_switch_failed", {
+      selectedOutputDeviceId: nextDeviceId || null,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    log(`Audio output switch failed: ${String(error)}`);
+  }
+}
+
 async function ensureRecvTransport() {
   if (recvTransport) return recvTransport;
 
   const params = await sendRequest("createTransport", { direction: "recv" });
   recvTransport = device.createRecvTransport(params);
+  recvTransportState = "new";
   trace("info", "recv_transport_created", { transportId: recvTransport.id });
+  refreshDiagnosticsPanel();
 
   recvTransport.on("connect", async ({ dtlsParameters }, callback, errback) => {
     try {
@@ -2041,7 +2936,12 @@ async function ensureRecvTransport() {
     }
   });
   recvTransport.on("connectionstatechange", (state) => {
+    recvTransportState = state;
     trace("info", "recv_transport_state", { transportId: recvTransport.id, state });
+    refreshDiagnosticsPanel();
+    if (isRecoverableTransportState(state) && reconnectEligible && !intentionalDisconnect) {
+      scheduleReconnect(`recv_transport_${state}`);
+    }
   });
 
   return recvTransport;
@@ -2078,6 +2978,7 @@ async function consumeProducer({ producerId, peerId: remotePeerId, kind }) {
     const displayName = peerNames.get(remotePeerId) || remotePeerId;
     ensureTile(remotePeerId, displayName, { isLocal: false });
     setTileTrack(remotePeerId, params.kind, consumer.track);
+    verifyRemotePlayback(remotePeerId, params.kind);
 
     consumer.on("transportclose", () => {
       trace("warn", "consumer_transport_closed", {
@@ -2643,7 +3544,10 @@ function clearRemoteState() {
   }
   consumerByProducerId.clear();
   peerNames.clear();
+  roomHealthSnapshot = null;
+  speakerHistorySnapshot = null;
   renderParticipants();
+  refreshDiagnosticsPanel();
 }
 
 function resetRtcState() {
@@ -2723,12 +3627,24 @@ function resetRtcState() {
   pinnedSpeakerPeerId = null;
   lastActiveSpeakerEmitAt = 0;
   lastActiveSpeakerPeerKey = "";
+  playbackResumeNeeded = false;
+  playbackResumeInFlight = false;
+  roomConnectedAt = 0;
+  mediaHealthWarning = "";
+  mediaHealthCheckAt = 0;
+  roomHealthSnapshot = null;
+  speakerHistorySnapshot = null;
+  sendTransportState = "not-ready";
+  recvTransportState = "not-ready";
   clearTranscriptBox();
 
   clearRemoteState();
+  refreshDiagnosticsPanel();
 }
 
 async function joinRoom() {
+  clearReconnectTimer();
+  intentionalDisconnect = false;
   if (isSocketOpen()) {
     log("Already connected");
     return;
@@ -2774,6 +3690,7 @@ async function joinRoom() {
       trace("info", "ws_open", {});
       setStatus("Connecting...");
       clearRemoteState();
+      refreshDiagnosticsPanel();
 
       const joined = await sendRequest("join", {
         roomId,
@@ -2790,6 +3707,8 @@ async function joinRoom() {
         remotePeerCount: Array.isArray(joined.peers) ? joined.peers.length : 0,
         producerCount: Array.isArray(joined.producerIds) ? joined.producerIds.length : 0
       });
+      roomHealthSnapshot = joined.roomHealth || null;
+      speakerHistorySnapshot = joined.speakerHistory || null;
       loadTranscriptHistory(Array.isArray(joined.transcriptHistory) ? joined.transcriptHistory : []);
       clearChatBox();
       if (Array.isArray(joined.chatMessages)) {
@@ -2817,7 +3736,9 @@ async function joinRoom() {
 
       const sendParams = await sendRequest("createTransport", { direction: "send" });
       sendTransport = device.createSendTransport(sendParams);
+      sendTransportState = "new";
       trace("info", "send_transport_created", { transportId: sendTransport.id });
+      refreshDiagnosticsPanel();
 
       sendTransport.on("connect", async ({ dtlsParameters }, callback, errback) => {
         try {
@@ -2834,7 +3755,20 @@ async function joinRoom() {
         }
       });
       sendTransport.on("connectionstatechange", (state) => {
+        sendTransportState = state;
         trace("info", "send_transport_state", { transportId: sendTransport.id, state });
+        refreshDiagnosticsPanel();
+        if (state === "connected") {
+          verifyProducerHealth("send_transport_connected");
+          return;
+        }
+        if (state === "disconnected" && reconnectEligible && !intentionalDisconnect) {
+          void restartLocalMedia("send_transport_disconnected");
+          return;
+        }
+        if (isRecoverableTransportState(state) && reconnectEligible && !intentionalDisconnect) {
+          scheduleReconnect(`send_transport_${state}`);
+        }
       });
 
       sendTransport.on("produce", async ({ kind, rtpParameters }, callback, errback) => {
@@ -2955,6 +3889,14 @@ async function joinRoom() {
       renderParticipants();
       setStatus(`Connected to ${roomId}`);
       log(`Joined room ${roomId} as ${peerId}`);
+      reconnectEligible = true;
+      reconnectAttempts = 0;
+      reconnectReason = "";
+      roomConnectedAt = Date.now();
+      mediaHealthWarning = "";
+      mediaHealthCheckAt = 0;
+      verifyProducerHealth("join_completed");
+      refreshDiagnosticsPanel();
       trace("info", "join_completed", {
         peerId,
         roomId,
@@ -2966,6 +3908,7 @@ async function joinRoom() {
       postHostEvent("connected", { connected: true, name: displayName });
       refreshAllControls();
     } catch (error) {
+      reconnectEligible = false;
       trace("error", "join_failed", {
         roomId,
         error: error instanceof Error ? error.message : String(error)
@@ -3016,6 +3959,28 @@ async function joinRoom() {
         ensureTile(p.peerId, p.name || p.peerId, { isLocal: false });
         renderParticipants();
       }
+      return;
+    }
+
+    if (payload.event === "room-health") {
+      roomHealthSnapshot = payload.data || null;
+      trace("debug", "room_health_update", {
+        roomId,
+        health: roomHealthSnapshot
+      });
+      evaluateMediaHealthWarning();
+      refreshMediaHealthBanner();
+      refreshDiagnosticsPanel();
+      return;
+    }
+
+    if (payload.event === "speaker-history") {
+      speakerHistorySnapshot = payload.data || null;
+      trace("debug", "speaker_history_update", {
+        roomId,
+        count: Array.isArray(speakerHistorySnapshot?.items) ? speakerHistorySnapshot.items.length : 0
+      });
+      refreshDiagnosticsPanel();
       return;
     }
 
@@ -3077,7 +4042,16 @@ async function joinRoom() {
           resolveTranscriptSpeakerToken(payload.data || {}) || "speaker";
         const time = typeof payload.data?.time === "number" ? payload.data.time : Date.now();
         const labeled = `[${language}] ${resolveTranscriptSourceName(payload.data || {})}: ${text}`;
-        await postLiveTranscriptLine(labeled, speaker, time);
+        await postLiveTranscriptLine(labeled, speaker, time, {
+          speakerId: String(payload.data?.speakerId || "").trim() || null,
+          speakerName: resolveTranscriptSourceName(payload.data || {}),
+          mappedPeerId: String(payload.data?.mappedPeerId || "").trim() || null,
+          mappedPeerName: String(payload.data?.mappedPeerName || "").trim() || null,
+          mappingConfidence:
+            typeof payload.data?.mappingConfidence === "number" ? payload.data.mappingConfidence : null,
+          startSec: typeof payload.data?.startSec === "number" ? payload.data.startSec : null,
+          endSec: typeof payload.data?.endSec === "number" ? payload.data.endSec : null
+        });
       } else {
         const sourceName = resolveTranscriptSourceName(payload.data || {});
         const speakerKey = `${language}|${sourceName}`;
@@ -3151,19 +4125,36 @@ async function joinRoom() {
     resetRtcState();
     setConnectedView(false);
     clearTranscriptBox();
+    roomConnectedAt = 0;
+    mediaHealthWarning = "";
+    mediaHealthCheckAt = 0;
+    roomHealthSnapshot = null;
+    speakerHistorySnapshot = null;
     refreshAllControls();
     postHostEvent("connected", { connected: false });
     await refreshPreview();
+    scheduleReconnect("ws_closed");
   };
   ws.onerror = (event) => {
     trace("warn", "ws_error", {
       readyState: ws?.readyState ?? null,
       type: event?.type || null
     });
+    refreshDiagnosticsPanel();
   };
 }
 
 async function leaveRoom() {
+  intentionalDisconnect = true;
+  reconnectEligible = false;
+  reconnectAttempts = 0;
+  reconnectReason = "";
+  clearReconnectTimer();
+  roomConnectedAt = 0;
+  mediaHealthWarning = "";
+  mediaHealthCheckAt = 0;
+  roomHealthSnapshot = null;
+  speakerHistorySnapshot = null;
   trace("info", "leave_begin", {
     roomId,
     peerId
@@ -3301,6 +4292,24 @@ async function init() {
     });
   });
 
+  window.addEventListener("online", () => {
+    trace("info", "browser_online", {
+      roomId: sanitizeRoomId(roomEl?.value)
+    });
+    scheduleReconnect("browser_online");
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    trace("debug", "visibility_visible", {
+      roomId: sanitizeRoomId(roomEl?.value),
+      socketOpen: isSocketOpen()
+    });
+    if (!isSocketOpen()) {
+      scheduleReconnect("visibility_visible");
+    }
+  });
+
   const autojoin = String(PAGE_URL.searchParams.get("autojoin") || "").toLowerCase();
   const autojoinEnabled = autojoin === "1" || autojoin === "true" || autojoin === "yes";
   const embedJoinEligible = EMBED_MODE && Boolean(readRoomFromPath()) && Boolean(nameEl.value.trim());
@@ -3353,6 +4362,32 @@ transcriptionLanguageInputEl?.addEventListener("change", () => {
   renderTranscriptBox();
 });
 
+recoveryRestartBtn?.addEventListener("click", () => {
+  restartLocalMedia("manual_restart").catch((e) => log(String(e)));
+});
+
+recoveryRejoinBtn?.addEventListener("click", () => {
+  forceRejoinRoom("manual_rejoin").catch((e) => log(String(e)));
+});
+
+playbackResumeBtn?.addEventListener("click", () => {
+  resumeRemotePlayback("manual_resume").catch((e) => log(String(e)));
+});
+
+mediaHealthRejoinBtn?.addEventListener("click", () => {
+  forceRejoinRoom("media_health_rejoin").catch((e) => log(String(e)));
+});
+
+panelTabTranscriptBtn?.addEventListener("click", () => {
+  setTranscriptPanelVisible(true);
+  setChatPanelVisible(false);
+});
+
+panelTabChatBtn?.addEventListener("click", () => {
+  setTranscriptPanelVisible(true);
+  setChatPanelVisible(true);
+});
+
 joinBtn.addEventListener("click", () => joinRoom().catch((e) => log(String(e))));
 leaveBtn.addEventListener("click", () => leaveRoom().catch((e) => log(String(e))));
 recAudioToggleBtn.addEventListener("click", () => {
@@ -3389,11 +4424,45 @@ dockAudioDeviceEl.addEventListener("change", () => {
   audioDeviceEl.value = dockAudioDeviceEl.value;
   switchAudioDevice();
   closeDevicePopovers();
+  syncDeviceSheetSelects();
 });
 dockVideoDeviceEl.addEventListener("change", () => {
   videoDeviceEl.value = dockVideoDeviceEl.value;
   switchVideoDevice();
   closeDevicePopovers();
+  syncDeviceSheetSelects();
+});
+mobileAudioDeviceEl?.addEventListener("change", () => {
+  audioDeviceEl.value = mobileAudioDeviceEl.value;
+  dockAudioDeviceEl.value = mobileAudioDeviceEl.value;
+  switchAudioDevice();
+  syncDeviceSheetSelects();
+});
+mobileVideoDeviceEl?.addEventListener("change", () => {
+  videoDeviceEl.value = mobileVideoDeviceEl.value;
+  dockVideoDeviceEl.value = mobileVideoDeviceEl.value;
+  switchVideoDevice();
+  syncDeviceSheetSelects();
+});
+mobileOutputDeviceEl?.addEventListener("change", () => {
+  switchOutputDevice();
+  syncDeviceSheetSelects();
+});
+copyDiagnosticsBtn?.addEventListener("click", async () => {
+  const text = buildDiagnosticsText();
+  try {
+    await navigator.clipboard.writeText(text);
+    copyDiagnosticsBtn.textContent = "Copied";
+    window.setTimeout(() => {
+      if (copyDiagnosticsBtn) copyDiagnosticsBtn.textContent = "Copy";
+    }, 1600);
+  } catch (error) {
+    log(`Diagnostics copy failed: ${String(error)}`);
+  }
+});
+deviceSheetCloseBtn?.addEventListener("click", () => closeDeviceSheet());
+deviceSheetBackdropEl?.addEventListener("click", (event) => {
+  if (event.target === deviceSheetBackdropEl) closeDeviceSheet();
 });
 viewToggleBtn.addEventListener("click", () => cycleViewMode());
 transcriptToggleBtn?.addEventListener("click", () => {
@@ -3508,6 +4577,11 @@ document.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
 
+  if (target.closest("#deviceSheetToggle")) {
+    event.stopPropagation();
+    openDeviceSheet();
+    return;
+  }
   if (target.closest("#micDeviceBtn")) {
     event.stopPropagation();
     toggleDevicePopover("mic");
