@@ -5,6 +5,7 @@ import { requireWorkflowKey } from "@/app/api/integrations/workflow/utils";
 import { generateRoomId } from "@/lib/utils";
 import { sendMail } from "@/lib/mailer";
 import { sendTelegramInvite } from "@/lib/telegramInvites";
+import { buildMeetingInviteEmail } from "@/lib/meetingInviteEmail";
 
 export const dynamic = "force-dynamic";
 
@@ -259,15 +260,23 @@ export async function POST(request: Request) {
     const appBaseUrl = process.env.APP_BASE_URL || "http://localhost:3015";
     const meetingLink = `${appBaseUrl}/meetings/${meeting.id}`;
     await Promise.all(
-      invitedUsers.map((user) =>
-        sendMail({
+      invitedUsers.map((user) => {
+        const emailPayload = buildMeetingInviteEmail({
+          inviteKind: "registered",
+          meeting: {
+            ...meeting,
+            createdBy: { email: creator.email }
+          },
+          accessUrl: meetingLink
+        });
+        return sendMail({
           to: user.email,
-          subject: "You are invited to a meeting",
-          html: `<p>You have been invited to the meeting <strong>${meeting.title}</strong>.</p>
-            <p>Open the meeting page: <a href="${meetingLink}">${meetingLink}</a></p>`,
-          text: `You have been invited to the meeting ${meeting.title}. Open: ${meetingLink}`
-        })
-      )
+          subject: emailPayload.subject,
+          html: emailPayload.html,
+          text: emailPayload.text,
+          attachments: emailPayload.attachments
+        });
+      })
     );
     await Promise.all(
       invitedUsers.map((user) =>
@@ -276,7 +285,18 @@ export async function POST(request: Request) {
           user.notifyTelegramMeetingInvites,
           "meeting",
           meeting.title,
-          meetingLink
+          meetingLink,
+          {
+            title: meeting.title,
+            description: meeting.description,
+            scheduledStartAt: meeting.scheduledStartAt,
+            expiresAt: meeting.expiresAt,
+            timezone: meeting.timezone,
+            language: meeting.language,
+            transcriptionProvider: meeting.transcriptionProvider,
+            hostEmail: creator.email,
+            createdAt: meeting.createdAt
+          }
         )
       )
     );

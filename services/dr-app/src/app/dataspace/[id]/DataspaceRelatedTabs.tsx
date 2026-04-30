@@ -166,10 +166,10 @@ export function DataspaceRelatedTabs({ dataspaceId, plans, openProblems }: Props
                       {problem.joinedByMe ? "Joined" : joiningId === problem.id ? "Joining..." : "Join"}
                     </button>
                     <Link
-                      href="/open-problems"
+                      href={`/open-problems/${problem.id}`}
                       className="text-xs font-semibold text-slate-700 hover:underline"
                     >
-                      Browse
+                      Open
                     </Link>
                   </div>
                 </div>

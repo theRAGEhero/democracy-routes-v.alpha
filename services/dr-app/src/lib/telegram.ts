@@ -77,3 +77,40 @@ export async function sendTelegramMessage(chatId: number, text: string) {
     return { ok: false, error: "Telegram send failed" };
   }
 }
+
+export async function sendTelegramDocument(
+  chatId: number,
+  filename: string,
+  content: string | Buffer,
+  caption?: string | null
+) {
+  const baseUrl = getTelegramBaseUrl();
+  if (!baseUrl) return { ok: false, error: "Missing TELEGRAM_BOT_TOKEN" };
+
+  try {
+    const form = new FormData();
+    form.append("chat_id", String(chatId));
+    if (caption) {
+      form.append("caption", caption);
+    }
+    const blobContent = typeof content === "string" ? content : new Uint8Array(content);
+    form.append(
+      "document",
+      new Blob([blobContent], { type: "text/calendar; charset=utf-8" }),
+      filename
+    );
+
+    const response = await fetch(`${baseUrl}/sendDocument`, {
+      method: "POST",
+      body: form
+    });
+
+    const payload = (await response.json()) as TelegramSendResponse;
+    if (!payload.ok) {
+      return { ok: false, error: payload.description ?? "Telegram document send failed" };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "Telegram document send failed" };
+  }
+}

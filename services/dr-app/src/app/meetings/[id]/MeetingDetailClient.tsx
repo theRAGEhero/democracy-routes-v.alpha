@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { EmbedCall } from "@/app/meetings/[id]/EmbedCall";
 import { LiveTranscriptPanel } from "@/app/meetings/[id]/LiveTranscriptPanel";
@@ -49,6 +49,7 @@ export function MeetingDetailClient({
   postCallTranscriptEnabled,
   initialRoundId
 }: Props) {
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
   const [liveTranscriptVisible, setLiveTranscriptVisible] = useState(true);
   const [transcriptRefreshKey, setTranscriptRefreshKey] = useState(0);
   const [postCallPanelAvailable, setPostCallPanelAvailable] = useState(false);
@@ -59,21 +60,17 @@ export function MeetingDetailClient({
   const finalizedPanelAvailable =
     (liveTranscriptionEnabled && !isActive) ||
     (postCallTranscriptEnabled && postCallPanelAvailable);
-  const sidePanelVisible = liveTranscriptionEnabled ? liveTranscriptVisible : postCallPanelExpanded;
+  const transcriptPrimaryMode = !isActive && finalizedPanelAvailable;
+  const transcriptSurfaceAvailable = liveTranscriptionEnabled
+    ? livePanelAvailable || finalizedPanelAvailable
+    : finalizedPanelAvailable;
   const transcriptPanelOpen = liveTranscriptionEnabled
-    ? finalizedPanelAvailable || livePanelAvailable
+    ? transcriptPrimaryMode || finalizedPanelAvailable || livePanelAvailable
       ? liveTranscriptVisible
       : false
-    : finalizedPanelAvailable && postCallPanelExpanded;
-  const sidePanelLabel = livePanelAvailable ? "transcript" : "transcription";
-  const sidePanelToggleDisabled = liveTranscriptionEnabled
-    ? !livePanelAvailable && !finalizedPanelAvailable
-    : !finalizedPanelAvailable;
+    : transcriptPrimaryMode || (finalizedPanelAvailable && postCallPanelExpanded);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && window.innerWidth < 1024) {
-      setLiveTranscriptVisible(false);
-    }
     const header = document.querySelector("header");
     const headerHeight = header ? header.getBoundingClientRect().height : 0;
     document.documentElement.style.setProperty("--app-header-h", `${headerHeight}px`);
@@ -171,50 +168,99 @@ export function MeetingDetailClient({
     setPostCallPanelExpanded((prev) => !prev);
   }
 
+  async function handleToggleFullscreen() {
+    const doc = document as Document & {
+      webkitExitFullscreen?: () => Promise<void> | void;
+      webkitFullscreenElement?: Element | null;
+    };
+
+    if (doc.fullscreenElement || doc.webkitFullscreenElement) {
+      if (document.exitFullscreen) {
+        await document.exitFullscreen();
+      } else if (doc.webkitExitFullscreen) {
+        doc.webkitExitFullscreen();
+      }
+      return;
+    }
+
+    const target = workspaceRef.current;
+    if (!target) return;
+
+    const requestFullscreen =
+      target.requestFullscreen?.bind(target) ??
+      (target as HTMLDivElement & { webkitRequestFullscreen?: () => Promise<void> | void })
+        .webkitRequestFullscreen?.bind(target);
+
+    if (requestFullscreen) {
+      await requestFullscreen();
+    }
+  }
+
   return (
-    <div className="flex h-full flex-1 min-h-0 flex-col gap-2 overflow-hidden">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div
-        className={`relative flex min-h-0 flex-1 overflow-hidden ${
-          transcriptPanelOpen ? "lg:flex-row" : "flex-col"
+        ref={workspaceRef}
+        className={`relative min-h-0 flex-1 overflow-hidden ${
+          transcriptPrimaryMode
+            ? "flex flex-col"
+            : transcriptPanelOpen
+              ? "flex flex-col gap-2 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-2 xl:grid-cols-[minmax(0,1fr)_420px] 2xl:grid-cols-[minmax(0,1fr)_460px]"
+              : "flex flex-col gap-2"
         }`}
       >
-        <div
-          className={`order-1 flex min-h-0 flex-1 flex-col gap-3 overflow-hidden ${
-            transcriptPanelOpen ? "lg:pr-4" : ""
-          }`}
-        >
-        <EmbedCall
-          embedUrl={embedUrl}
-          isActive={isActive}
-          hasBaseUrl={hasBaseUrl}
-          statusLabel={statusLabel}
-          languageLabel={languageLabel}
-          providerLabel={providerLabel}
-          startsLabel={startsLabel}
-          expiresLabel={expiresLabel}
-          hostLabel={hostLabel}
-          hostHref={hostHref}
-          roomLabel={roomLabel}
-          joinUrl={joinUrl}
-          meetingId={meetingId}
-          canManage={canManage}
-          canInvite={canInvite}
-          sidePanelVisible={sidePanelVisible}
-          sidePanelLabel={sidePanelLabel}
-          sidePanelToggleDisabled={sidePanelToggleDisabled}
-          onToggleSidePanel={handleToggleSidePanel}
-        />
-        </div>
+        {!transcriptPrimaryMode ? (
+          <div className="order-1 flex min-h-0 flex-1 flex-col overflow-hidden">
+            <EmbedCall
+              embedUrl={embedUrl}
+              isActive={isActive}
+              hasBaseUrl={hasBaseUrl}
+              statusLabel={statusLabel}
+              languageLabel={languageLabel}
+              providerLabel={providerLabel}
+              startsLabel={startsLabel}
+              expiresLabel={expiresLabel}
+              hostLabel={hostLabel}
+              hostHref={hostHref}
+              roomLabel={roomLabel}
+              joinUrl={joinUrl}
+              meetingId={meetingId}
+              canManage={canManage}
+              canInvite={canInvite}
+              onToggleFullscreen={handleToggleFullscreen}
+            />
+          </div>
+        ) : null}
 
         {transcriptPanelOpen ? (
+          transcriptPrimaryMode ? (
+            <div className="order-1 min-h-0 flex-1 overflow-hidden">
+              <TranscriptionPanel
+                key={`full-${transcriptRefreshKey}`}
+                meetingId={meetingId}
+                canManage={canManage}
+                initialRoundId={initialRoundId ?? null}
+                variant="sidebar"
+                autoRefresh
+                title={liveTranscriptionEnabled ? "Meeting transcription" : "Post-call transcription"}
+                subtitle={
+                  liveTranscriptionEnabled ? `${providerLabel} · Finalized transcript` : `${providerLabel} · After call`
+                }
+                className="h-full"
+                onActivityChange={liveTranscriptionEnabled ? undefined : setPostCallPanelAvailable}
+                expanded
+              />
+            </div>
+          ) : (
           <>
-            <div className="order-2 hidden min-h-0 lg:block lg:w-[360px] xl:w-[400px] 2xl:w-[440px]">
+            <div className="order-2 hidden min-h-0 overflow-hidden lg:block">
               {livePanelAvailable ? (
                 <LiveTranscriptPanel
                   meetingId={meetingId}
                   provider={transcriptionProvider}
                   enabled={liveTranscriptionEnabled}
                   visible={liveTranscriptVisible}
+                  expanded={liveTranscriptVisible}
+                  onToggleExpanded={handleToggleSidePanel}
                   className="h-full"
                 />
               ) : (
@@ -229,18 +275,23 @@ export function MeetingDetailClient({
                   subtitle={
                     liveTranscriptionEnabled ? `${providerLabel} · Finalized transcript` : `${providerLabel} · After call`
                   }
+                  className="h-full"
                   onActivityChange={liveTranscriptionEnabled ? undefined : setPostCallPanelAvailable}
+                  expanded={postCallPanelExpanded}
+                  onToggleExpanded={handleToggleSidePanel}
                 />
               )}
             </div>
-            <div className="order-3 min-h-0 lg:hidden">
+            <div className="order-3 min-h-0 shrink-0 lg:hidden">
               {livePanelAvailable ? (
                 <LiveTranscriptPanel
                   meetingId={meetingId}
                   provider={transcriptionProvider}
                   enabled={liveTranscriptionEnabled}
                   visible={liveTranscriptVisible}
-                  className="max-h-[36dvh]"
+                  expanded={liveTranscriptVisible}
+                  onToggleExpanded={handleToggleSidePanel}
+                  className="min-h-[280px] max-h-[48dvh] rounded-t-[24px] shadow-[0_-18px_40px_rgba(15,23,42,0.08)]"
                 />
               ) : (
                 <TranscriptionPanel
@@ -254,10 +305,52 @@ export function MeetingDetailClient({
                   subtitle={
                     liveTranscriptionEnabled ? `${providerLabel} · Finalized transcript` : `${providerLabel} · After call`
                   }
-                  className="max-h-[36dvh]"
+                  className="min-h-[280px] max-h-[48dvh] rounded-t-[24px] shadow-[0_-18px_40px_rgba(15,23,42,0.08)]"
                   onActivityChange={liveTranscriptionEnabled ? undefined : setPostCallPanelAvailable}
+                  expanded={postCallPanelExpanded}
+                  onToggleExpanded={handleToggleSidePanel}
                 />
               )}
+            </div>
+          </>
+          )
+        ) : transcriptSurfaceAvailable && !transcriptPrimaryMode ? (
+          <>
+            <div className="pointer-events-none absolute right-0 top-0 z-20 hidden lg:block">
+              <button
+                type="button"
+                onClick={handleToggleSidePanel}
+                className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-slate-200 bg-white/95 px-3 py-3 text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900"
+              >
+                <div className="text-left">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                    {liveTranscriptionEnabled ? "Transcript" : "Transcription"}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-600">
+                    Open the side panel
+                  </p>
+                </div>
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em]">
+                  Open
+                </span>
+              </button>
+            </div>
+            <div className="order-2 shrink-0 lg:hidden">
+              <button
+                type="button"
+                onClick={handleToggleSidePanel}
+                className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 text-left shadow-sm"
+              >
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                    {liveTranscriptionEnabled ? "Transcript" : "Transcription"}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    Open the right-side panel to follow the transcript and AI activity.
+                  </p>
+                </div>
+                <span className="dr-button-outline px-3 py-1.5 text-[11px]">Open</span>
+              </button>
             </div>
           </>
         ) : null}

@@ -7,6 +7,7 @@ import crypto from "crypto";
 import { checkRateLimit, getRequestIp } from "@/lib/rateLimit";
 import { isLiveTranscriptionProvider } from "@/lib/transcriptionProviders";
 import { sendTelegramInvite } from "@/lib/telegramInvites";
+import { buildMeetingInviteEmail } from "@/lib/meetingInviteEmail";
 
 function generateToken() {
   return crypto.randomBytes(24).toString("base64url");
@@ -88,6 +89,9 @@ export async function DELETE(
     include: {
       members: {
         where: { userId: session.user.id }
+      },
+      createdBy: {
+        select: { email: true }
       }
     }
   });
@@ -138,6 +142,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     include: {
       members: {
         where: { userId: session.user.id }
+      },
+      createdBy: {
+        select: { email: true }
       }
     }
   });
@@ -183,9 +190,14 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     isPublic,
     requiresApproval,
     capacity,
-    aiAgentIds
+    aiAgentIds,
+    speakingBalanceModeratorEnabled,
+    speakingBalanceModeratorPreset,
+    speakingBalanceAllowParticipantUnmute
   } = parsed.data;
   const effectiveAiAgentIds = isLiveTranscriptionProvider(transcriptionProvider) ? aiAgentIds ?? [] : [];
+  const effectiveSpeakingBalanceModeratorEnabled =
+    isLiveTranscriptionProvider(transcriptionProvider) && Boolean(speakingBalanceModeratorEnabled);
 
   if (startTime && !date && !startAtRaw) {
     return NextResponse.json({ error: "Select a date for the start/end time." }, { status: 400 });
@@ -282,7 +294,14 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       dataspaceId: dataspaceId || null,
       isPublic: Boolean(isPublic),
       requiresApproval: Boolean(requiresApproval),
-      capacity: capacity ?? null
+      capacity: capacity ?? null,
+      speakingBalanceModeratorEnabled: effectiveSpeakingBalanceModeratorEnabled,
+      speakingBalanceModeratorPreset: effectiveSpeakingBalanceModeratorEnabled
+        ? speakingBalanceModeratorPreset ?? "gentle"
+        : null,
+      speakingBalanceAllowParticipantUnmute: effectiveSpeakingBalanceModeratorEnabled
+        ? Boolean(speakingBalanceAllowParticipantUnmute)
+        : true
     }
   });
 
@@ -339,15 +358,23 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     const appBaseUrl = process.env.APP_BASE_URL || "http://localhost:3000";
     const meetingLink = `${appBaseUrl}/meetings/${updated.id}`;
     await Promise.all(
-      registeredInvites.map((user) =>
-        sendMail({
+      registeredInvites.map((user) => {
+        const emailPayload = buildMeetingInviteEmail({
+          inviteKind: "registered",
+          meeting: {
+            ...updated,
+            createdBy: { email: meeting.createdBy.email }
+          },
+          accessUrl: meetingLink
+        });
+        return sendMail({
           to: user.email,
-          subject: "You are invited to a meeting",
-          html: `<p>You have been invited to the meeting <strong>${updated.title}</strong>.</p>
-            <p>Open the meeting page: <a href="${meetingLink}">${meetingLink}</a></p>`,
-          text: `You have been invited to the meeting ${updated.title}. Open: ${meetingLink}`
-        })
-      )
+          subject: emailPayload.subject,
+          html: emailPayload.html,
+          text: emailPayload.text,
+          attachments: emailPayload.attachments
+        });
+      })
     );
     await Promise.all(
       registeredInvites.map((user) =>
@@ -356,7 +383,18 @@ export async function PATCH(request: Request, { params }: { params: { id: string
           user.notifyTelegramMeetingInvites,
           "meeting",
           updated.title,
-          meetingLink
+          meetingLink,
+          {
+            title: updated.title,
+            description: updated.description,
+            scheduledStartAt: updated.scheduledStartAt,
+            expiresAt: updated.expiresAt,
+            timezone: updated.timezone,
+            language: updated.language,
+            transcriptionProvider: updated.transcriptionProvider,
+            hostEmail: meeting.createdBy.email,
+            createdAt: updated.createdAt
+          }
         )
       )
     );
@@ -391,13 +429,22 @@ export async function PATCH(request: Request, { params }: { params: { id: string
         });
 
         const guestLink = `${appBaseUrl}/guest/meetings/${invite.token}`;
+        const emailPayload = buildMeetingInviteEmail({
+          inviteKind: "guest",
+          meeting: {
+            ...updated,
+            createdBy: { email: meeting.createdBy.email }
+          },
+          accessUrl: guestLink,
+          registerUrl: registerLink,
+          inviteeName: null
+        });
         const emailResult = await sendMail({
           to: email,
-          subject: "You are invited to a meeting",
-          html: `<p>You have been invited to the meeting <strong>${updated.title}</strong>.</p>
-            <p>Join without registration: <a href="${guestLink}">${guestLink}</a></p>
-            <p>Prefer to register? Create an account: <a href="${registerLink}">${registerLink}</a></p>`,
-          text: `You have been invited to the meeting ${updated.title}. Join without registration: ${guestLink}. Register: ${registerLink}`
+          subject: emailPayload.subject,
+          html: emailPayload.html,
+          text: emailPayload.text,
+          attachments: emailPayload.attachments
         });
 
         if (!emailResult.ok) {

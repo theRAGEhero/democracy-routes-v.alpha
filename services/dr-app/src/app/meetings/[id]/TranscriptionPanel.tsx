@@ -13,6 +13,8 @@ type Props = {
   statusLabel?: string;
   className?: string;
   onActivityChange?: (active: boolean) => void;
+  expanded?: boolean;
+  onToggleExpanded?: () => void;
 };
 
 type TranscriptStatus = {
@@ -48,6 +50,18 @@ type ParticipationStat = {
 type ParticipationPayload = {
   totalVoiceActivityMs: number;
   participants: ParticipationStat[];
+};
+
+type AgentMessage = {
+  id: string;
+  text: string;
+  createdAt: string;
+  agent: {
+    id: string;
+    name: string;
+    username: string;
+    color: string;
+  };
 };
 
 type InlineChunk = { type: "text" | "bold" | "code"; value: string };
@@ -181,7 +195,9 @@ export function TranscriptionPanel({
   subtitle,
   statusLabel,
   className = "",
-  onActivityChange
+  onActivityChange,
+  expanded = true,
+  onToggleExpanded
 }: Props) {
   const [roundId, setRoundId] = useState(initialRoundId ?? "");
   const [loading, setLoading] = useState(false);
@@ -197,7 +213,10 @@ export function TranscriptionPanel({
   const [summaryStatus, setSummaryStatus] = useState<SummaryStatus | null>(null);
   const [summary, setSummary] = useState<SummaryPayload | null>(null);
   const [participation, setParticipation] = useState<ParticipationPayload | null>(null);
-  const [activeTab, setActiveTab] = useState<"transcript" | "summary">("transcript");
+  const [agentMessages, setAgentMessages] = useState<AgentMessage[]>([]);
+  const [agentMessagesLoading, setAgentMessagesLoading] = useState(false);
+  const [agentMessagesError, setAgentMessagesError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"transcript" | "summary" | "agents">("transcript");
 
   const handleFetch = useCallback(async () => {
     setError(null);
@@ -269,6 +288,27 @@ export function TranscriptionPanel({
     } catch {}
   }, [meetingId]);
 
+  const fetchAgentMessages = useCallback(async () => {
+    setAgentMessagesLoading(true);
+    setAgentMessagesError(null);
+    try {
+      const response = await fetch(`/api/meetings/${meetingId}/live-transcript`, {
+        cache: "no-store"
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        setAgentMessagesError(payload?.error || "Unable to load AI agent responses");
+        setAgentMessagesLoading(false);
+        return;
+      }
+      setAgentMessages(Array.isArray(payload?.agentMessages) ? payload.agentMessages : []);
+    } catch {
+      setAgentMessagesError("Unable to load AI agent responses");
+    } finally {
+      setAgentMessagesLoading(false);
+    }
+  }, [meetingId]);
+
   useEffect(() => {
     if (autoAttempted || loading || data) return;
     setAutoAttempted(true);
@@ -287,16 +327,18 @@ export function TranscriptionPanel({
     if (variant !== "sidebar") return;
     fetchSummary().catch(() => {});
     fetchParticipation().catch(() => {});
-  }, [fetchParticipation, fetchSummary, variant]);
+    fetchAgentMessages().catch(() => {});
+  }, [fetchAgentMessages, fetchParticipation, fetchSummary, variant]);
 
   useEffect(() => {
     if (variant !== "sidebar" || !autoRefresh || summary || summaryStatus?.stage === "failed") return;
     const interval = window.setInterval(() => {
       fetchSummary().catch(() => {});
       fetchParticipation().catch(() => {});
+      fetchAgentMessages().catch(() => {});
     }, 10000);
     return () => window.clearInterval(interval);
-  }, [autoRefresh, fetchParticipation, fetchSummary, summary, summaryStatus?.stage, variant]);
+  }, [autoRefresh, fetchAgentMessages, fetchParticipation, fetchSummary, summary, summaryStatus?.stage, variant]);
 
   useEffect(() => {
     if (!data && !status) return;
@@ -341,6 +383,15 @@ export function TranscriptionPanel({
                   {statusLabel}
                 </span>
               ) : null}
+              {onToggleExpanded ? (
+                <button
+                  type="button"
+                  onClick={onToggleExpanded}
+                  className="dr-button-outline px-2.5 py-1 text-[11px]"
+                >
+                  {expanded ? "Collapse" : "Open"}
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={activeTab === "transcript" ? handleFetch : fetchSummary}
@@ -359,12 +410,12 @@ export function TranscriptionPanel({
               </button>
             </div>
           </div>
-          <div className="border-b border-slate-200 px-4 py-2">
-            <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 p-1 text-[11px] font-semibold">
+          <div className="border-b border-slate-200 px-3 py-2 sm:px-4">
+            <div className="flex w-full gap-1 overflow-x-auto rounded-full border border-slate-200 bg-slate-50 p-1 text-[11px] font-semibold sm:inline-flex sm:w-auto">
               <button
                 type="button"
                 onClick={() => setActiveTab("transcript")}
-                className={`rounded-full px-3 py-1 ${
+                className={`whitespace-nowrap rounded-full px-3 py-1 ${
                   activeTab === "transcript" ? "bg-slate-900 text-white" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
@@ -373,22 +424,31 @@ export function TranscriptionPanel({
               <button
                 type="button"
                 onClick={() => setActiveTab("summary")}
-                className={`rounded-full px-3 py-1 ${
+                className={`whitespace-nowrap rounded-full px-3 py-1 ${
                   activeTab === "summary" ? "bg-slate-900 text-white" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
                 AI summary
               </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("agents")}
+                className={`whitespace-nowrap rounded-full px-3 py-1 ${
+                  activeTab === "agents" ? "bg-slate-900 text-white" : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                AI agents
+              </button>
             </div>
           </div>
-          <div className="min-h-0 flex-1 overflow-auto px-4 py-3 text-xs text-slate-800">
+          <div className="min-h-0 flex-1 overflow-auto px-3 py-3 text-xs text-slate-800 sm:px-4">
             {activeTab === "transcript" ? (
               <>
                 {message ? <p className="mb-3 text-sm text-emerald-600">{message}</p> : null}
                 {error ? <p className="mb-3 text-xs text-amber-700">{error}</p> : null}
 
                 {data ? (
-                  <TranscriptionView data={data} compact />
+                  <TranscriptionView data={data} compact fillHeight />
                 ) : (
                   <EmptyTranscriptionState
                     autoRefresh={autoRefresh}
@@ -398,12 +458,18 @@ export function TranscriptionPanel({
                   />
                 )}
               </>
-            ) : (
+            ) : activeTab === "summary" ? (
               <SummaryView
                 summary={summary}
                 status={summaryStatus}
                 error={summaryError}
                 participation={participation}
+              />
+            ) : (
+              <AgentResponsesView
+                items={agentMessages}
+                loading={agentMessagesLoading}
+                error={agentMessagesError}
               />
             )}
           </div>
@@ -452,6 +518,132 @@ export function TranscriptionPanel({
   );
 }
 
+function AgentResponsesView({
+  items,
+  loading,
+  error
+}: {
+  items: AgentMessage[];
+  loading: boolean;
+  error: string | null;
+}) {
+  if (error) {
+    return <p className="text-xs text-amber-700">{error}</p>;
+  }
+
+  if (loading && items.length === 0) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+        Loading AI agent responses...
+      </div>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">
+        No AI agent responses were recorded for this meeting.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {items.map((item) => (
+        <AgentResponseCard key={item.id} item={item} />
+      ))}
+    </div>
+  );
+}
+
+function classifyAgentMessage(text: string) {
+  const normalized = String(text || "").trim().toLowerCase();
+  if (
+    normalized.includes("warning") ||
+    normalized.includes("please pause") ||
+    normalized.includes("too much") ||
+    normalized.includes("let others") ||
+    normalized.includes("give space") ||
+    normalized.includes("spoken more")
+  ) {
+    return {
+      label: "Warning",
+      badgeClass: "bg-rose-100 text-rose-800 ring-1 ring-rose-200",
+      surfaceClass: "border-rose-200 bg-rose-50/75"
+    };
+  }
+  if (
+    normalized.startsWith("- ") ||
+    normalized.startsWith("* ") ||
+    normalized.startsWith("1. ") ||
+    normalized.includes("summary:") ||
+    normalized.includes("key points") ||
+    normalized.includes("bullet")
+  ) {
+    return {
+      label: "Recap",
+      badgeClass: "bg-sky-100 text-sky-800 ring-1 ring-sky-200",
+      surfaceClass: "border-sky-200 bg-sky-50/70"
+    };
+  }
+  if (
+    normalized.includes("suggest") ||
+    normalized.includes("consider") ||
+    normalized.includes("could") ||
+    normalized.includes("proposal") ||
+    normalized.includes("next step")
+  ) {
+    return {
+      label: "Suggestion",
+      badgeClass: "bg-amber-100 text-amber-800 ring-1 ring-amber-200",
+      surfaceClass: "border-amber-200 bg-amber-50/75"
+    };
+  }
+  return {
+    label: "Intervention",
+    badgeClass: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200",
+    surfaceClass: ""
+  };
+}
+
+function AgentResponseCard({ item }: { item: AgentMessage }) {
+  const tone = classifyAgentMessage(item.text);
+  const agentColor = item.agent.color || "#0ea5e9";
+
+  return (
+    <div
+      className={`rounded-2xl border px-4 py-4 ${tone.surfaceClass}`}
+      style={{
+        borderColor: tone.surfaceClass ? undefined : `${agentColor}44`,
+        backgroundColor: tone.surfaceClass ? undefined : `${agentColor}12`
+      }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <p
+              className="text-[10px] font-semibold uppercase tracking-[0.18em]"
+              style={{ color: agentColor }}
+            >
+              {item.agent.name} · AI participant
+            </p>
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] ${tone.badgeClass}`}>
+              {tone.label}
+            </span>
+          </div>
+          <p className="mt-1 text-[11px] text-slate-500">@{item.agent.username}</p>
+        </div>
+        <p className="text-[10px] text-slate-400">
+          {new Date(item.createdAt).toLocaleString()}
+        </p>
+      </div>
+      <div className="mt-3 space-y-3 text-sm text-slate-800">
+        {renderMarkdownBlocks(item.text)}
+      </div>
+    </div>
+  );
+}
+
 function SummaryView({
   summary,
   status,
@@ -478,20 +670,22 @@ function SummaryView({
 
   if (summary) {
     return (
-      <div className="space-y-4">
+      <div className="flex min-h-full flex-col rounded-2xl border border-slate-200 bg-white p-4">
         {summary.providerModel ? (
           <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">
             {summary.providerModel}
           </p>
         ) : null}
-        <div className="space-y-3">{renderMarkdownBlocks(summary.markdown)}</div>
-        <ParticipationBalance participation={participation} />
+        <div className="mt-3 space-y-3">{renderMarkdownBlocks(summary.markdown)}</div>
+        <div className="mt-auto pt-4">
+          <ParticipationBalance participation={participation} />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flex min-h-full flex-col gap-4">
       <div className={`rounded-2xl border px-4 py-5 text-sm ${tone}`}>
         {status ? (
           <div className="space-y-2">
@@ -647,7 +841,7 @@ function EmptyTranscriptionState({
         : "Transcription not linked yet.";
 
   return (
-    <div className={`rounded-2xl border px-4 py-5 text-xs ${stageTone}`}>
+    <div className={`flex min-h-full flex-col rounded-2xl border px-4 py-5 text-xs ${stageTone}`}>
       {status ? (
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-3">
@@ -671,7 +865,15 @@ function EmptyTranscriptionState({
   );
 }
 
-function TranscriptionView({ data, compact = false }: { data: any; compact?: boolean }) {
+function TranscriptionView({
+  data,
+  compact = false,
+  fillHeight = false
+}: {
+  data: any;
+  compact?: boolean;
+  fillHeight?: boolean;
+}) {
   const contributions = Array.isArray(data?.contributions) ? data.contributions : [];
   const participants = Array.isArray(data?.participants) ? data.participants : [];
   const nameById = new Map<string, string>();
@@ -691,7 +893,16 @@ function TranscriptionView({ data, compact = false }: { data: any; compact?: boo
   }
 
   return (
-    <div className={`${compact ? "space-y-2.5" : "mt-4 space-y-3"} text-sm text-slate-800`}>
+    <div
+      className={`text-sm text-slate-800 ${
+        compact
+          ? "flex min-h-full flex-col rounded-2xl border border-slate-200 bg-white p-3"
+          : fillHeight
+            ? "flex min-h-full flex-col"
+            : "mt-4"
+      }`}
+    >
+      <div className={compact ? "space-y-2.5" : "space-y-3"}>
       {contributions.map((contribution: any) => {
         const speakerId = contribution?.madeBy ?? "speaker";
         const speakerName = nameById.get(speakerId) ?? speakerId;
@@ -711,6 +922,7 @@ function TranscriptionView({ data, compact = false }: { data: any; compact?: boo
           </div>
         );
       })}
+      </div>
     </div>
   );
 }

@@ -46,6 +46,16 @@ export async function POST(request: Request, { params }: { params: { id: string 
   }
 
   const failedJob = await prisma.$transaction(async (tx) => {
+    const parsedPayload = (() => {
+      try {
+        return JSON.parse(job.payloadJson || "{}") as Record<string, unknown>;
+      } catch {
+        return {} as Record<string, unknown>;
+      }
+    })();
+    const transcriptionJobId =
+      typeof parsedPayload.transcriptionJobId === "string" ? parsedPayload.transcriptionJobId : null;
+
     const updatedJob = await tx.remoteWorkerJob.update({
       where: { id: params.id },
       data: {
@@ -53,6 +63,17 @@ export async function POST(request: Request, { params }: { params: { id: string 
         error: errorMessage
       }
     });
+
+    if (job.sourceType === "MEETING_UPLOAD" && transcriptionJobId) {
+      await tx.transcriptionJob.update({
+        where: { id: transcriptionJobId },
+        data: {
+          status: "FAILED",
+          lastError: errorMessage,
+          lastAttemptAt: new Date()
+        }
+      });
+    }
 
     await tx.remoteWorker.update({
       where: { id: workerId },

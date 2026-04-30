@@ -240,8 +240,8 @@ export function AppHeader() {
     pathname !== "/meetings/new" &&
     !pathname?.endsWith("/edit");
 
-  if (isTemplateWorkspace || isMeetingWorkspace) {
-    const isTemplateShell = isTemplateWorkspace;
+  if (isMeetingWorkspace) {
+    const isTemplateShell = false;
     return (
       <header className="pointer-events-none fixed inset-x-0 top-0 z-[120]">
         <div className="dr-shell dr-shell-pad flex w-full items-center justify-end py-2 sm:py-3">
@@ -342,6 +342,13 @@ export function AppHeader() {
                     className="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
                   >
                     Open Problems
+                  </Link>
+                  <Link
+                    href="/box"
+                    onClick={() => setShowMobileMenu(false)}
+                    className="block rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    Box
                   </Link>
                 </div>
 
@@ -447,6 +454,9 @@ export function AppHeader() {
             </Link>
             <Link href="/open-problems" className="rounded-full px-3 py-1 hover:bg-white/70">
               Open Problems
+            </Link>
+            <Link href="/box" className="rounded-full px-3 py-1 hover:bg-white/70">
+              Box
             </Link>
             <div
               className="relative"
@@ -645,6 +655,13 @@ export function AppHeader() {
                     Open Problems
                   </Link>
                   <Link
+                    href="/box"
+                    onClick={() => setShowUserMenu(false)}
+                    className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
+                  >
+                    Box
+                  </Link>
+                  <Link
                     href="/account"
                     onClick={() => setShowUserMenu(false)}
                     className="block rounded px-2 py-2 text-slate-700 hover:bg-slate-100"
@@ -742,6 +759,9 @@ export function AppHeader() {
                 </Link>
                 <Link href="/open-problems" onClick={() => setShowMobileMenu(false)} className="font-medium">
                   Open Problems
+                </Link>
+                <Link href="/box" onClick={() => setShowMobileMenu(false)} className="font-medium">
+                  Box
                 </Link>
                 <Link href="/dataspace" onClick={() => setShowMobileMenu(false)} className="font-medium">
                   Dataspaces

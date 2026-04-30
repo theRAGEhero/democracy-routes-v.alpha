@@ -11,6 +11,8 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isPresentation = pathname === "/presentation";
   const isModularBuilder = pathname === "/modular";
+  const isTemplateWorkspace = pathname === "/templates/workspace";
+  const isFullWorkspace = isModularBuilder || isTemplateWorkspace;
 
   if (isPresentation) {
     return (
@@ -22,10 +24,12 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <Suspense>
-        <AppHeader />
-      </Suspense>
-      <main className={`dr-shell w-full ${isModularBuilder ? "" : "dr-shell-pad py-6 lg:py-8"}`}>
+      {!isFullWorkspace ? (
+        <Suspense>
+          <AppHeader />
+        </Suspense>
+      ) : null}
+      <main className={`dr-shell w-full ${isFullWorkspace ? "" : "dr-shell-pad py-6 lg:py-8"}`}>
         {children}
       </main>
       <AppFooter />

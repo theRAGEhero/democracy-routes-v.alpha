@@ -27,6 +27,13 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
       members: {
         include: { user: true }
       },
+      aiSummary: {
+        select: {
+          generatedTitle: true,
+          generatedDescription: true,
+          status: true
+        }
+      },
       invites: {
         include: { user: true }
       },
@@ -157,6 +164,14 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
       ? "Vosk (privacy friendly)"
       : getTranscriptionProviderLabel(meeting.transcriptionProvider);
   const theme = getDataspaceTheme(meeting.dataspace?.color ?? DEFAULT_DATASPACE_COLOR);
+  const displayTitle =
+    meeting.aiSummary?.status === "DONE" && meeting.aiSummary.generatedTitle?.trim()
+      ? meeting.aiSummary.generatedTitle.trim()
+      : meeting.title;
+  const displayDescription =
+    meeting.aiSummary?.status === "DONE" && meeting.aiSummary.generatedDescription?.trim()
+      ? meeting.aiSummary.generatedDescription.trim()
+      : meeting.description;
   const latestRemoteWorkerJob =
     meeting.transcriptionProvider === "AUTOREMOTE"
       ? await prisma.remoteWorkerJob.findFirst({
@@ -186,17 +201,27 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
   return (
     <div className="dataspace-theme dataspace-theme-tight" style={theme as CSSProperties}>
       <div className="relative left-1/2 right-1/2 w-screen -mx-[50vw] -my-6 h-[calc(100dvh-var(--app-header-h,0px))] overflow-hidden px-0">
-        <div className="grid h-full min-h-0 grid-rows-[auto,minmax(0,1fr)] gap-2 overflow-hidden px-4 pb-1 pt-1">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
-            {meeting.title}
-          </h1>
-          {meeting.description ? (
-            <p className="mt-2 text-sm text-slate-600">{meeting.description}</p>
-          ) : null}
+        <div className="grid h-full min-h-0 grid-rows-[auto,minmax(0,1fr)] gap-2 overflow-hidden px-3 pb-[max(6px,env(safe-area-inset-bottom))] pt-1 sm:px-4 sm:pt-2">
+      <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[minmax(0,1fr)_420px] 2xl:grid-cols-[minmax(0,1fr)_460px] lg:items-start">
+        <div className="order-2 flex min-w-0 flex-col gap-2 lg:order-1">
+          <div className="flex flex-wrap items-center gap-2 self-start">
+            {canEdit ? (
+              <Link
+                href={`/meetings/${meeting.id}/edit`}
+                className="dr-button-outline px-3 py-1.5 text-xs"
+              >
+                Edit meeting
+              </Link>
+            ) : null}
+            <Link
+              href="/dashboard"
+              className="dr-button-outline px-3 py-1.5 text-xs"
+            >
+              Back to dashboard
+            </Link>
+          </div>
           {meeting.transcriptionProvider === "WHISPERREMOTE" || meeting.transcriptionProvider === "AUTOREMOTE" ? (
-            <div className="mt-3 inline-flex max-w-2xl items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-sm text-amber-900">
+            <div className="inline-flex max-w-2xl items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-xs text-amber-900 sm:text-sm">
               <span className="mt-0.5 text-base leading-none">AI</span>
               <span>
                 {meeting.transcriptionProvider === "AUTOREMOTE" && autoRemoteAssignment
@@ -207,8 +232,19 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
               </span>
             </div>
           ) : null}
+        </div>
+        <div className="order-1 rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 shadow-sm lg:order-2">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">
+            Meeting
+          </p>
+          <h1 className="mt-1.5 text-lg font-semibold text-slate-900 sm:text-2xl" style={{ fontFamily: "var(--font-serif)" }}>
+            {displayTitle}
+          </h1>
+          {displayDescription ? (
+            <p className="mt-1.5 text-sm leading-6 text-slate-600">{displayDescription}</p>
+          ) : null}
           {meeting.aiAgents.length > 0 ? (
-            <div className="mt-3 flex max-w-3xl flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white/85 px-3 py-2 text-sm text-slate-700">
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-sm text-slate-700">
               <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                 AI participants
               </span>
@@ -227,22 +263,6 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
               ))}
             </div>
           ) : null}
-        </div>
-        <div className="flex items-center gap-3 self-start pr-14 sm:pr-16">
-          {canEdit ? (
-            <Link
-              href={`/meetings/${meeting.id}/edit`}
-              className="dr-button-outline px-3 py-1 text-xs"
-            >
-              Edit meeting
-            </Link>
-          ) : null}
-          <Link
-            href="/dashboard"
-            className="text-sm font-medium text-slate-600 hover:text-slate-900"
-          >
-            Back to dashboard
-          </Link>
         </div>
       </div>
 
@@ -272,7 +292,7 @@ export default async function MeetingDetailPage({ params }: { params: { id: stri
         initialRoundId={meeting.transcriptionRoundId ?? null}
       />
 
-      <div className="max-h-[10dvh] overflow-auto">
+      <div className="max-h-[22dvh] overflow-auto lg:max-h-[10dvh]">
         <MeetingParticipation
           meetingId={meeting.id}
           isPublic={meeting.isPublic}

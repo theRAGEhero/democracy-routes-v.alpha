@@ -997,6 +997,19 @@ export function ParticipantViewClient({
         showModal ? "flex min-h-0 flex-col" : ""
       }`}
     >
+      <div className="flex items-center justify-between border-b border-slate-800 bg-slate-950/95 px-3 py-2 text-[11px] text-slate-400">
+        <span>Live room</span>
+        {canJoinCall ? (
+          <a
+            href={joinUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-full border border-slate-700 px-3 py-1 font-semibold text-slate-200 hover:border-slate-500 hover:text-white"
+          >
+            Open Full Room
+          </a>
+        ) : null}
+      </div>
       {canJoinCall ? (
         <CallFrame
           src={joinUrl}

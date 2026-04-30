@@ -27,6 +27,11 @@ export async function POST(request: Request) {
   const telegramHandle = normalizeTelegramHandle(parsed.data.telegramHandle ?? null);
   const personalDescription = parsed.data.personalDescription?.trim() || null;
   const calComLink = parsed.data.calComLink?.trim() || null;
+  const websiteUrl = parsed.data.websiteUrl?.trim() || null;
+  const xUrl = parsed.data.xUrl?.trim() || null;
+  const blueskyUrl = parsed.data.blueskyUrl?.trim() || null;
+  const linkedinUrl = parsed.data.linkedinUrl?.trim() || null;
+  const fediverseUrl = parsed.data.fediverseUrl?.trim() || null;
   const avatarUrl = parsed.data.avatarUrl?.trim() || null;
   const appTheme = normalizeAppTheme(parsed.data.appTheme);
 
@@ -52,6 +57,11 @@ export async function POST(request: Request) {
       telegramHandle,
       personalDescription,
       calComLink,
+      websiteUrl,
+      xUrl,
+      blueskyUrl,
+      linkedinUrl,
+      fediverseUrl,
       avatarUrl,
       appTheme,
       notifyEmailMeetingInvites: parsed.data.notifyEmailMeetingInvites ?? undefined,

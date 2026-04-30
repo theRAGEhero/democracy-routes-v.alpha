@@ -359,7 +359,6 @@ export function StructuredTemplateEditor({ draft, posters, audioFiles, onChange 
                       <option value="when_x_join">When X people join</option>
                       <option value="organizer_manual">Organizer clicks start</option>
                       <option value="when_x_join_and_datetime">When X join and at a specific day/time</option>
-                      <option value="random_selection_among_x">Random selection among X participants</option>
                     </select>
                   </label>
 
@@ -455,49 +454,6 @@ export function StructuredTemplateEditor({ draft, posters, audioFiles, onChange 
                           onChange={(event) => updateBlock(index, { allowStartBeforeFull: event.target.checked })}
                         />
                         Allow start before full attendance
-                      </label>
-                    </>
-                  ) : null}
-
-                  {block.startMode === "random_selection_among_x" ? (
-                    <>
-                      <label className="text-xs font-medium text-slate-700">
-                        Candidate pool size
-                        <input
-                          type="number"
-                          min={1}
-                          value={block.poolSize ?? ""}
-                          onChange={(event) =>
-                            updateBlock(index, {
-                              poolSize: event.target.value ? Number(event.target.value) : null
-                            })
-                          }
-                          className="dr-input mt-1 w-full"
-                        />
-                      </label>
-                      <label className="text-xs font-medium text-slate-700">
-                        Selected participants
-                        <input
-                          type="number"
-                          min={1}
-                          value={block.selectedParticipants ?? ""}
-                          onChange={(event) =>
-                            updateBlock(index, {
-                              selectedParticipants: event.target.value ? Number(event.target.value) : null
-                            })
-                          }
-                          className="dr-input mt-1 w-full"
-                        />
-                      </label>
-                      <label className="text-xs font-medium text-slate-700">
-                        Selection rule
-                        <select
-                          value={block.selectionRule ?? "random"}
-                          onChange={() => updateBlock(index, { selectionRule: "random" })}
-                          className="dr-input mt-1 w-full"
-                        >
-                          <option value="random">Random</option>
-                        </select>
                       </label>
                     </>
                   ) : null}

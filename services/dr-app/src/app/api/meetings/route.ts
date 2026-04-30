@@ -9,6 +9,7 @@ import { checkRateLimit, getRequestIp } from "@/lib/rateLimit";
 import { getRequestId, logError } from "@/lib/logger";
 import { getRoomProviderSuffix, isLiveTranscriptionProvider } from "@/lib/transcriptionProviders";
 import { sendTelegramInvite } from "@/lib/telegramInvites";
+import { buildMeetingInviteEmail } from "@/lib/meetingInviteEmail";
 import crypto from "crypto";
 
 const GOVERNANCE_TITLE_ADJECTIVES = [
@@ -98,14 +99,20 @@ export async function POST(request: Request) {
     transcriptionProvider,
     timezone,
     dataspaceId,
+    openProblemId,
     isPublic,
     requiresApproval,
     capacity,
-    aiAgentIds
+    aiAgentIds,
+    speakingBalanceModeratorEnabled,
+    speakingBalanceModeratorPreset,
+    speakingBalanceAllowParticipantUnmute
   } = parsed.data;
   const fallbackTitle = `${pickRandom(GOVERNANCE_TITLE_ADJECTIVES)} ${pickRandom(GOVERNANCE_TITLE_NOUNS)}`;
   const title = String(rawTitle || "").trim() || fallbackTitle;
   const effectiveAiAgentIds = isLiveTranscriptionProvider(transcriptionProvider) ? aiAgentIds ?? [] : [];
+  const effectiveSpeakingBalanceModeratorEnabled =
+    isLiveTranscriptionProvider(transcriptionProvider) && Boolean(speakingBalanceModeratorEnabled);
   const providerLabel = getRoomProviderSuffix(transcriptionProvider);
   const roomId = `${generateRoomId()}-${language}-${providerLabel}`;
   let scheduledStartAt: Date | null = null;
@@ -155,6 +162,30 @@ export async function POST(request: Request) {
     if (!membership) {
       return NextResponse.json({ error: "Invalid dataspace selection" }, { status: 403 });
     }
+  }
+  let resolvedOpenProblemId: string | null = null;
+  if (openProblemId) {
+    const problem = await prisma.openProblem.findFirst({
+      where: {
+        id: openProblemId,
+        OR: [
+          { createdById: session.user.id },
+          { joins: { some: { userId: session.user.id } } },
+          { dataspace: { members: { some: { userId: session.user.id } } } }
+        ]
+      },
+      select: { id: true, dataspaceId: true }
+    });
+    if (!problem) {
+      return NextResponse.json({ error: "Open problem not found or not accessible." }, { status: 404 });
+    }
+    if (dataspaceId && problem.dataspaceId && problem.dataspaceId !== dataspaceId) {
+      return NextResponse.json(
+        { error: "Meeting dataspace must match the selected open problem dataspace." },
+        { status: 400 }
+      );
+    }
+    resolvedOpenProblemId = problem.id;
   }
   if (isPublic && !dataspaceId) {
     return NextResponse.json({ error: "Public meetings require a dataspace." }, { status: 400 });
@@ -210,9 +241,17 @@ export async function POST(request: Request) {
       language,
       transcriptionProvider,
       dataspaceId: dataspaceId || null,
+      openProblemId: resolvedOpenProblemId,
       isPublic: Boolean(isPublic),
       requiresApproval: Boolean(requiresApproval),
       capacity: capacity ?? null,
+      speakingBalanceModeratorEnabled: effectiveSpeakingBalanceModeratorEnabled,
+      speakingBalanceModeratorPreset: effectiveSpeakingBalanceModeratorEnabled
+        ? speakingBalanceModeratorPreset ?? "gentle"
+        : null,
+      speakingBalanceAllowParticipantUnmute: effectiveSpeakingBalanceModeratorEnabled
+        ? Boolean(speakingBalanceAllowParticipantUnmute)
+        : true,
       members: {
         create: {
           userId: session.user.id,
@@ -272,15 +311,23 @@ export async function POST(request: Request) {
     await Promise.all(
       registeredInvites
         .filter((user) => user.notifyEmailMeetingInvites !== false)
-        .map((user) =>
-          sendMail({
+        .map((user) => {
+          const emailPayload = buildMeetingInviteEmail({
+            inviteKind: "registered",
+            meeting: {
+              ...meeting,
+              createdBy: { email: session.user.email }
+            },
+            accessUrl: meetingLink
+          });
+          return sendMail({
             to: user.email,
-            subject: "You are invited to a meeting",
-            html: `<p>You have been invited to the meeting <strong>${meeting.title}</strong>.</p>
-              <p>Open the meeting page: <a href="${meetingLink}">${meetingLink}</a></p>`,
-            text: `You have been invited to the meeting ${meeting.title}. Open: ${meetingLink}`
-          })
-        )
+            subject: emailPayload.subject,
+            html: emailPayload.html,
+            text: emailPayload.text,
+            attachments: emailPayload.attachments
+          });
+        })
     );
     await Promise.all(
       registeredInvites.map((user) =>
@@ -289,7 +336,18 @@ export async function POST(request: Request) {
           user.notifyTelegramMeetingInvites,
           "meeting",
           meeting.title,
-          meetingLink
+          meetingLink,
+          {
+            title: meeting.title,
+            description: meeting.description,
+            scheduledStartAt: meeting.scheduledStartAt,
+            expiresAt: meeting.expiresAt,
+            timezone: meeting.timezone,
+            language: meeting.language,
+            transcriptionProvider: meeting.transcriptionProvider,
+            hostEmail: session.user.email,
+            createdAt: meeting.createdAt
+          }
         )
       )
     );
@@ -324,13 +382,22 @@ export async function POST(request: Request) {
         });
 
         const guestLink = `${appBaseUrl}/guest/meetings/${invite.token}`;
+        const emailPayload = buildMeetingInviteEmail({
+          inviteKind: "guest",
+          meeting: {
+            ...meeting,
+            createdBy: { email: session.user.email }
+          },
+          accessUrl: guestLink,
+          registerUrl: registerLink,
+          inviteeName: null
+        });
         const emailResult = await sendMail({
           to: email,
-          subject: "You are invited to a meeting",
-          html: `<p>You have been invited to the meeting <strong>${meeting.title}</strong>.</p>
-            <p>Join without registration: <a href="${guestLink}">${guestLink}</a></p>
-            <p>Prefer to register? Create an account: <a href="${registerLink}">${registerLink}</a></p>`,
-          text: `You have been invited to the meeting ${meeting.title}. Join without registration: ${guestLink}. Register: ${registerLink}`
+          subject: emailPayload.subject,
+          html: emailPayload.html,
+          text: emailPayload.text,
+          attachments: emailPayload.attachments
         });
 
         if (!emailResult.ok) {

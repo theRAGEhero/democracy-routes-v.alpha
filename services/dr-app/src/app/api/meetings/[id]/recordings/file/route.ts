@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import fs from "node:fs/promises";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { guessMediaContentType } from "@/lib/meetingMediaUploads";
 
 function getDrVideoBase() {
   return String(process.env.DR_VIDEO_INTERNAL_URL || "http://dr-video:3020").replace(/\/$/, "");
@@ -51,6 +53,45 @@ export async function GET(
 
   const requestUrl = new URL(request.url);
   const sessionId = String(requestUrl.searchParams.get("sessionId") || "").trim();
+  const uploadJobId = String(requestUrl.searchParams.get("uploadJobId") || "").trim();
+  if (!sessionId && !uploadJobId) {
+    return NextResponse.json({ error: "sessionId or uploadJobId is required" }, { status: 400 });
+  }
+
+  if (uploadJobId) {
+    const job = await prisma.transcriptionJob.findFirst({
+      where: {
+        id: uploadJobId,
+        meetingId: access.meeting.id,
+        kind: "MEETING_UPLOAD",
+        audioPath: { not: null }
+      },
+      select: { audioPath: true }
+    });
+
+    if (!job?.audioPath) {
+      return NextResponse.json({ error: "Uploaded media not found" }, { status: 404 });
+    }
+
+    let buffer: Buffer;
+    try {
+      buffer = await fs.readFile(job.audioPath);
+    } catch {
+      return NextResponse.json({ error: "Uploaded media not found" }, { status: 404 });
+    }
+
+    const filename = job.audioPath.split("/").pop() || `upload-${uploadJobId}`;
+    return new NextResponse(new Uint8Array(buffer), {
+      status: 200,
+      headers: {
+        "Content-Type": guessMediaContentType(filename),
+        "Content-Length": String(buffer.length),
+        "Cache-Control": "private, max-age=60",
+        "Content-Disposition": `inline; filename=\"${filename}\"`
+      }
+    });
+  }
+
   if (!sessionId) {
     return NextResponse.json({ error: "sessionId is required" }, { status: 400 });
   }

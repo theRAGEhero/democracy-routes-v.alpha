@@ -6,10 +6,9 @@ import { requireWorkflowKey } from "@/app/api/integrations/workflow/utils";
 export const runtime = "nodejs";
 
 function getAudioDir() {
-  return (
-    process.env.MEDITATION_AUDIO_DIR ??
-    path.join(process.cwd(), "data", "meditation-audio")
-  );
+  const uploadsRoot =
+    process.env.UPLOADS_DIR ?? path.join(process.cwd(), "data", "uploads");
+  return process.env.MEDITATION_AUDIO_DIR ?? path.join(uploadsRoot, "meditation-audio");
 }
 
 function isAllowedFile(name: string) {

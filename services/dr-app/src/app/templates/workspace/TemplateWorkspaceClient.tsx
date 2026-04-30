@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { buildDefaultTemplateDraft, type TemplateBlock, type TemplateDraft } from "@/lib/templateDraft";
 import { compileTemplateDraft, type TemplateCompileResult } from "@/lib/templateCompile";
 import { ModularBuilderClient } from "@/app/modular/ModularBuilderClient";
 import { postClientLog } from "@/lib/clientLogs";
+import { SignOutButton } from "@/components/SignOutButton";
 
 type WorkspaceMode = "modular";
 type AiMessage = {
@@ -130,6 +132,12 @@ function writeStoredDraftMap(next: Record<string, TemplateDraft>) {
   } catch {}
 }
 
+function stopWorkspaceInputKeyPropagation(
+  event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+) {
+  event.stopPropagation();
+}
+
 export function TemplateWorkspaceClient({
   templates,
   dataspaces,
@@ -174,6 +182,7 @@ export function TemplateWorkspaceClient({
   const [exitSaving, setExitSaving] = useState(false);
   const [compileReport, setCompileReport] = useState<TemplateCompileResult | null>(null);
   const [compileModalOpen, setCompileModalOpen] = useState(false);
+  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
   const lastLoadedRouteTemplateIdRef = useRef<string | null>(initialTemplateId ?? null);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queuedAutosaveRef = useRef(false);
@@ -198,6 +207,7 @@ export function TemplateWorkspaceClient({
   }
 
   const currentTemplateId = draft.id ?? null;
+  const aiWorkspaceHref = "/templates/ai";
   const draftSignature = useMemo(() => serializeDraft(draft), [draft]);
   const isDirty = draftSignature !== lastSavedSignature;
   const templateCount = templatesState.length;
@@ -669,6 +679,25 @@ export function TemplateWorkspaceClient({
   }, [currentTemplateId, draftSignature, isDirty, mode, performSave, saving, draft.blocks.length]);
 
   async function handleSave() {
+    const result = compileTemplateDraft(draft);
+    if (!result.ok) {
+      setCompileReport(result);
+      setCompileModalOpen(true);
+      setSaveError("Template must compile before it can be saved.");
+      void postClientLog({
+        level: "warn",
+        scope: "template_workspace",
+        message: "template_workspace_compile_blocked_save",
+        meta: {
+          templateId: currentTemplateId,
+          errorCount: result.errors.length,
+          warningCount: result.warnings.length,
+          discussionRounds: result.discussionRounds,
+          segmentCount: result.segmentCount
+        }
+      });
+      return;
+    }
     await performSave("manual");
   }
 
@@ -699,6 +728,14 @@ export function TemplateWorkspaceClient({
   async function saveAndExit() {
     if (exitSaving) return;
     setExitSaving(true);
+    const result = compileTemplateDraft(latestDraftRef.current);
+    if (!result.ok) {
+      setCompileReport(result);
+      setCompileModalOpen(true);
+      setSaveError("Template must compile before it can be saved.");
+      setExitSaving(false);
+      return;
+    }
     const saved = await performSave("manual");
     if (!saved) {
       setExitSaving(false);
@@ -726,29 +763,10 @@ export function TemplateWorkspaceClient({
         ? { label: "Unsaved changes", className: "border-slate-200 bg-slate-100 text-slate-600" }
         : !currentTemplateId
           ? { label: "Not saved yet", className: "border-slate-200 bg-slate-50 text-slate-500" }
-        : {
-            label: lastSavedAt ? `Saved ${new Date(lastSavedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Saved",
-            className: "border-emerald-200 bg-emerald-50 text-emerald-700"
-          };
-
-  function handleCompileTemplate() {
-    const result = compileTemplateDraft(draft);
-    setCompileReport(result);
-    setCompileModalOpen(true);
-    void postClientLog({
-      level: result.ok ? "info" : "warn",
-      scope: "template_workspace",
-      message: "template_workspace_compile_run",
-      meta: {
-        templateId: currentTemplateId,
-        ok: result.ok,
-        errorCount: result.errors.length,
-        warningCount: result.warnings.length,
-        discussionRounds: result.discussionRounds,
-        segmentCount: result.segmentCount
-      }
-    });
-  }
+          : {
+              label: lastSavedAt ? `Saved ${new Date(lastSavedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Saved",
+              className: "border-emerald-200 bg-emerald-50 text-emerald-700"
+            };
 
   async function runAi(nextMode: "generate" | "modify") {
     setAiLoading(true);
@@ -916,6 +934,7 @@ export function TemplateWorkspaceClient({
                       <input
                         value={draft.name}
                         onChange={(event) => setDraft((prev) => ({ ...prev, name: event.target.value }))}
+                        onKeyDown={stopWorkspaceInputKeyPropagation}
                         className="dr-input mt-1 w-full"
                       />
                     </label>
@@ -924,6 +943,7 @@ export function TemplateWorkspaceClient({
                       <input
                         value={draft.description ?? ""}
                         onChange={(event) => setDraft((prev) => ({ ...prev, description: event.target.value }))}
+                        onKeyDown={stopWorkspaceInputKeyPropagation}
                         className="dr-input mt-1 w-full"
                       />
                     </label>
@@ -931,6 +951,7 @@ export function TemplateWorkspaceClient({
                       Dataspace
                       <select
                         value={draft.settings.dataspaceId ?? ""}
+                        onKeyDown={stopWorkspaceInputKeyPropagation}
                         onChange={(event) =>
                           setDraft((prev) => ({
                             ...prev,
@@ -951,6 +972,7 @@ export function TemplateWorkspaceClient({
                       Template source
                       <select
                         value={draft.id ?? ""}
+                        onKeyDown={stopWorkspaceInputKeyPropagation}
                         onChange={(event) => {
                           if (!event.target.value) {
                             if (!confirmDiscardChanges()) return;
@@ -982,6 +1004,7 @@ export function TemplateWorkspaceClient({
                       Language
                       <select
                         value={draft.settings.language}
+                        onKeyDown={stopWorkspaceInputKeyPropagation}
                         onChange={(event) =>
                           setDraft((prev) => ({
                             ...prev,
@@ -998,6 +1021,7 @@ export function TemplateWorkspaceClient({
                       Transcription
                       <select
                         value={draft.settings.transcriptionProvider}
+                        onKeyDown={stopWorkspaceInputKeyPropagation}
                         onChange={(event) =>
                           setDraft((prev) => ({
                             ...prev,
@@ -1020,6 +1044,7 @@ export function TemplateWorkspaceClient({
                         min={2}
                         max={12}
                         value={draft.settings.maxParticipantsPerRoom}
+                        onKeyDown={stopWorkspaceInputKeyPropagation}
                         onChange={(event) =>
                           setDraft((prev) => ({
                             ...prev,
@@ -1038,6 +1063,7 @@ export function TemplateWorkspaceClient({
                         type="number"
                         min={1}
                         value={draft.settings.capacity ?? ""}
+                        onKeyDown={stopWorkspaceInputKeyPropagation}
                         onChange={(event) =>
                           setDraft((prev) => ({
                             ...prev,
@@ -1182,16 +1208,17 @@ export function TemplateWorkspaceClient({
   }
 
   return (
-    <div className={`flex h-full min-h-0 flex-col ${isMobile ? "pb-24" : "overflow-hidden"}`}>
+    <div className={`flex h-full min-h-0 flex-col ${isMobile ? "" : "overflow-hidden"}`}>
       <div className={`sticky top-0 z-20 ${isMobile ? "border-b border-slate-200/80 bg-[#f7f7f3]/95 px-0 py-0 backdrop-blur" : ""}`}>
-        <div className={`dr-card flex flex-wrap items-center justify-between gap-3 rounded-none border-x-0 border-t-0 ${isMobile ? "px-3 py-2 shadow-none" : "px-4 py-2"}`}>
-          <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
+        <div className={`dr-card relative flex flex-wrap items-center justify-between gap-3 rounded-none border-x-0 border-t-0 ${isMobile ? "px-3 py-2 shadow-none" : "px-4 py-2"}`}>
+          <div className="flex min-w-0 basis-0 flex-1 items-center gap-3 overflow-hidden lg:flex-nowrap">
           {editingTitle ? (
             <input
               value={draft.name}
               onChange={(event) => setDraft((prev) => ({ ...prev, name: event.target.value }))}
               onBlur={() => setEditingTitle(false)}
               onKeyDown={(event) => {
+                event.stopPropagation();
                 if (event.key === "Enter") {
                   event.preventDefault();
                   setEditingTitle(false);
@@ -1201,14 +1228,14 @@ export function TemplateWorkspaceClient({
                 }
               }}
               autoFocus
-              className="dr-input h-9 min-w-0 flex-[1.2] text-base font-semibold text-slate-900"
+              className="dr-input h-9 min-w-0 w-full max-w-[min(100%,34rem)] flex-[1.2] text-base font-semibold text-slate-900"
               style={{ fontFamily: "var(--font-serif)" }}
             />
           ) : (
             <button
               type="button"
               onClick={() => setEditingTitle(true)}
-              className="min-w-0 flex-[1.2] truncate text-left text-base font-semibold text-slate-900 hover:text-slate-700"
+              className="min-w-0 w-full max-w-[min(100%,34rem)] flex-[1.2] truncate text-left text-base font-semibold text-slate-900 hover:text-slate-700"
               style={{ fontFamily: "var(--font-serif)" }}
               title="Click to rename template"
             >
@@ -1235,43 +1262,97 @@ export function TemplateWorkspaceClient({
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${saveStatus.className}`}>
-              {saveStatus.label}
-            </span>
+          <div className={`flex min-w-0 shrink-0 ${isMobile ? "w-full flex-col items-stretch gap-2" : "ml-auto max-w-full flex-wrap items-center justify-end gap-2 xl:flex-nowrap xl:gap-3"}`}>
+            <div
+              className={`flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/90 shadow-sm ${
+                isMobile ? "w-full justify-between px-3 py-2" : "shrink-0 px-2.5 py-1.5"
+              }`}
+            >
+              {!isMobile ? (
+                <span className="rounded-full bg-slate-900 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white">
+                  Modular
+                </span>
+              ) : null}
+              <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${saveStatus.className}`}>
+                {saveStatus.label}
+              </span>
+            </div>
+
             {isMobile ? (
-              <>
+              <div className="grid w-full grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setInfoModalOpen(true)}
-                  className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-semibold text-slate-600"
+                  className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm"
                 >
-                  Info
+                  Template info
                 </button>
                 <button
                   type="button"
                   onClick={() => setMobileAiOpen(true)}
-                  className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700"
+                  className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 shadow-sm"
                 >
-                  AI
+                  AI workspace
                 </button>
-                <button type="button" className="dr-button-outline px-3 py-1 text-xs" onClick={handleCompileTemplate}>
-                  Compile
-                </button>
-                <button type="button" className="dr-button px-3 py-1 text-xs" onClick={handleSave} disabled={saving}>
-                  {saving ? "Saving..." : "Save"}
-                </button>
-              </>
-            ) : (
-              <>
-                <span className="dr-button px-3 py-1 text-xs">Modular Builder</span>
-                <button type="button" className="dr-button-outline px-3 py-1 text-xs" onClick={handleCompileTemplate}>
-                  Compile template
-                </button>
-                <button type="button" className="dr-button px-3 py-1 text-xs" onClick={handleSave} disabled={saving}>
+                <button
+                  type="button"
+                  className="dr-button rounded-2xl px-3 py-2 text-xs"
+                  onClick={handleSave}
+                  disabled={saving}
+                >
                   {saving ? "Saving..." : "Save template"}
                 </button>
-              </>
+                <button
+                  type="button"
+                  onClick={() => setWorkspaceMenuOpen((prev) => !prev)}
+                  className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm"
+                  aria-expanded={workspaceMenuOpen}
+                >
+                  <img
+                    src="/logo-120.png"
+                    alt="Democracy Routes logo"
+                    className="h-4 w-4 rounded-full object-contain"
+                  />
+                  Menu
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center justify-end gap-2 rounded-[22px] border border-slate-200/80 bg-white/90 px-2 py-2 shadow-sm xl:flex-nowrap xl:rounded-full">
+                <button
+                  type="button"
+                  onClick={() => setInfoModalOpen(true)}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:text-slate-900"
+                >
+                  Edit info
+                </button>
+                <Link
+                  href={aiWorkspaceHref}
+                  className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                >
+                  AI workspace
+                </Link>
+                <button
+                  type="button"
+                  className="dr-button px-3 py-1.5 text-xs"
+                  onClick={handleSave}
+                  disabled={saving}
+                >
+                  {saving ? "Saving..." : "Save template"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWorkspaceMenuOpen((prev) => !prev)}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:text-slate-900"
+                  aria-expanded={workspaceMenuOpen}
+                >
+                  <img
+                    src="/logo-120.png"
+                    alt="Democracy Routes logo"
+                    className="h-4 w-4 rounded-full object-contain"
+                  />
+                  Menu
+                </button>
+              </div>
             )}
           </div>
           {!isMobile ? (
@@ -1289,6 +1370,38 @@ export function TemplateWorkspaceClient({
             </>
           ) : null}
         </div>
+        {workspaceMenuOpen ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setWorkspaceMenuOpen(false)}
+              className="fixed inset-0 z-30 bg-transparent"
+              aria-label="Close workspace menu"
+            />
+            <div className={`absolute right-3 top-full z-40 mt-2 w-[min(92vw,340px)] rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_24px_64px_rgba(15,23,42,0.18)] ${isMobile ? "" : "right-4"}`}>
+              <div className="grid gap-2">
+                <Link href="/dashboard" onClick={() => setWorkspaceMenuOpen(false)} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-white">
+                  Dashboard
+                </Link>
+                <Link href="/open-problems" onClick={() => setWorkspaceMenuOpen(false)} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-white">
+                  Open Problems
+                </Link>
+                <Link href="/dataspace" onClick={() => setWorkspaceMenuOpen(false)} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-white">
+                  Dataspaces
+                </Link>
+                <Link href="/flows" onClick={() => setWorkspaceMenuOpen(false)} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-white">
+                  Flows
+                </Link>
+                <Link href="/account" onClick={() => setWorkspaceMenuOpen(false)} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-white">
+                  Profile settings
+                </Link>
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-2">
+                  <SignOutButton onBeforeSignOut={() => setWorkspaceMenuOpen(false)} />
+                </div>
+              </div>
+            </div>
+          </>
+        ) : null}
       </div>
 
       {infoModalOpen ? (
@@ -1316,6 +1429,7 @@ export function TemplateWorkspaceClient({
                 <input
                   value={draft.name}
                   onChange={(event) => setDraft((prev) => ({ ...prev, name: event.target.value }))}
+                  onKeyDown={stopWorkspaceInputKeyPropagation}
                   className="dr-input mt-1 w-full"
                 />
               </label>
@@ -1324,6 +1438,7 @@ export function TemplateWorkspaceClient({
                 <textarea
                   value={draft.description ?? ""}
                   onChange={(event) => setDraft((prev) => ({ ...prev, description: event.target.value }))}
+                  onKeyDown={stopWorkspaceInputKeyPropagation}
                   className="dr-input mt-1 min-h-[96px] w-full rounded-2xl px-3 py-2"
                 />
               </label>
@@ -1331,6 +1446,7 @@ export function TemplateWorkspaceClient({
                 Dataspace
                 <select
                   value={draft.settings.dataspaceId ?? ""}
+                  onKeyDown={stopWorkspaceInputKeyPropagation}
                   onChange={(event) =>
                     setDraft((prev) => ({
                       ...prev,
@@ -1351,6 +1467,7 @@ export function TemplateWorkspaceClient({
                 Template source
                 <select
                   value={draft.id ?? ""}
+                  onKeyDown={stopWorkspaceInputKeyPropagation}
                   onChange={(event) => {
                     if (!event.target.value) {
                       if (!confirmDiscardChanges()) return;
@@ -1382,6 +1499,7 @@ export function TemplateWorkspaceClient({
                 Language
                 <select
                   value={draft.settings.language}
+                  onKeyDown={stopWorkspaceInputKeyPropagation}
                   onChange={(event) =>
                     setDraft((prev) => ({
                       ...prev,
@@ -1398,6 +1516,7 @@ export function TemplateWorkspaceClient({
                 Transcription
                 <select
                   value={draft.settings.transcriptionProvider}
+                  onKeyDown={stopWorkspaceInputKeyPropagation}
                   onChange={(event) =>
                     setDraft((prev) => ({
                       ...prev,
@@ -1592,7 +1711,7 @@ export function TemplateWorkspaceClient({
       <div
         className={`grid flex-1 min-h-0 gap-0 ${isMobile ? "grid-cols-1 px-0" : aiCollapsed ? "xl:grid-cols-[minmax(0,1fr),56px]" : "xl:grid-cols-[minmax(0,1fr),minmax(280px,320px)]"}`}
       >
-        <div className="flex min-h-0 flex-col gap-3">
+        <div className="flex min-h-0 flex-col gap-0">
           <div className="min-h-0 flex-1">
             <ModularBuilderClient
               workspaceMode

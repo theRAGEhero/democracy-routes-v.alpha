@@ -16,14 +16,13 @@ const agreementDeadlineSchema = z
 
 const blockSchema = z.object({
   type: blockTypeSchema,
-  durationSeconds: z.number().int().min(1).max(7200),
+  durationSeconds: z.number().int().min(0).max(7200),
   startMode: z
     .enum([
       "specific_datetime",
       "when_x_join",
       "organizer_manual",
-      "when_x_join_and_datetime",
-      "random_selection_among_x"
+      "when_x_join_and_datetime"
     ])
     .optional()
     .nullable(),

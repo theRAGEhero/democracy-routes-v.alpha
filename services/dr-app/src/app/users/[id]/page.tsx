@@ -15,6 +15,7 @@ type ActivityEntry = {
   count: number;
   meetingCount: number;
   templateCount: number;
+  openProblemCount: number;
 };
 
 function dayKeyFromDate(value: Date) {
@@ -56,10 +57,11 @@ function buildActivityGrid(entries: ActivityEntry[]) {
   const cells: Array<{
     date: Date;
     dayKey: string;
-    count: number;
-    meetingCount: number;
-    templateCount: number;
-    inRange: boolean;
+      count: number;
+      meetingCount: number;
+      templateCount: number;
+      openProblemCount: number;
+      inRange: boolean;
   }> = [];
 
   for (let cursor = new Date(startWeek); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
@@ -72,6 +74,7 @@ function buildActivityGrid(entries: ActivityEntry[]) {
       count: entry?.count ?? 0,
       meetingCount: entry?.meetingCount ?? 0,
       templateCount: entry?.templateCount ?? 0,
+      openProblemCount: entry?.openProblemCount ?? 0,
       inRange: current >= start && current <= end
     });
   }
@@ -109,6 +112,11 @@ export default async function UserProfilePage({ params }: PageProps) {
       personalDescription: true,
       telegramHandle: true,
       calComLink: true,
+      websiteUrl: true,
+      xUrl: true,
+      blueskyUrl: true,
+      linkedinUrl: true,
+      fediverseUrl: true,
       createdAt: true,
       role: true,
       memberships: {
@@ -147,6 +155,35 @@ export default async function UserProfilePage({ params }: PageProps) {
           }
         }
       },
+      openProblemsCreated: {
+        select: {
+          createdAt: true,
+          dataspace: {
+            select: {
+              id: true,
+              name: true,
+              color: true
+            }
+          }
+        }
+      },
+      openProblemJoins: {
+        select: {
+          createdAt: true,
+          problem: {
+            select: {
+              id: true,
+              dataspace: {
+                select: {
+                  id: true,
+                  name: true,
+                  color: true
+                }
+              }
+            }
+          }
+        }
+      },
       _count: {
         select: {
           meetingsCreated: true,
@@ -155,7 +192,9 @@ export default async function UserProfilePage({ params }: PageProps) {
           texts: true,
           memberships: true,
           dataspaceMemberships: true,
-          planParticipations: true
+          planParticipations: true,
+          openProblemsCreated: true,
+          openProblemJoins: true
         }
       }
     }
@@ -174,7 +213,8 @@ export default async function UserProfilePage({ params }: PageProps) {
       dayKey: key,
       count: 0,
       meetingCount: 0,
-      templateCount: 0
+      templateCount: 0,
+      openProblemCount: 0
     };
     current.count += 1;
     current.meetingCount += 1;
@@ -187,10 +227,39 @@ export default async function UserProfilePage({ params }: PageProps) {
       dayKey: key,
       count: 0,
       meetingCount: 0,
-      templateCount: 0
+      templateCount: 0,
+      openProblemCount: 0
     };
     current.count += 1;
     current.templateCount += 1;
+    activityMap.set(key, current);
+  }
+
+  for (const problem of user.openProblemsCreated) {
+    const key = dayKeyFromDate(problem.createdAt);
+    const current = activityMap.get(key) ?? {
+      dayKey: key,
+      count: 0,
+      meetingCount: 0,
+      templateCount: 0,
+      openProblemCount: 0
+    };
+    current.count += 1;
+    current.openProblemCount += 1;
+    activityMap.set(key, current);
+  }
+
+  for (const join of user.openProblemJoins) {
+    const key = dayKeyFromDate(join.createdAt);
+    const current = activityMap.get(key) ?? {
+      dayKey: key,
+      count: 0,
+      meetingCount: 0,
+      templateCount: 0,
+      openProblemCount: 0
+    };
+    current.count += 1;
+    current.openProblemCount += 1;
     activityMap.set(key, current);
   }
 
@@ -208,6 +277,7 @@ export default async function UserProfilePage({ params }: PageProps) {
       total: number;
       meetings: number;
       templates: number;
+      openProblems: number;
     }
   >();
 
@@ -220,7 +290,8 @@ export default async function UserProfilePage({ params }: PageProps) {
       color: pickDataspaceColor(dataspace.color),
       total: 0,
       meetings: 0,
-      templates: 0
+      templates: 0,
+      openProblems: 0
     };
     current.total += 1;
     current.meetings += 1;
@@ -236,10 +307,45 @@ export default async function UserProfilePage({ params }: PageProps) {
       color: pickDataspaceColor(dataspace.color),
       total: 0,
       meetings: 0,
-      templates: 0
+      templates: 0,
+      openProblems: 0
     };
     current.total += 1;
     current.templates += 1;
+    dataspaceMap.set(dataspace.id, current);
+  }
+
+  for (const problem of user.openProblemsCreated) {
+    const dataspace = problem.dataspace;
+    if (!dataspace) continue;
+    const current = dataspaceMap.get(dataspace.id) ?? {
+      id: dataspace.id,
+      name: dataspace.name,
+      color: pickDataspaceColor(dataspace.color),
+      total: 0,
+      meetings: 0,
+      templates: 0,
+      openProblems: 0
+    };
+    current.total += 1;
+    current.openProblems += 1;
+    dataspaceMap.set(dataspace.id, current);
+  }
+
+  for (const join of user.openProblemJoins) {
+    const dataspace = join.problem.dataspace;
+    if (!dataspace) continue;
+    const current = dataspaceMap.get(dataspace.id) ?? {
+      id: dataspace.id,
+      name: dataspace.name,
+      color: pickDataspaceColor(dataspace.color),
+      total: 0,
+      meetings: 0,
+      templates: 0,
+      openProblems: 0
+    };
+    current.total += 1;
+    current.openProblems += 1;
     dataspaceMap.set(dataspace.id, current);
   }
 
@@ -295,6 +401,33 @@ export default async function UserProfilePage({ params }: PageProps) {
                   Booking link
                 </a>
               ) : null}
+              <div className="mt-3 flex flex-wrap gap-2">
+                {user.websiteUrl ? (
+                  <a href={user.websiteUrl} target="_blank" rel="noreferrer" className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-white">
+                    Website
+                  </a>
+                ) : null}
+                {user.xUrl ? (
+                  <a href={user.xUrl} target="_blank" rel="noreferrer" className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-white">
+                    X
+                  </a>
+                ) : null}
+                {user.blueskyUrl ? (
+                  <a href={user.blueskyUrl} target="_blank" rel="noreferrer" className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-white">
+                    Bluesky
+                  </a>
+                ) : null}
+                {user.linkedinUrl ? (
+                  <a href={user.linkedinUrl} target="_blank" rel="noreferrer" className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-white">
+                    LinkedIn
+                  </a>
+                ) : null}
+                {user.fediverseUrl ? (
+                  <a href={user.fediverseUrl} target="_blank" rel="noreferrer" className="rounded-full bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-white">
+                    Fediverse
+                  </a>
+                ) : null}
+              </div>
             </div>
           </div>
 
@@ -369,10 +502,11 @@ export default async function UserProfilePage({ params }: PageProps) {
                           count: 0,
                           meetingCount: 0,
                           templateCount: 0,
+                          openProblemCount: 0,
                           inRange: false
                         };
                         const title = cell.inRange
-                          ? `${labelDate(cell.date)} · ${cell.count} activities (${cell.meetingCount} meetings, ${cell.templateCount} templates)`
+                          ? `${labelDate(cell.date)} · ${cell.count} activities (${cell.meetingCount} meetings, ${cell.templateCount} templates, ${cell.openProblemCount} open problems)`
                           : "";
                         return (
                           <div
@@ -404,7 +538,7 @@ export default async function UserProfilePage({ params }: PageProps) {
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">Dataspace activity</h2>
                 <p className="mt-2 text-sm text-slate-600">
-                  Where this user is most active across meetings and templates.
+                  Where this user is most active across meetings, templates, and open problems.
                 </p>
               </div>
             </div>
@@ -425,7 +559,7 @@ export default async function UserProfilePage({ params }: PageProps) {
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-slate-900">{dataspace.name}</p>
                         <p className="text-xs text-slate-500">
-                          {dataspace.meetings} meetings · {dataspace.templates} templates
+                          {dataspace.meetings} meetings · {dataspace.templates} templates · {dataspace.openProblems} open problems
                         </p>
                       </div>
                     </div>

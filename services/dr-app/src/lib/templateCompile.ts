@@ -51,7 +51,10 @@ export function compileTemplateDraft(draft: TemplateDraft): TemplateCompileResul
   const normalizedBlocks = normalizeBlocks(blocks);
   const liveAiSupported = isLiveTranscriptionProvider(draft.settings?.transcriptionProvider);
   const totalDurationMinutes = Math.round(
-    normalizedBlocks.reduce((sum, block) => sum + Math.max(0, block.durationSeconds || 0), 0) / 60
+    normalizedBlocks.reduce(
+      (sum, block) => sum + (block.type === "START" ? 0 : Math.max(0, block.durationSeconds || 0)),
+      0
+    ) / 60
   );
   const discussionRounds = normalizedBlocks.filter((block) => block.type === "DISCUSSION").length;
 
@@ -104,8 +107,8 @@ export function compileTemplateDraft(draft: TemplateDraft): TemplateCompileResul
 
   if (!startIndexes.length) {
     issues.push({
-      severity: "warning",
-      message: "No Start module defined. The template can still run, but start conditions are implicit."
+      severity: "error",
+      message: "Template must include a Start module as the first module."
     });
   }
 
@@ -118,7 +121,7 @@ export function compileTemplateDraft(draft: TemplateDraft): TemplateCompileResul
 
   normalizedBlocks.forEach((block, index) => {
     const position = index + 1;
-    if (!Number.isFinite(block.durationSeconds) || block.durationSeconds < 1) {
+    if (block.type !== "START" && (!Number.isFinite(block.durationSeconds) || block.durationSeconds < 1)) {
       issues.push({
         severity: "error",
         message: `Module ${position} (${block.type}) must have a duration of at least 1 second.`
@@ -148,19 +151,6 @@ export function compileTemplateDraft(draft: TemplateDraft): TemplateCompileResul
           severity: "error",
           message: "Start module with 'when X join and datetime' requires participant count, date, and time."
         });
-      }
-      if (block.startMode === "random_selection_among_x") {
-        if (!block.poolSize || !block.selectedParticipants) {
-          issues.push({
-            severity: "error",
-            message: "Random selection start mode requires pool size and selected participants."
-          });
-        } else if (block.selectedParticipants > block.poolSize) {
-          issues.push({
-            severity: "error",
-            message: "Selected participants cannot exceed the pool size in Start."
-          });
-        }
       }
     }
 

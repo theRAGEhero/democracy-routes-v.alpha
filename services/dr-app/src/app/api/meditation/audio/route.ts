@@ -4,12 +4,12 @@ import fs from "fs/promises";
 import { getSession } from "@/lib/session";
 
 export const runtime = "nodejs";
+const MAX_AUDIO_BYTES = 50 * 1024 * 1024;
 
 function getAudioDir() {
-  return (
-    process.env.MEDITATION_AUDIO_DIR ??
-    path.join(process.cwd(), "data", "meditation-audio")
-  );
+  const uploadsRoot =
+    process.env.UPLOADS_DIR ?? path.join(process.cwd(), "data", "uploads");
+  return process.env.MEDITATION_AUDIO_DIR ?? path.join(uploadsRoot, "meditation-audio");
 }
 
 function isAllowedFile(name: string) {
@@ -17,7 +17,9 @@ function isAllowedFile(name: string) {
 }
 
 function sanitizeFilename(name: string) {
-  const base = name.replace(/[^a-zA-Z0-9._-]+/g, "-");
+  const ext = path.extname(name || "");
+  const stem = path.basename(name || "audio", ext).replace(/[^a-zA-Z0-9._-]+/g, "-");
+  const base = `${stem || "audio"}${ext}`;
   return base.length ? base : "audio";
 }
 
@@ -49,6 +51,12 @@ export async function POST(request: Request) {
 
   if (!file) {
     return NextResponse.json({ error: "File is required" }, { status: 400 });
+  }
+  if (file.size <= 0) {
+    return NextResponse.json({ error: "The selected audio file is empty" }, { status: 400 });
+  }
+  if (file.size > MAX_AUDIO_BYTES) {
+    return NextResponse.json({ error: "Audio file too large. Limit is 50 MB." }, { status: 400 });
   }
 
   const safeName = sanitizeFilename(file.name);

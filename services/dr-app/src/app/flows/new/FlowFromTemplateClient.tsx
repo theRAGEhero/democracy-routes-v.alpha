@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { isLiveTranscriptionProvider } from "@/lib/transcriptionProviders";
 
 type UserOption = {
@@ -133,6 +133,7 @@ export function FlowFromTemplateClient({
   template
 }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [resolvedTimezone, setResolvedTimezone] = useState("UTC");
   const [title, setTitle] = useState(template.name);
   const [description, setDescription] = useState(template.description ?? "");
@@ -145,6 +146,7 @@ export function FlowFromTemplateClient({
   const [lateJoinMinParticipants, setLateJoinMinParticipants] = useState("3");
   const [timezone, setTimezone] = useState(template.settings?.timezone ?? "");
   const [dataspaceId, setDataspaceId] = useState(template.settings?.dataspaceId ?? "");
+  const [openProblemId, setOpenProblemId] = useState("");
   const [isPublic, setIsPublic] = useState(false);
   const [requiresApproval, setRequiresApproval] = useState(
     Boolean(template.settings?.requiresApproval)
@@ -168,6 +170,21 @@ export function FlowFromTemplateClient({
     setStartAt((current) => current || buildStartAtInput());
     setTimezone((current) => current || template.settings?.timezone || browserTimezone);
   }, [template.settings?.timezone]);
+
+  useEffect(() => {
+    if (openProblemId) return;
+    const paramId = searchParams?.get("openProblemId") ?? "";
+    if (!paramId) return;
+    setOpenProblemId(paramId);
+  }, [openProblemId, searchParams]);
+
+  useEffect(() => {
+    if (dataspaceId) return;
+    const paramId = searchParams?.get("dataspaceId") ?? "";
+    if (!paramId) return;
+    if (!dataspaces.some((space) => space.id === paramId)) return;
+    setDataspaceId(paramId);
+  }, [dataspaceId, dataspaces, searchParams]);
 
   const templateSummary = useMemo(() => {
     const pairingBlocks = template.blocks.filter((block) => block.type === "DISCUSSION");
@@ -279,6 +296,7 @@ export function FlowFromTemplateClient({
         ),
         allowOddGroup: Boolean(template.settings?.allowOddGroup),
         dataspaceId: dataspaceId || null,
+        openProblemId: openProblemId || null,
         language: template.settings?.language === "IT" ? "IT" : "EN",
         transcriptionProvider:
           template.settings?.transcriptionProvider === "VOSK"
@@ -373,6 +391,11 @@ export function FlowFromTemplateClient({
         <p className="text-sm text-slate-600">
           Runtime settings are editable here. Process logic stays in the template.
         </p>
+        {openProblemId ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            This flow will be linked to the selected open problem.
+          </div>
+        ) : null}
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_420px]">

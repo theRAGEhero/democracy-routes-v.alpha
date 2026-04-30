@@ -388,6 +388,7 @@ export function PlanBuilderClient({
   const planTimelineRef = useRef<HTMLDivElement | null>(null);
   const searchParams = useSearchParams();
   const templateIdFromQuery = searchParams?.get("templateId") ?? null;
+  const openProblemIdFromQuery = searchParams?.get("openProblemId") ?? null;
   const customizeFromQuery = searchParams?.get("customize") === "1";
   const builderMode =
     mode === "edit"
@@ -467,6 +468,14 @@ export function PlanBuilderClient({
       active = false;
     };
   }, [portalReady]);
+
+  useEffect(() => {
+    if (dataspaceId) return;
+    const paramId = searchParams?.get("dataspaceId") ?? "";
+    if (!paramId) return;
+    if (!dataspaces.some((space) => space.id === paramId)) return;
+    setDataspaceId(paramId);
+  }, [dataspaceId, dataspaces, searchParams]);
 
   useEffect(() => {
     if (isTemplateMode) return;
@@ -1296,6 +1305,7 @@ export function PlanBuilderClient({
                 meditationAnimationId: firstMeditationBlock?.meditationAnimationId ?? null,
                 meditationAudioUrl: firstMeditationBlock?.meditationAudioUrl ?? null,
                 dataspaceId: dataspaceId || null,
+                openProblemId: openProblemIdFromQuery || null,
                 isPublic,
                 requiresApproval,
                 capacity: capacity === "" ? null : Number(capacity),
@@ -1412,6 +1422,11 @@ export function PlanBuilderClient({
       </div>
 
       <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+        {openProblemIdFromQuery ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            This flow will be linked to the selected open problem.
+          </div>
+        ) : null}
         <div>
           <label className="text-sm font-medium">
             {isTemplateMode ? "Template title" : "Template title"}

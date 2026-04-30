@@ -10,7 +10,7 @@ type Props = {
   meetingId?: string;
   language: string;
   provider: string;
-  inviteEmail: string;
+  defaultDisplayName?: string;
   accessToken?: string;
 };
 
@@ -21,10 +21,13 @@ export function GuestJoinCard({
   meetingId,
   language,
   provider,
-  inviteEmail,
+  defaultDisplayName,
   accessToken
 }: Props) {
-  const defaultName = useMemo(() => inviteEmail, [inviteEmail]);
+  const defaultName = useMemo(() => {
+    const trimmed = String(defaultDisplayName || "").trim();
+    return trimmed || "Guest";
+  }, [defaultDisplayName]);
   const [name, setName] = useState(defaultName);
 
   const transcriptionLanguage = provider === "deepgramlive" || provider === "deepgram" ? language : "";

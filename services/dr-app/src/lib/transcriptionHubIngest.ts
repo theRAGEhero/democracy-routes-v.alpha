@@ -48,31 +48,61 @@ function normalizeTimeToMs(value: unknown) {
   return n > 1000 ? Math.round(n) : Math.round(n * 1000);
 }
 
+function buildSegmentFromRecord(record: Record<string, unknown>, index: number): HubSegment | null {
+  const text = String(record?.text || "").trim();
+  if (!text) return null;
+
+  const timestamp = Array.isArray(record?.timestamp) ? record?.timestamp : [];
+  const startMs =
+    timestamp.length > 0
+      ? normalizeTimeToMs(timestamp[0])
+      : normalizeTimeToMs(record?.startMs) ??
+        normalizeTimeToMs(record?.start) ??
+        normalizeTimeToMs(record?.startSec) ??
+        normalizeTimeToMs(record?.start_time);
+  const endMs =
+    timestamp.length > 1
+      ? normalizeTimeToMs(timestamp[1])
+      : normalizeTimeToMs(record?.endMs) ??
+        normalizeTimeToMs(record?.end) ??
+        normalizeTimeToMs(record?.endSec) ??
+        normalizeTimeToMs(record?.end_time);
+
+  return {
+    seq: index + 1,
+    text,
+    isFinal: Boolean(record?.isFinal ?? true),
+    startMs,
+    endMs,
+    speakerTag: typeof record?.speakerId === "string" ? record.speakerId : null,
+    mappedUserId: typeof record?.mappedPeerId === "string" ? record.mappedPeerId : null,
+    mappedUserName:
+      typeof record?.mappedPeerName === "string"
+        ? record.mappedPeerName
+        : typeof record?.speakerName === "string"
+          ? record.speakerName
+          : null,
+    confidence: asNumber(record?.confidence),
+    payload: record || {}
+  } satisfies HubSegment;
+}
+
 function buildSegmentsFromTranscript(transcriptText: string, transcriptJson?: unknown): HubSegment[] {
   const root = asObject(transcriptJson);
-  const chunkList = Array.isArray(root?.chunks) ? root?.chunks : Array.isArray(root?.segments) ? root?.segments : [];
+  const chunkList = Array.isArray(root?.chunks)
+    ? root?.chunks
+    : Array.isArray(root?.segments)
+      ? root?.segments
+      : Array.isArray(root?.liveLines)
+        ? root?.liveLines
+        : [];
   const chunks = Array.isArray(chunkList) ? chunkList : [];
 
   const out = chunks
     .map((chunk, index) => {
       const record = asObject(chunk);
-      const text = String(record?.text || "").trim();
-      if (!text) return null;
-      const timestamp = Array.isArray(record?.timestamp) ? record?.timestamp : [];
-      const startMs = timestamp.length > 0 ? normalizeTimeToMs(timestamp[0]) : normalizeTimeToMs(record?.start);
-      const endMs = timestamp.length > 1 ? normalizeTimeToMs(timestamp[1]) : normalizeTimeToMs(record?.end);
-      return {
-        seq: index + 1,
-        text,
-        isFinal: true,
-        startMs,
-        endMs,
-        speakerTag: null,
-        mappedUserId: null,
-        mappedUserName: null,
-        confidence: asNumber(record?.confidence),
-        payload: record || {}
-      } satisfies HubSegment;
+      if (!record) return null;
+      return buildSegmentFromRecord(record, index);
     })
     .filter(Boolean) as HubSegment[];
 

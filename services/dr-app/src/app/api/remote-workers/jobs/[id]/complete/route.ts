@@ -4,6 +4,7 @@ import { postEventHubEvent } from "@/lib/eventHub";
 import { extractRemoteWorkerToken, verifyRemoteWorkerToken } from "@/lib/remoteWorkerToken";
 import { ingestMeetingTranscriptToHub } from "@/lib/transcriptionHubIngest";
 import { ensureMeetingAiSummary } from "@/lib/meetingAiSummary";
+import { mergeTranscriptContext } from "@/lib/meetingTranscriptContext";
 
 function safeStringify(value: unknown) {
   try {
@@ -75,8 +76,18 @@ export async function POST(request: Request, { params }: { params: { id: string 
       }
     });
 
+    const parsedPayload = (() => {
+      try {
+        return JSON.parse(job.payloadJson || "{}") as Record<string, unknown>;
+      } catch {
+        return {} as Record<string, unknown>;
+      }
+    })();
+    const transcriptionJobId =
+      typeof parsedPayload.transcriptionJobId === "string" ? parsedPayload.transcriptionJobId : null;
+
     let meeting = null;
-    if (job.sourceType === "MEETING_RECORDING" && job.sourceId) {
+    if ((job.sourceType === "MEETING_RECORDING" || job.sourceType === "MEETING_UPLOAD") && job.sourceId) {
       meeting = await tx.meeting.findUnique({
         where: { id: job.sourceId },
         select: {
@@ -87,19 +98,38 @@ export async function POST(request: Request, { params }: { params: { id: string 
       });
     }
 
-    if (job.sourceType === "MEETING_RECORDING" && job.sourceId && transcriptText) {
+    if ((job.sourceType === "MEETING_RECORDING" || job.sourceType === "MEETING_UPLOAD") && job.sourceId && transcriptText) {
+      const existingTranscript = await tx.meetingTranscript.findUnique({
+        where: { meetingId: job.sourceId },
+        select: { transcriptJson: true }
+      });
+      const mergedTranscriptJson = JSON.stringify(
+        mergeTranscriptContext(existingTranscript?.transcriptJson, body?.transcriptJson)
+      );
       await tx.meetingTranscript.upsert({
         where: { meetingId: job.sourceId },
         update: {
           provider: job.provider || "REMOTE_WORKER",
           transcriptText,
-          transcriptJson: safeStringify(body?.transcriptJson)
+          transcriptJson: mergedTranscriptJson
         },
         create: {
           meetingId: job.sourceId,
           provider: job.provider || "REMOTE_WORKER",
           transcriptText,
-          transcriptJson: safeStringify(body?.transcriptJson)
+          transcriptJson: mergedTranscriptJson
+        }
+      });
+    }
+
+    if (job.sourceType === "MEETING_UPLOAD" && transcriptionJobId) {
+      await tx.transcriptionJob.update({
+        where: { id: transcriptionJobId },
+        data: {
+          status: "DONE",
+          roundId: params.id,
+          lastError: null,
+          lastAttemptAt: new Date()
         }
       });
     }
@@ -147,7 +177,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       endedAt: new Date().toISOString(),
       metadata: {
         workerId,
-        sourceType: "MEETING_RECORDING"
+        sourceType: result.job.sourceType
       }
     });
 

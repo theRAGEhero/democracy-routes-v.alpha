@@ -35,6 +35,7 @@ export function MeetingParticipation({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   if (!isPublic) return null;
 
@@ -102,27 +103,36 @@ export function MeetingParticipation({
 
   return (
     <div className="dr-card p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold uppercase text-white">
-          Public meeting
-        </span>
-        {requiresApproval ? (
-          <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
-            Approval required
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold uppercase text-white">
+            Public meeting
           </span>
-        ) : (
-          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-            Auto-accept
-          </span>
-        )}
-        {capacity ? (
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-            Capacity: {capacity}
-          </span>
-        ) : null}
+          {requiresApproval ? (
+            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+              Approval required
+            </span>
+          ) : (
+            <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+              Auto-accept
+            </span>
+          )}
+          {capacity ? (
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+              Capacity: {capacity}
+            </span>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="dr-button-outline shrink-0 px-3 py-1 text-[11px] sm:hidden"
+        >
+          {expanded ? "Hide" : "Details"}
+        </button>
       </div>
 
-      <div className="mt-2">
+      <div className={`mt-3 space-y-3 ${expanded ? "block" : "hidden sm:block"}`}>
         {!isDataspaceMember ? (
           <p className="text-sm text-slate-600">Only dataspace members can participate.</p>
         ) : isMember ? (

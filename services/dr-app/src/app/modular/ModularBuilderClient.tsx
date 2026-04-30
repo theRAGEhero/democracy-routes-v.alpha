@@ -59,6 +59,25 @@ type Props = {
 };
 
 type BlockType = TemplateBlockType;
+type ModuleIconKey =
+  | "schedule"
+  | "groups"
+  | "forum"
+  | "pause"
+  | "prompt"
+  | "notes"
+  | "form"
+  | "embed"
+  | "grouping"
+  | "break"
+  | "record"
+  | "harmonica"
+  | "dembrane"
+  | "deliberaide"
+  | "polis"
+  | "agora"
+  | "nexus"
+  | "suffrago";
 
 type NodeData = {
   durationSeconds?: number;
@@ -66,19 +85,11 @@ type NodeData = {
     | "specific_datetime"
     | "when_x_join"
     | "organizer_manual"
-    | "when_x_join_and_datetime"
-    | "random_selection_among_x";
+    | "when_x_join_and_datetime";
   startDate?: string | null;
   startTime?: string | null;
   timezone?: string | null;
   requiredParticipants?: number | null;
-  agreementRequired?: boolean | null;
-  agreementDeadline?: string | null;
-  minimumParticipants?: number | null;
-  allowStartBeforeFull?: boolean | null;
-  poolSize?: number | null;
-  selectedParticipants?: number | null;
-  selectionRule?: "random" | null;
   note?: string | null;
   participantMode?:
     | "manual_selected"
@@ -109,137 +120,285 @@ type NodeData = {
   posterContent?: string | null;
 };
 
-const MODULES: Array<{ type: BlockType; label: string; description: string; color: string; icon: string }> = [
+const MODULES: Array<{ type: BlockType; label: string; description: string; color: string; icon: ModuleIconKey }> = [
   {
     type: "START",
     label: "Start",
     description: "Define how and when a template session is allowed to begin.",
-    color: "bg-zinc-100 text-zinc-900",
-    icon: "M5 4h14v4H5zM7 2h2v4H7zm8 0h2v4h-2zM5 10h14v10H5zm3 3h3v3H8z"
+    color: "bg-zinc-50 text-zinc-700 ring-1 ring-inset ring-zinc-200",
+    icon: "schedule"
   },
   {
     type: "PARTICIPANTS",
     label: "Participants",
     description: "Describe who should be invited, selected, or searched for this template.",
-    color: "bg-stone-100 text-stone-900",
-    icon: "M4 18h16v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2Zm8-8a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"
+    color: "bg-stone-50 text-stone-700 ring-1 ring-inset ring-stone-200",
+    icon: "groups"
   },
   {
     type: "DISCUSSION",
     label: "Discussion",
     description: "Split people into small-group calls or rounds for timed discussion.",
-    color: "bg-amber-100 text-amber-900",
-    icon: "M4 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm12 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-10 2a4 4 0 0 0-4 4v2h6v-2a4 4 0 0 0-2-4Zm8 0a4 4 0 0 0-2 4v2h6v-2a4 4 0 0 0-4-4Z"
+    color: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200",
+    icon: "forum"
   },
   {
     type: "PAUSE",
     label: "Pause",
     description: "Insert a breathing space, meditation, or silent interval between activities.",
-    color: "bg-sky-100 text-sky-900",
-    icon: "M6 4h3v16H6zM11 4h3v16h-3z"
+    color: "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-200",
+    icon: "pause"
   },
   {
     type: "PROMPT",
     label: "Prompt",
     description: "Show a guiding question, instruction, or framing message to participants.",
-    color: "bg-emerald-100 text-emerald-900",
-    icon: "M4 5h16v10H7l-3 3V5z"
+    color: "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200",
+    icon: "prompt"
   },
   {
     type: "NOTES",
     label: "Notes",
     description: "Provide written context, notes, or facilitator guidance inside the template.",
-    color: "bg-slate-100 text-slate-900",
-    icon: "M6 4h8l4 4v12H6zM14 4v4h4"
+    color: "bg-slate-50 text-slate-700 ring-1 ring-inset ring-slate-200",
+    icon: "notes"
   },
   {
     type: "FORM",
     label: "Form",
     description: "Collect structured participant answers, votes, or short submissions.",
-    color: "bg-violet-100 text-violet-900",
-    icon: "M6 5h12v2H6zM6 10h12v2H6zM6 15h7v2H6z"
+    color: "bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200",
+    icon: "form"
   },
   {
     type: "EMBED",
     label: "Embed",
     description: "Display external content such as a board, document, or video inside the flow.",
-    color: "bg-orange-100 text-orange-900",
-    icon: "M7 7l-4 3 4 3M17 7l4 3-4 3M10 17l4-10"
+    color: "bg-orange-50 text-orange-700 ring-1 ring-inset ring-orange-200",
+    icon: "embed"
   },
   {
     type: "GROUPING",
     label: "Grouping",
     description: "Form rooms for the next discussion block, using random or signal-based grouping logic.",
-    color: "bg-rose-100 text-rose-900",
-    icon: "M5 12h6M13 12h6M8 9l3 3-3 3"
+    color: "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200",
+    icon: "grouping"
   },
   {
     type: "BREAK",
     label: "Break",
     description: "Insert a simple break block with no extra logic beyond time and pacing.",
-    color: "bg-cyan-100 text-cyan-900",
-    icon: "M7 5h4v14H7zM13 5h4v14h-4z"
+    color: "bg-cyan-50 text-cyan-700 ring-1 ring-inset ring-cyan-200",
+    icon: "break"
   },
   {
     type: "RECORD",
     label: "Record",
     description: "Capture spoken contributions or recording-focused moments in the template.",
-    color: "bg-indigo-100 text-indigo-900",
-    icon: "M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z"
+    color: "bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-200",
+    icon: "record"
   },
   {
     type: "HARMONICA",
     label: "Harmonica",
     description: "Placeholder for future Harmonica integration and deliberation workflows.",
-    color: "bg-teal-100 text-teal-900",
-    icon: "M4 9h16v6H4zM7 9v6M11 9v6M15 9v6M18 9v6"
+    color: "bg-teal-50 text-teal-700 ring-1 ring-inset ring-teal-200",
+    icon: "harmonica"
   },
   {
     type: "DEMBRANE",
     label: "Dembrane",
     description: "Placeholder partner module for Dembrane-linked participation flows.",
-    color: "bg-cyan-100 text-cyan-900",
-    icon: "M5 6h14v12H5zM8 9h8M8 12h8M8 15h5"
+    color: "bg-cyan-50 text-cyan-700 ring-1 ring-inset ring-cyan-200",
+    icon: "dembrane"
   },
   {
     type: "DELIBERAIDE",
     label: "DeliberAIde",
     description: "Placeholder partner module for future DeliberAIde assistance.",
-    color: "bg-lime-100 text-lime-900",
-    icon: "M12 4l7 4v8l-7 4-7-4V8l7-4Zm0 4v4m0 4h.01"
+    color: "bg-lime-50 text-lime-700 ring-1 ring-inset ring-lime-200",
+    icon: "deliberaide"
   },
   {
     type: "POLIS",
     label: "Pol.is",
     description: "Placeholder partner module for Pol.is style opinion clustering.",
-    color: "bg-fuchsia-100 text-fuchsia-900",
-    icon: "M4 6h16v10H7l-3 3V6zM8 10h2M12 10h2M16 10h.01"
+    color: "bg-fuchsia-50 text-fuchsia-700 ring-1 ring-inset ring-fuchsia-200",
+    icon: "polis"
   },
   {
     type: "AGORACITIZENS",
     label: "Agora Citizens",
     description: "Placeholder partner module for civic assembly and Agora Citizens flows.",
-    color: "bg-emerald-100 text-emerald-900",
-    icon: "M4 18h16M6 16V9l6-4 6 4v7M9 18v-4h6v4"
+    color: "bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-200",
+    icon: "agora"
   },
   {
     type: "NEXUSPOLITICS",
     label: "Nexus Politics",
     description: "Placeholder partner module for graph-based political collaboration tools.",
-    color: "bg-blue-100 text-blue-900",
-    icon: "M6 6h5v5H6zM13 13h5v5h-5zM13 6h5v5h-5zM6 13h5v5H6zM11 8h2M8 11v2M13 11h2M11 13v2"
+    color: "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200",
+    icon: "nexus"
   },
   {
     type: "SUFFRAGO",
     label: "Suffrago",
     description: "Placeholder partner module for voting, ballots, and suffrage-related tools.",
-    color: "bg-rose-100 text-rose-900",
-    icon: "M6 4h12v4H6zM8 8v10m8-10v10M5 20h14"
+    color: "bg-rose-50 text-rose-700 ring-1 ring-inset ring-rose-200",
+    icon: "suffrago"
   }
 ];
 
+function renderModuleIcon(icon: ModuleIconKey) {
+  const base = "h-5 w-5";
+  const common = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    viewBox: "0 0 24 24",
+    className: base,
+    "aria-hidden": true
+  };
+
+  switch (icon) {
+    case "schedule":
+      return (
+        <svg {...common}>
+          <rect x="4" y="5" width="16" height="15" rx="3" />
+          <path d="M8 3v4M16 3v4M4 9h16" />
+          <path d="M8.5 13h3v3h-3z" />
+        </svg>
+      );
+    case "groups":
+      return (
+        <svg {...common}>
+          <path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+          <path d="M16.5 10a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z" />
+          <path d="M4 19a5 5 0 0 1 10 0M14.5 18.5a4 4 0 0 1 5.5 0" />
+        </svg>
+      );
+    case "forum":
+      return (
+        <svg {...common}>
+          <path d="M5 7.5A2.5 2.5 0 0 1 7.5 5h9A2.5 2.5 0 0 1 19 7.5v5A2.5 2.5 0 0 1 16.5 15H11l-4 4v-4H7.5A2.5 2.5 0 0 1 5 12.5z" />
+          <path d="M9 9h6M9 12h4" />
+        </svg>
+      );
+    case "pause":
+    case "break":
+      return (
+        <svg {...common}>
+          <rect x="6.5" y="5" width="3.5" height="14" rx="1.5" />
+          <rect x="14" y="5" width="3.5" height="14" rx="1.5" />
+        </svg>
+      );
+    case "prompt":
+      return (
+        <svg {...common}>
+          <path d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v6a2.5 2.5 0 0 1-2.5 2.5H10l-4 4v-4H7.5A2.5 2.5 0 0 1 5 12.5z" />
+          <path d="M9 8.5h6M9 11.5h4" />
+        </svg>
+      );
+    case "notes":
+      return (
+        <svg {...common}>
+          <path d="M7 4.5h7l4 4V19a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 19V6A1.5 1.5 0 0 1 7.5 4.5Z" />
+          <path d="M14 4.5V9h4.5M9 12h6M9 15.5h6" />
+        </svg>
+      );
+    case "form":
+      return (
+        <svg {...common}>
+          <rect x="5" y="4.5" width="14" height="15" rx="2.5" />
+          <path d="M8.5 8.5h7M8.5 12h7M8.5 15.5h4.5" />
+        </svg>
+      );
+    case "embed":
+      return (
+        <svg {...common}>
+          <path d="m8 8-4 4 4 4M16 8l4 4-4 4M13 6l-2 12" />
+        </svg>
+      );
+    case "grouping":
+      return (
+        <svg {...common}>
+          <circle cx="6.5" cy="8" r="2" />
+          <circle cx="17.5" cy="8" r="2" />
+          <circle cx="12" cy="16" r="2" />
+          <path d="M8 9.5 10.5 14M16 9.5 13.5 14" />
+        </svg>
+      );
+    case "record":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="6" />
+          <circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "harmonica":
+      return (
+        <svg {...common}>
+          <rect x="4" y="8" width="16" height="8" rx="2.5" />
+          <path d="M7 8v8M10 8v8M13 8v8M16 8v8" />
+        </svg>
+      );
+    case "dembrane":
+      return (
+        <svg {...common}>
+          <rect x="5" y="5" width="14" height="14" rx="3" />
+          <path d="M8.5 9h7M8.5 12h7M8.5 15h4.5" />
+        </svg>
+      );
+    case "deliberaide":
+      return (
+        <svg {...common}>
+          <path d="M12 4.5 18.5 8v8L12 19.5 5.5 16V8z" />
+          <path d="M12 9v4M12 16h.01" />
+        </svg>
+      );
+    case "polis":
+      return (
+        <svg {...common}>
+          <path d="M6 7.5A2.5 2.5 0 0 1 8.5 5h7A2.5 2.5 0 0 1 18 7.5v5A2.5 2.5 0 0 1 15.5 15H11l-3 3v-3H8.5A2.5 2.5 0 0 1 6 12.5z" />
+          <path d="M9 10.5h.01M12 10.5h.01M15 10.5h.01" />
+        </svg>
+      );
+    case "agora":
+      return (
+        <svg {...common}>
+          <path d="M4.5 19.5h15M6.5 17V9.5L12 6l5.5 3.5V17M9.5 19.5v-4h5v4" />
+        </svg>
+      );
+    case "nexus":
+      return (
+        <svg {...common}>
+          <rect x="5" y="5" width="4.5" height="4.5" rx="1.2" />
+          <rect x="14.5" y="5" width="4.5" height="4.5" rx="1.2" />
+          <rect x="5" y="14.5" width="4.5" height="4.5" rx="1.2" />
+          <rect x="14.5" y="14.5" width="4.5" height="4.5" rx="1.2" />
+          <path d="M9.5 7.25h5M7.25 9.5v5M16.75 9.5v5M9.5 16.75h5" />
+        </svg>
+      );
+    case "suffrago":
+      return (
+        <svg {...common}>
+          <path d="M6 5.5h12v4H6zM8 9.5v9M16 9.5v9M5 20.5h14" />
+          <path d="m9.5 13 1.5 1.5 3.5-3.5" />
+        </svg>
+      );
+    default:
+      return (
+        <svg {...common}>
+          <rect x="5" y="5" width="14" height="14" rx="3" />
+        </svg>
+      );
+  }
+}
+
 const DEFAULT_DURATIONS: Record<BlockType, number> = {
-  START: 60,
+  START: 0,
   PARTICIPANTS: 90,
   DISCUSSION: 600,
   PAUSE: 300,
@@ -320,7 +479,12 @@ function buildNodeHtml(
   const label = module?.label ?? type;
   const icon = module?.icon ?? "M5 5h14v14H5z";
   const durationValue = data.durationSeconds ?? DEFAULT_DURATIONS[type];
-  const duration = Number.isFinite(durationValue) ? Math.max(1, Math.round(durationValue)) : DEFAULT_DURATIONS[type];
+  const duration =
+    type === "START"
+      ? 0
+      : Number.isFinite(durationValue)
+        ? Math.max(1, Math.round(durationValue))
+        : DEFAULT_DURATIONS[type];
 
   const posterOptions = options.posters
     .map((poster) => {
@@ -343,8 +507,6 @@ function buildNodeHtml(
   const participantUsersText = (data.participantUserIds ?? []).join("\n");
   const participantDataspacesText = (data.participantDataspaceIds ?? []).join("\n");
   const startMode = data.startMode ?? "specific_datetime";
-  const agreementRequired = data.agreementRequired ? "checked" : "";
-  const allowStartBeforeFull = data.allowStartBeforeFull ? "checked" : "";
   const aiAgentsEnabled = Boolean(data.aiAgentsEnabled);
   const selectedAiAgentIds = data.aiAgentIds ?? [];
   const aiAgentsMarkup = !options.liveAiSupported
@@ -380,26 +542,34 @@ function buildNodeHtml(
             <span class="dr-node-tag">${escapeHtml(type.toLowerCase())}</span>
           </div>
         </div>
-        <button
-          type="button"
-          class="dr-node-delete"
-          data-action="delete-node"
-          aria-label="Remove ${escapeHtml(label)} module"
-          title="Remove module"
-        >
-          ×
-        </button>
+        ${
+          type === "START"
+            ? ""
+            : `<button
+                type="button"
+                class="dr-node-delete"
+                data-action="delete-node"
+                aria-label="Remove ${escapeHtml(label)} module"
+                title="Remove module"
+              >
+                ×
+              </button>`
+        }
       </div>
       <div class="dr-node-body">
-        <div class="dr-node-label">
-          Duration
-          <div class="dr-node-duration">
-            <input class="dr-input dr-node-input" type="number" min="0" data-field="durationMinutes" value="${Math.floor(duration / 60)}" />
-            <span class="dr-node-duration-unit">min</span>
-            <input class="dr-input dr-node-input" type="number" min="0" max="59" data-field="durationSecondsPart" value="${duration % 60}" />
-            <span class="dr-node-duration-unit">sec</span>
-          </div>
-        </div>
+        ${
+          type !== "START"
+            ? `<div class="dr-node-label">
+                Duration
+                <div class="dr-node-duration">
+                  <input class="dr-input dr-node-input" type="number" min="0" data-field="durationMinutes" value="${Math.floor(duration / 60)}" />
+                  <span class="dr-node-duration-unit">min</span>
+                  <input class="dr-input dr-node-input" type="number" min="0" max="59" data-field="durationSecondsPart" value="${duration % 60}" />
+                  <span class="dr-node-duration-unit">sec</span>
+                </div>
+              </div>`
+            : ""
+        }
         ${
           type === "PARTICIPANTS"
             ? `<label class="dr-node-label">
@@ -458,7 +628,6 @@ function buildNodeHtml(
                   <option value="when_x_join" ${startMode === "when_x_join" ? "selected" : ""}>When X people join</option>
                   <option value="organizer_manual" ${startMode === "organizer_manual" ? "selected" : ""}>Organizer clicks start</option>
                   <option value="when_x_join_and_datetime" ${startMode === "when_x_join_and_datetime" ? "selected" : ""}>When X join and at a specific day/time</option>
-                  <option value="random_selection_among_x" ${startMode === "random_selection_among_x" ? "selected" : ""}>Random selection among X participants</option>
                 </select>
               </label>
               ${
@@ -482,44 +651,6 @@ function buildNodeHtml(
                   ? `<label class="dr-node-label">
                       Required participants
                       <input class="dr-input dr-node-input" type="number" min="1" data-field="requiredParticipants" value="${data.requiredParticipants ?? ""}" />
-                    </label>
-                    <label class="dr-node-label dr-node-checkbox">
-                      <input type="checkbox" data-field="agreementRequired" ${agreementRequired} />
-                      <span>Require date-time agreement</span>
-                    </label>
-                    <label class="dr-node-label">
-                      Agreement deadline
-                      <input class="dr-input dr-node-input" type="datetime-local" data-field="agreementDeadline" value="${escapeHtml(data.agreementDeadline ?? "")}" />
-                    </label>`
-                  : ""
-              }
-              ${
-                startMode === "organizer_manual"
-                  ? `<label class="dr-node-label">
-                      Minimum participants
-                      <input class="dr-input dr-node-input" type="number" min="1" data-field="minimumParticipants" value="${data.minimumParticipants ?? ""}" />
-                    </label>
-                    <label class="dr-node-label dr-node-checkbox">
-                      <input type="checkbox" data-field="allowStartBeforeFull" ${allowStartBeforeFull} />
-                      <span>Allow start before full attendance</span>
-                    </label>`
-                  : ""
-              }
-              ${
-                startMode === "random_selection_among_x"
-                  ? `<label class="dr-node-label">
-                      Candidate pool size
-                      <input class="dr-input dr-node-input" type="number" min="1" data-field="poolSize" value="${data.poolSize ?? ""}" />
-                    </label>
-                    <label class="dr-node-label">
-                      Selected participants
-                      <input class="dr-input dr-node-input" type="number" min="1" data-field="selectedParticipants" value="${data.selectedParticipants ?? ""}" />
-                    </label>
-                    <label class="dr-node-label">
-                      Selection rule
-                      <select class="dr-input dr-node-input" data-field="selectionRule">
-                        <option value="random" ${(data.selectionRule ?? "random") === "random" ? "selected" : ""}>Random</option>
-                      </select>
                     </label>`
                   : ""
               }
@@ -647,13 +778,22 @@ function buildNodeHtml(
                   <option value="">No audio</option>
                   ${audioOptions}
                 </select>
-                <button
-                  type="button"
-                  class="mt-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-100"
-                  data-action="upload-pause-audio"
-                >
-                  Upload audio
-                </button>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    class="inline-flex rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-800 hover:bg-sky-100"
+                    data-action="preview-pause-module"
+                  >
+                    Preview
+                  </button>
+                  <button
+                    type="button"
+                    class="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-100"
+                    data-action="upload-pause-audio"
+                  >
+                    Upload audio
+                  </button>
+                </div>
               </label>`
             : ""
         }
@@ -664,19 +804,12 @@ function buildNodeHtml(
 
 function nodeDataFromBlock(block: any): NodeData {
   return {
-    durationSeconds: block.durationSeconds ?? DEFAULT_DURATIONS[block.type as BlockType],
+    durationSeconds: block.type === "START" ? 0 : block.durationSeconds ?? DEFAULT_DURATIONS[block.type as BlockType],
     startMode: block.startMode ?? "specific_datetime",
     startDate: block.startDate ?? null,
     startTime: block.startTime ?? null,
     timezone: block.timezone ?? null,
     requiredParticipants: block.requiredParticipants ?? null,
-    agreementRequired: block.agreementRequired ?? null,
-    agreementDeadline: block.agreementDeadline ?? null,
-    minimumParticipants: block.minimumParticipants ?? null,
-    allowStartBeforeFull: block.allowStartBeforeFull ?? null,
-    poolSize: block.poolSize ?? null,
-    selectedParticipants: block.selectedParticipants ?? null,
-    selectionRule: block.selectionRule ?? "random",
     note: block.note ?? null,
     participantMode: block.participantMode ?? "manual_selected",
     participantUserIds: block.participantUserIds ?? [],
@@ -706,7 +839,12 @@ function nodeDataFromBlock(block: any): NodeData {
 
 function buildBlockFromNode(type: BlockType, data: NodeData, liveAiSupported: boolean) {
   const rawDuration = Number(data.durationSeconds || DEFAULT_DURATIONS[type]);
-  const durationSeconds = Number.isFinite(rawDuration) ? Math.max(1, Math.round(rawDuration)) : DEFAULT_DURATIONS[type];
+  const durationSeconds =
+    type === "START"
+      ? 0
+      : Number.isFinite(rawDuration)
+        ? Math.max(1, Math.round(rawDuration))
+        : DEFAULT_DURATIONS[type];
   const rawMax = data.roundMaxParticipants ?? null;
   const roundMaxParticipants =
     type === "DISCUSSION" && typeof rawMax === "number" && rawMax >= 2 ? Math.round(rawMax) : null;
@@ -718,13 +856,6 @@ function buildBlockFromNode(type: BlockType, data: NodeData, liveAiSupported: bo
     startTime: data.startTime ?? null,
     timezone: data.timezone ?? null,
     requiredParticipants: data.requiredParticipants ?? null,
-    agreementRequired: data.agreementRequired ?? null,
-    agreementDeadline: data.agreementDeadline ?? null,
-    minimumParticipants: data.minimumParticipants ?? null,
-    allowStartBeforeFull: data.allowStartBeforeFull ?? null,
-    poolSize: data.poolSize ?? null,
-    selectedParticipants: data.selectedParticipants ?? null,
-    selectionRule: data.selectionRule ?? (type === "START" ? "random" : null),
     note: data.note ?? null,
     participantMode: data.participantMode ?? (type === "PARTICIPANTS" ? "manual_selected" : null),
     participantUserIds: data.participantUserIds ?? [],
@@ -758,12 +889,31 @@ function buildBlockFromNode(type: BlockType, data: NodeData, liveAiSupported: bo
 
 function buildDefaultData(type: BlockType): NodeData {
   return {
-    durationSeconds: DEFAULT_DURATIONS[type],
+    durationSeconds: type === "START" ? 0 : DEFAULT_DURATIONS[type],
     startMode: type === "START" ? "specific_datetime" : undefined,
-    selectionRule: type === "START" ? "random" : undefined,
     participantMode: type === "PARTICIPANTS" ? "manual_selected" : undefined,
     matchingMode: type === "GROUPING" ? "polar" : undefined
   };
+}
+
+function buildDefaultStartBlock(): TemplateBlock {
+  return {
+    type: "START",
+    durationSeconds: 0,
+    startMode: "specific_datetime",
+    startDate: null,
+    startTime: null,
+    timezone: null,
+    requiredParticipants: null,
+    note: null
+  };
+}
+
+function ensureStartBlock(blocks: TemplateBlock[]): TemplateBlock[] {
+  if (blocks.some((block) => block.type === "START")) {
+    return blocks;
+  }
+  return [buildDefaultStartBlock(), ...blocks];
 }
 
 function getAutoLayoutPositions(
@@ -791,6 +941,10 @@ function getAutoLayoutPositions(
       y: startY + row * gapY
     };
   });
+}
+
+function serializeDraft(draft: TemplateDraft | null) {
+  return draft ? JSON.stringify(draft) : "";
 }
 
 export function ModularBuilderClient({
@@ -857,25 +1011,31 @@ export function ModularBuilderClient({
   const [pauseAudioUploadFile, setPauseAudioUploadFile] = useState<File | null>(null);
   const [pauseAudioUploading, setPauseAudioUploading] = useState(false);
   const [pauseAudioUploadError, setPauseAudioUploadError] = useState<string | null>(null);
+  const [pausePreviewOpen, setPausePreviewOpen] = useState(false);
+  const [pausePreviewTitle, setPausePreviewTitle] = useState("Pause preview");
+  const [pausePreviewAnimationFile, setPausePreviewAnimationFile] = useState(
+    MEDITATION_ANIMATIONS[0]?.file ?? ""
+  );
+  const [pausePreviewAudioUrl, setPausePreviewAudioUrl] = useState<string | null>(null);
   const [promptModalNodeId, setPromptModalNodeId] = useState<number | null>(null);
   const [promptModalTitle, setPromptModalTitle] = useState("");
   const [promptModalContent, setPromptModalContent] = useState("");
   const [templatesState, setTemplatesState] = useState<TemplateSummary[]>(templates);
   const [editorVersion, setEditorVersion] = useState(0);
+  const [currentDraftSignature, setCurrentDraftSignature] = useState("");
+  const [lastSavedDraftSignature, setLastSavedDraftSignature] = useState("");
   const resolvedTimezone =
     typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
   const externalDraftSignature = useMemo(
     () => (draft ? JSON.stringify(draft) : ""),
     [draft]
   );
-  const aiWorkspaceHref = useMemo(() => {
-    const params = new URLSearchParams({ mode: "ai" });
-    if (currentTemplateId) {
-      params.set("templateId", currentTemplateId);
-    }
-    return `/templates/workspace?${params.toString()}`;
-  }, [currentTemplateId]);
-
+  const startModulePresent = useMemo(() => {
+    if (!editorRef.current) return false;
+    const exported = editorRef.current.export();
+    const nodes = Object.values(exported?.drawflow?.Home?.data ?? {}) as any[];
+    return nodes.some((node) => node?.name === "START");
+  }, [editorVersion]);
   function showModuleTooltip(
     event: any,
     module: { label: string; description: string }
@@ -886,12 +1046,20 @@ export function ModularBuilderClient({
       label: module.label,
       description: module.description,
       top: rect.top + rect.height / 2,
-      left: rect.right + 12
+      left: Math.min(rect.right + 14, window.innerWidth - 264)
     });
   }
 
   function hideModuleTooltip() {
     setHoveredModuleTooltip(null);
+  }
+
+  const isDirty = !workspaceMode && currentDraftSignature !== lastSavedDraftSignature;
+
+  function confirmDiscardUnsavedChanges() {
+    if (!isDirty) return true;
+    if (typeof window === "undefined") return false;
+    return window.confirm("You have unsaved changes in this template. Discard them and continue?");
   }
 
 
@@ -1044,6 +1212,42 @@ export function ModularBuilderClient({
     capacity
   ]);
 
+  useEffect(() => {
+    if (workspaceMode) return;
+    if (!drawflowReady || !editorReady || !editorRef.current) return;
+    const nextDraft = buildWorkspaceDraft();
+    const serialized = serializeDraft(nextDraft);
+    setCurrentDraftSignature((prev) => (prev === serialized ? prev : serialized));
+  }, [
+    workspaceMode,
+    drawflowReady,
+    editorReady,
+    editorVersion,
+    currentTemplateId,
+    templateName,
+    templateDescription,
+    templatePublic,
+    syncMode,
+    maxParticipantsPerRoom,
+    allowOddGroup,
+    language,
+    provider,
+    timezone,
+    dataspaceId,
+    requiresApproval,
+    capacity
+  ]);
+
+  useEffect(() => {
+    if (workspaceMode || !isDirty) return;
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [workspaceMode, isDirty]);
+
   function setupEditor() {
     if (!drawflowRef.current || !window.Drawflow) return;
     const editor = new window.Drawflow(drawflowRef.current);
@@ -1102,6 +1306,33 @@ export function ModularBuilderClient({
     editor.zoom = nextZoom;
     editor.precanvas.style.transform = `translate(${nextX}px, ${nextY}px) scale(${nextZoom})`;
     setZoomLevel(nextZoom);
+  }
+
+  function focusNodeInViewport(nodeId: number) {
+    const editor = editorRef.current;
+    const container = drawflowRef.current;
+    const nodeEl = document.getElementById(`node-${nodeId}`);
+    if (!editor || !container || !nodeEl) return;
+
+    const currentZoom = typeof editor.zoom === "number" ? editor.zoom : zoomLevel;
+    const nextZoom = Math.max(0.68, Math.min(0.92, currentZoom));
+    const nodeWidth = nodeEl.offsetWidth || (isMobile ? 224 : 248);
+    const nodeHeight = nodeEl.offsetHeight || 176;
+    const nodeCenterX = nodeEl.offsetLeft + nodeWidth / 2;
+    const nodeCenterY = nodeEl.offsetTop + nodeHeight / 2;
+    const nextX = container.clientWidth / 2 - nodeCenterX * nextZoom;
+    const nextY = container.clientHeight / 2 - nodeCenterY * nextZoom;
+
+    if (editor.precanvas?.style) {
+      editor.precanvas.style.transition = "transform 180ms ease";
+      window.setTimeout(() => {
+        if (editorRef.current?.precanvas) {
+          editorRef.current.precanvas.style.transition = "";
+        }
+      }, 220);
+    }
+
+    applyEditorTransform(nextX, nextY, nextZoom);
   }
 
   function zoomIn() {
@@ -1226,6 +1457,13 @@ export function ModularBuilderClient({
 
   function addNode(type: BlockType, clientX: number, clientY: number) {
     if (!editorRef.current || !drawflowRef.current) return;
+    if (type === "START") {
+      const exported = editorRef.current.export();
+      const nodes = Object.values(exported?.drawflow?.Home?.data ?? {}) as any[];
+      if (nodes.some((node) => node?.name === "START")) {
+        return;
+      }
+    }
     const editor = editorRef.current;
     const rect = drawflowRef.current.getBoundingClientRect();
     const posX = clientX - rect.left;
@@ -1255,6 +1493,33 @@ export function ModularBuilderClient({
         // Drawflow throws if a connection already exists or nodes are not ready yet.
       }
     }
+  }
+
+  function refreshConnectionLayout(nodeIds: number[]) {
+    const editor = editorRef.current;
+    if (!editor || nodeIds.length === 0 || typeof window === "undefined") return;
+    const refresh = () => {
+      nodeIds.forEach((nodeId) => {
+        try {
+          if (typeof editor.updateConnectionNodes === "function") {
+            editor.updateConnectionNodes(`node-${nodeId}`);
+            return;
+          }
+          const nodeEl = document.getElementById(`node-${nodeId}`);
+          if (nodeEl && typeof editor.updateConnectionNodes === "function") {
+            editor.updateConnectionNodes(nodeEl.id);
+          }
+        } catch {
+          // Drawflow can throw transiently while DOM is still settling.
+        }
+      });
+    };
+    window.requestAnimationFrame(() => {
+      refresh();
+      window.requestAnimationFrame(() => {
+        refresh();
+      });
+    });
   }
 
   function handleDrop(event: React.DragEvent) {
@@ -1497,7 +1762,8 @@ export function ModularBuilderClient({
         settings: {
           ...buildDefaultTemplateDraft().settings,
           ...(payload.template.settings ?? {})
-        }
+        },
+        blocks: ensureStartBlock(payload.template.blocks ?? [])
       });
     } catch (error) {
       setAiError(error instanceof Error ? error.message : "Unable to process AI request.");
@@ -1513,31 +1779,37 @@ export function ModularBuilderClient({
   }
 
   function applyDraftToBuilder(nextDraft: TemplateDraft) {
-    setCurrentTemplateId(nextDraft.id ?? null);
-    setTemplateName(nextDraft.name || "New template");
-    setTemplateDescription(nextDraft.description ?? "");
-    setTemplatePublic(Boolean(nextDraft.isPublic));
-    setSyncMode(nextDraft.settings?.syncMode === "CLIENT" ? "CLIENT" : "SERVER");
+    const normalizedBlocks = ensureStartBlock(nextDraft.blocks ?? []);
+    const normalizedDraft: TemplateDraft = {
+      ...nextDraft,
+      blocks: normalizedBlocks
+    };
+    setCurrentDraftSignature(serializeDraft(normalizedDraft));
+    setCurrentTemplateId(normalizedDraft.id ?? null);
+    setTemplateName(normalizedDraft.name || "New template");
+    setTemplateDescription(normalizedDraft.description ?? "");
+    setTemplatePublic(Boolean(normalizedDraft.isPublic));
+    setSyncMode(normalizedDraft.settings?.syncMode === "CLIENT" ? "CLIENT" : "SERVER");
     setMaxParticipantsPerRoom(
-      Math.max(2, Math.min(12, Number(nextDraft.settings?.maxParticipantsPerRoom ?? 2) || 2))
+      Math.max(2, Math.min(12, Number(normalizedDraft.settings?.maxParticipantsPerRoom ?? 2) || 2))
     );
-    setAllowOddGroup(Boolean(nextDraft.settings?.allowOddGroup));
-    setLanguage(nextDraft.settings?.language === "IT" ? "IT" : "EN");
-    setProvider(nextDraft.settings?.transcriptionProvider || "DEEPGRAMLIVE");
-    setTimezone(nextDraft.settings?.timezone ?? "");
-    setDataspaceId(nextDraft.settings?.dataspaceId ?? "");
-    setRequiresApproval(Boolean(nextDraft.settings?.requiresApproval));
+    setAllowOddGroup(Boolean(normalizedDraft.settings?.allowOddGroup));
+    setLanguage(normalizedDraft.settings?.language === "IT" ? "IT" : "EN");
+    setProvider(normalizedDraft.settings?.transcriptionProvider || "DEEPGRAMLIVE");
+    setTimezone(normalizedDraft.settings?.timezone ?? "");
+    setDataspaceId(normalizedDraft.settings?.dataspaceId ?? "");
+    setRequiresApproval(Boolean(normalizedDraft.settings?.requiresApproval));
     setCapacity(
-      typeof nextDraft.settings?.capacity === "number" && Number.isFinite(nextDraft.settings.capacity)
-        ? nextDraft.settings.capacity
+      typeof normalizedDraft.settings?.capacity === "number" && Number.isFinite(normalizedDraft.settings.capacity)
+        ? normalizedDraft.settings.capacity
         : ""
     );
     if (!editorRef.current) return;
     resetEditor();
     const rect = drawflowRef.current?.getBoundingClientRect();
-    const positions = getAutoLayoutPositions(nextDraft.blocks.length, rect?.width ?? 960);
+    const positions = getAutoLayoutPositions(normalizedBlocks.length, rect?.width ?? 960);
     const createdNodeIds: number[] = [];
-    nextDraft.blocks.forEach((block, index) => {
+    normalizedBlocks.forEach((block, index) => {
       const type = block.type as BlockType;
       const data = nodeDataFromBlock(block);
       const position = positions[index] ?? { x: 80, y: 60 + index * 168 };
@@ -1547,29 +1819,9 @@ export function ModularBuilderClient({
       updateNodeHtml(id, type, data, isLiveTranscriptionProvider(provider));
     });
     connectSequentialNodes(createdNodeIds);
+    refreshConnectionLayout(createdNodeIds);
     setEditorVersion((prev) => prev + 1);
     scheduleFitView();
-  }
-
-  function addPairingBlocks() {
-    if (!editorRef.current) return;
-    const count = Math.max(1, Math.min(50, Math.round(pairingCount || 1)));
-    const durationSeconds = Math.max(30, Math.round((pairingMinutes || 1) * 60));
-    const exported = editorRef.current.export();
-    const data = exported?.drawflow?.Home?.data ?? {};
-    const nodes = Object.values(data) as any[];
-    const maxY = nodes.reduce((acc, node) => Math.max(acc, Number(node.pos_y ?? 0)), 0);
-    let startY = nodes.length > 0 ? maxY + 140 : 80;
-    const rect = drawflowRef.current?.getBoundingClientRect();
-    const positions = getAutoLayoutPositions(count, rect?.width ?? 960, { startY });
-    for (let index = 0; index < count; index += 1) {
-      const position = positions[index] ?? { x: 120, y: startY + index * 168 };
-      const data = { durationSeconds, matchingMode: undefined };
-      const html = buildNodeHtml("DISCUSSION", data, { posters, audioFiles, aiAgents, liveAiSupported: isLiveTranscriptionProvider(provider) });
-      const id = editorRef.current.addNode("DISCUSSION", 1, 1, position.x, position.y, "DISCUSSION", data, html);
-      updateNodeHtml(id, "DISCUSSION", data, isLiveTranscriptionProvider(provider));
-    }
-    setEditorVersion((prev) => prev + 1);
   }
 
   async function refreshTemplates() {
@@ -1581,6 +1833,38 @@ export function ModularBuilderClient({
 
   async function handleSave() {
     setSaveError(null);
+    const draftToCompile = buildWorkspaceDraft();
+    if (!draftToCompile) {
+      const result = {
+        ok: false,
+        errors: [{ severity: "error" as const, message: "Template could not be compiled from the current canvas state." }],
+        warnings: [],
+        totalDurationMinutes: 0,
+        discussionRounds: 0,
+        segmentCount: 0
+      };
+      setCompileReport(result);
+      setCompileModalOpen(true);
+      setSaveError("Template must compile before it can be saved.");
+      return;
+    }
+    const compileResult = compileTemplateDraft(draftToCompile);
+    if (!compileResult.ok) {
+      setCompileReport(compileResult);
+      setCompileModalOpen(true);
+      setSaveError("Template must compile before it can be saved.");
+      void postClientLog({
+        level: "warn",
+        scope: "template_modular_builder",
+        message: "template_compile_blocked_save",
+        meta: {
+          templateId: currentTemplateId,
+          errorCount: compileResult.errors.length,
+          warningCount: compileResult.warnings.length
+        }
+      });
+      return;
+    }
     const build = buildBlocksFromEditor();
     if ("error" in build) {
       setSaveError(build.error ?? "Unable to save template.");
@@ -1646,6 +1930,27 @@ export function ModularBuilderClient({
       if (!currentTemplateId && result?.id) {
         setCurrentTemplateId(result.id);
       }
+      const savedDraft: TemplateDraft = {
+        id: currentTemplateId ?? result?.id ?? null,
+        name: payload.name,
+        description: payload.description,
+        isPublic: payload.isPublic,
+        settings: {
+          syncMode,
+          maxParticipantsPerRoom,
+          allowOddGroup,
+          language,
+          transcriptionProvider: provider,
+          timezone: timezone || resolvedTimezone,
+          dataspaceId: dataspaceId || null,
+          requiresApproval,
+          capacity: capacity === "" ? null : Number(capacity)
+        },
+        blocks
+      };
+      const serialized = serializeDraft(savedDraft);
+      setCurrentDraftSignature(serialized);
+      setLastSavedDraftSignature(serialized);
       await refreshTemplates();
       setEditorVersion((prev) => prev + 1);
     } catch {
@@ -1655,40 +1960,32 @@ export function ModularBuilderClient({
     }
   }
 
-  function handleCompileTemplate() {
-    setSaveError(null);
-    const build = buildWorkspaceDraft();
-    if (!build) {
-      setCompileReport({
-        ok: false,
-        errors: [{ severity: "error", message: "Template could not be compiled from the current canvas state." }],
-        warnings: [],
-        totalDurationMinutes: 0,
-        discussionRounds: 0,
-        segmentCount: 0
-      });
-      setCompileModalOpen(true);
-      return;
-    }
-    const result = compileTemplateDraft(build);
-    setCompileReport(result);
-    setCompileModalOpen(true);
-    void postClientLog({
-      level: result.ok ? "info" : "warn",
-      scope: "template_modular_builder",
-      message: "template_compile_run",
-      meta: {
-        templateId: currentTemplateId,
-        ok: result.ok,
-        errorCount: result.errors.length,
-        warningCount: result.warnings.length,
-        discussionRounds: result.discussionRounds,
-        segmentCount: result.segmentCount
-      }
-    });
-  }
-
   function loadTemplate(template: TemplateSummary) {
+    if (!confirmDiscardUnsavedChanges()) return;
+    const nextDraft: TemplateDraft = {
+      id: template.id,
+      name: template.name,
+      description: template.description ?? null,
+      isPublic: template.isPublic,
+      settings: {
+        syncMode: template.settings?.syncMode === "CLIENT" ? "CLIENT" : "SERVER",
+        maxParticipantsPerRoom: Math.max(2, Math.min(12, Number(template.settings?.maxParticipantsPerRoom ?? 2) || 2)),
+        allowOddGroup: Boolean(template.settings?.allowOddGroup),
+        language: template.settings?.language === "IT" ? "IT" : "EN",
+        transcriptionProvider: template.settings?.transcriptionProvider || "DEEPGRAMLIVE",
+        timezone: template.settings?.timezone ?? "",
+        dataspaceId: template.settings?.dataspaceId ?? null,
+        requiresApproval: Boolean(template.settings?.requiresApproval),
+        capacity:
+          typeof template.settings?.capacity === "number" && Number.isFinite(template.settings.capacity)
+            ? template.settings.capacity
+            : null
+      },
+      blocks: ensureStartBlock(template.blocks)
+    };
+    const serialized = serializeDraft(nextDraft);
+    setCurrentDraftSignature(serialized);
+    setLastSavedDraftSignature(serialized);
     setCurrentTemplateId(template.id);
     setTemplateName(template.name);
     setTemplateDescription(template.description ?? "");
@@ -1710,7 +2007,7 @@ export function ModularBuilderClient({
     );
     if (!editorRef.current) return;
     resetEditor();
-    const nodes = template.blocks.map((block, index) => {
+    const nodes = nextDraft.blocks.map((block, index) => {
       const type = block.type as BlockType;
       const data = nodeDataFromBlock(block);
       return { type, data, index };
@@ -1726,11 +2023,23 @@ export function ModularBuilderClient({
       updateNodeHtml(id, node.type, node.data, isLiveTranscriptionProvider(provider));
     });
     connectSequentialNodes(createdNodeIds);
+    refreshConnectionLayout(createdNodeIds);
     setEditorVersion((prev) => prev + 1);
     scheduleFitView();
   }
 
   function createNewTemplate() {
+    if (!confirmDiscardUnsavedChanges()) return;
+    const nextDraft: TemplateDraft = {
+      ...buildDefaultTemplateDraft(),
+      settings: {
+        ...buildDefaultTemplateDraft().settings,
+        timezone: resolvedTimezone || "",
+      }
+    };
+    const serialized = serializeDraft(nextDraft);
+    setCurrentDraftSignature(serialized);
+    setLastSavedDraftSignature(serialized);
     setCurrentTemplateId(null);
     setTemplateName("New template");
     setTemplateDescription("");
@@ -1746,7 +2055,7 @@ export function ModularBuilderClient({
     setCapacity("");
     setPairingMinutes(10);
     setPairingCount(3);
-    resetEditor();
+    applyDraftToBuilder(nextDraft);
   }
 
   function updateNodeDataById(nodeId: number, partial: Partial<NodeData>) {
@@ -1795,9 +2104,42 @@ export function ModularBuilderClient({
     return Number.isFinite(id) ? id : null;
   }
 
+  function getPausePreviewState(target: HTMLElement, fallback: NodeData) {
+    const nodeEl = target.closest?.("[id^='node-']") as HTMLElement | null;
+    const animationSelect = nodeEl?.querySelector?.(
+      "select[data-field='meditationAnimationId']"
+    ) as HTMLSelectElement | null;
+    const audioSelect = nodeEl?.querySelector?.(
+      "select[data-field='meditationAudioUrl']"
+    ) as HTMLSelectElement | null;
+
+    return {
+      meditationAnimationId: animationSelect?.value || fallback.meditationAnimationId || null,
+      meditationAudioUrl: audioSelect?.value || fallback.meditationAudioUrl || null
+    };
+  }
+
   function handleInlineClick(event: React.MouseEvent<HTMLDivElement>) {
     const target = event.target as HTMLElement | null;
     if (!target) return;
+    const previewPauseActionEl = target.closest?.("[data-action='preview-pause-module']") as HTMLElement | null;
+    if (previewPauseActionEl) {
+      event.preventDefault();
+      event.stopPropagation();
+      const nodeId = getNodeIdFromEventTarget(previewPauseActionEl);
+      if (!nodeId || !editorRef.current) return;
+      const existing = editorRef.current.getNodeFromId(nodeId);
+      const data = (existing?.data || {}) as NodeData;
+      const previewState = getPausePreviewState(previewPauseActionEl, data);
+      const animation =
+        MEDITATION_ANIMATIONS.find((item) => item.id === previewState.meditationAnimationId) ??
+        MEDITATION_ANIMATIONS[0];
+      setPausePreviewTitle(`${existing?.name === "PAUSE" ? "Pause" : "Meditation"} preview`);
+      setPausePreviewAnimationFile(animation?.file ?? "");
+      setPausePreviewAudioUrl(previewState.meditationAudioUrl);
+      setPausePreviewOpen(true);
+      return;
+    }
     const promptActionEl = target.closest?.("[data-action='open-prompt-modal']") as HTMLElement | null;
     if (promptActionEl) {
       event.preventDefault();
@@ -1823,12 +2165,23 @@ export function ModularBuilderClient({
       return;
     }
     const actionEl = target.closest?.("[data-action='delete-node']") as HTMLElement | null;
-    if (!actionEl) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const nodeId = getNodeIdFromEventTarget(actionEl);
+    if (actionEl) {
+      event.preventDefault();
+      event.stopPropagation();
+      const nodeId = getNodeIdFromEventTarget(actionEl);
+      if (!nodeId) return;
+      removeNodeById(nodeId);
+      return;
+    }
+
+    const interactiveTarget = target.closest?.(
+      "input, textarea, select, button, a, label, .input, .output"
+    ) as HTMLElement | null;
+    if (interactiveTarget) return;
+
+    const nodeId = getNodeIdFromEventTarget(target);
     if (!nodeId) return;
-    removeNodeById(nodeId);
+    focusNodeInViewport(nodeId);
   }
 
   function handleInlineInput(event: React.FormEvent<HTMLDivElement>) {
@@ -1882,17 +2235,6 @@ export function ModularBuilderClient({
     } else if (field === "participantCount") {
       const raw = (target as HTMLInputElement).value;
       updateNodeDataById(nodeId, { participantCount: raw ? Number(raw) : null });
-    } else if (field === "agreementDeadline") {
-      updateNodeDataById(nodeId, { agreementDeadline: (target as HTMLInputElement).value || null });
-    } else if (field === "minimumParticipants") {
-      const raw = (target as HTMLInputElement).value;
-      updateNodeDataById(nodeId, { minimumParticipants: raw ? Number(raw) : null });
-    } else if (field === "poolSize") {
-      const raw = (target as HTMLInputElement).value;
-      updateNodeDataById(nodeId, { poolSize: raw ? Number(raw) : null });
-    } else if (field === "selectedParticipants") {
-      const raw = (target as HTMLInputElement).value;
-      updateNodeDataById(nodeId, { selectedParticipants: raw ? Number(raw) : null });
     } else if (field === "formQuestion") {
       updateNodeDataById(nodeId, { formQuestion: (target as HTMLInputElement).value });
     } else if (field === "posterTitle") {
@@ -1942,14 +2284,6 @@ export function ModularBuilderClient({
       updateNodeDataById(nodeId, {
         startMode: (target as HTMLSelectElement).value as NodeData["startMode"]
       });
-    } else if (field === "selectionRule") {
-      updateNodeDataById(nodeId, {
-        selectionRule: ((target as HTMLSelectElement).value || "random") as "random"
-      });
-    } else if (field === "agreementRequired") {
-      updateNodeDataById(nodeId, { agreementRequired: (target as HTMLInputElement).checked });
-    } else if (field === "allowStartBeforeFull") {
-      updateNodeDataById(nodeId, { allowStartBeforeFull: (target as HTMLInputElement).checked });
     } else if (field === "aiAgentsEnabled") {
       const checked = (target as HTMLInputElement).checked;
       updateNodeDataById(nodeId, {
@@ -2025,7 +2359,17 @@ export function ModularBuilderClient({
       setPauseAudioUploadNodeId(null);
       setPauseAudioUploadFile(null);
     } catch (error) {
-      setPauseAudioUploadError(error instanceof Error ? error.message : "Unable to upload audio.");
+      const message = error instanceof Error ? error.message : "Unable to upload audio.";
+      setPauseAudioUploadError(message);
+      void postClientLog({
+        level: "error",
+        scope: "modular_builder",
+        message: "pause_audio_upload_failed",
+        meta: {
+          fileName: pauseAudioUploadFile?.name || null,
+          error: message
+        }
+      });
     } finally {
       setPauseAudioUploading(false);
     }
@@ -2065,26 +2409,13 @@ export function ModularBuilderClient({
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <a
-              href={aiWorkspaceHref}
-              className="dr-button-outline px-2 py-1 text-[11px] sm:px-3 sm:text-xs"
-            >
-              AI Builder
-            </a>
-            <button
-              type="button"
-              className="dr-button-outline px-2 py-1 text-[11px] sm:px-3 sm:text-xs"
-              onClick={addPairingBlocks}
-            >
-              Add pairings
-            </button>
-            <button
-              type="button"
-              className="dr-button-outline px-2 py-1 text-[11px] sm:px-3 sm:text-xs"
-              onClick={handleCompileTemplate}
-            >
-              Compile template
-            </button>
+            <div className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${
+              isDirty
+                ? "border-amber-200 bg-amber-50 text-amber-700"
+                : "border-emerald-200 bg-emerald-50 text-emerald-700"
+            }`}>
+              {isDirty ? "Unsaved changes" : "Saved"}
+            </div>
             <button
               type="button"
               className="dr-button px-2 py-1 text-[11px] sm:px-3 sm:text-xs"
@@ -2097,50 +2428,57 @@ export function ModularBuilderClient({
         </div>
       ) : null}
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden lg:flex-row">
+      <div className={`flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row ${workspaceMode ? "gap-0" : "gap-3"}`}>
         <div
-          className={`dr-card flex flex-col gap-3 overflow-hidden border-none bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(241,245,249,0.92))] p-3 shadow-[0_24px_60px_rgba(15,23,42,0.1)] ${
+          className={`dr-card shrink-0 flex flex-col gap-3 overflow-hidden border-none bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(248,250,252,0.96))] p-3 shadow-[0_28px_72px_rgba(15,23,42,0.11)] ${
             isMobile
               ? "w-full"
               : modulesCollapsed
                 ? "w-[56px]"
-                : "w-[280px]"
+                : "w-[296px]"
           }`}
         >
           <div className="flex items-center justify-between gap-2">
             <div className={modulesCollapsed ? "sr-only" : ""}>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-400">
                 Modules
               </div>
               <div className="mt-1 text-sm font-semibold text-slate-900">
-                Drag into canvas
+                Build the flow
               </div>
             </div>
             <button
               type="button"
               onClick={() => setModulesCollapsed((prev) => !prev)}
-              className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 shadow-sm hover:text-slate-900"
+              className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900"
             >
               {modulesCollapsed ? ">" : "<"}
             </button>
           </div>
           {modulesCollapsed ? (
-            <div className={`flex ${isMobile ? "flex-row flex-wrap" : "flex-col"} items-center gap-2`}>
-              {BASIC_MODULES.map((module) => (
-                <button
-                  key={module.type}
-                  type="button"
-                  draggable={!isMobile}
-                  onDragStart={(event) => handleDragStart(event, module.type)}
-                  onClick={() => (isMobile ? addNodeAtCenter(module.type) : undefined)}
-                  title={module.label}
-                  className={`flex h-11 w-11 cursor-pointer items-center justify-center rounded-2xl border border-slate-200 bg-white text-[10px] font-semibold shadow-sm transition hover:-translate-y-0.5 ${module.color}`}
-                >
-                  <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="currentColor" aria-hidden="true">
-                    <path d={module.icon} />
-                  </svg>
-                </button>
-              ))}
+            <div className={`min-h-0 flex-1 ${isMobile ? "overflow-visible" : "overflow-auto pr-1"}`}>
+              <div className={`flex ${isMobile ? "flex-row flex-wrap" : "flex-col"} items-center gap-2`}>
+              {BASIC_MODULES.map((module) => {
+                const startAlreadyIncluded = module.type === "START" && startModulePresent;
+                return (
+                  <button
+                    key={module.type}
+                    type="button"
+                    draggable={!isMobile && !startAlreadyIncluded}
+                    onDragStart={(event) => handleDragStart(event, module.type)}
+                    onClick={() => (isMobile && !startAlreadyIncluded ? addNodeAtCenter(module.type) : undefined)}
+                    onMouseEnter={(event) => showModuleTooltip(event, module)}
+                    onMouseLeave={hideModuleTooltip}
+                    onFocus={(event) => showModuleTooltip(event, module)}
+                    onBlur={hideModuleTooltip}
+                    title={startAlreadyIncluded ? "Start module is already included" : module.label}
+                    disabled={startAlreadyIncluded}
+                    className={`flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-[10px] font-semibold shadow-sm transition ${startAlreadyIncluded ? "cursor-not-allowed opacity-45" : "cursor-pointer hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)]"} ${module.color}`}
+                  >
+                    {renderModuleIcon(module.icon)}
+                  </button>
+                );
+              })}
               {PARTNER_MODULES.map((module) => (
                 <button
                   key={module.type}
@@ -2148,53 +2486,64 @@ export function ModularBuilderClient({
                   draggable={!isMobile}
                   onDragStart={(event) => handleDragStart(event, module.type)}
                   onClick={() => (isMobile ? addNodeAtCenter(module.type) : undefined)}
+                  onMouseEnter={(event) => showModuleTooltip(event, module)}
+                  onMouseLeave={hideModuleTooltip}
+                  onFocus={(event) => showModuleTooltip(event, module)}
+                  onBlur={hideModuleTooltip}
                   title={module.label}
-                  className={`flex h-11 w-11 cursor-pointer items-center justify-center rounded-2xl border border-slate-200 bg-white text-[10px] font-semibold shadow-sm transition hover:-translate-y-0.5 ${module.color}`}
+                  className={`flex h-11 w-11 cursor-pointer items-center justify-center rounded-2xl border border-slate-200 bg-white text-[10px] font-semibold shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_12px_24px_rgba(15,23,42,0.12)] ${module.color}`}
                 >
-                  <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="currentColor" aria-hidden="true">
-                    <path d={module.icon} />
-                  </svg>
+                  {renderModuleIcon(module.icon)}
                 </button>
               ))}
+            </div>
             </div>
           ) : (
             <>
               <div className={`${isMobile ? "space-y-3" : "space-y-3 overflow-auto pr-1"}`}>
-                <div className="rounded-[24px] border border-slate-200/80 bg-white/70 p-2.5">
+                <div className="rounded-[28px] border border-slate-200/80 bg-white/80 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
                   <div className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                     Basic modules
                   </div>
                   <div className={`${isMobile ? "flex flex-wrap gap-2" : "space-y-2"}`}>
-                    {BASIC_MODULES.map((module) => (
-                      <button
-                        key={module.type}
-                        type="button"
-                        draggable={!isMobile}
-                        onDragStart={(event) => handleDragStart(event, module.type)}
-                        onClick={() => (isMobile ? addNodeAtCenter(module.type) : undefined)}
-                        onMouseEnter={(event) => showModuleTooltip(event, module)}
-                        onMouseLeave={hideModuleTooltip}
-                        className="group relative flex w-full cursor-pointer items-start gap-3 rounded-[20px] border border-slate-200 bg-white/95 px-3 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
-                      >
-                        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${module.color}`}>
-                          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
-                            <path d={module.icon} />
-                          </svg>
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-semibold text-slate-900">{module.label}</span>
-                          <span className="mt-1 block text-xs leading-5 text-slate-500">
-                            {module.description}
+                    {BASIC_MODULES.map((module) => {
+                      const startAlreadyIncluded = module.type === "START" && startModulePresent;
+                      return (
+                        <button
+                          key={module.type}
+                          type="button"
+                          draggable={!isMobile && !startAlreadyIncluded}
+                          onDragStart={(event) => handleDragStart(event, module.type)}
+                          onClick={() => (isMobile && !startAlreadyIncluded ? addNodeAtCenter(module.type) : undefined)}
+                          onMouseEnter={(event) => showModuleTooltip(event, module)}
+                          onMouseLeave={hideModuleTooltip}
+                          onFocus={(event) => showModuleTooltip(event, module)}
+                          onBlur={hideModuleTooltip}
+                          disabled={startAlreadyIncluded}
+                          className={`group relative flex w-full items-center gap-3 rounded-[22px] border border-slate-200 bg-white/96 px-3 py-3 text-left shadow-sm transition focus:outline-none focus:ring-2 focus:ring-slate-300/80 ${startAlreadyIncluded ? "cursor-not-allowed opacity-55" : "cursor-pointer hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.08)]"}`}
+                        >
+                          <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] ring-1 ring-inset ring-white/70 ${module.color}`}>
+                            {renderModuleIcon(module.icon)}
                           </span>
-                        </span>
-                        <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                          {isMobile ? "Add" : "Drag"}
-                        </span>
-                      </button>
-                    ))}
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-semibold text-slate-900">{module.label}</span>
+                            {isMobile ? (
+                              <span className="mt-1 block text-[11px] font-medium text-slate-500">
+                                {module.description}
+                              </span>
+                            ) : null}
+                          </span>
+                          {isMobile ? (
+                            <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 transition group-hover:border-slate-300 group-hover:bg-slate-100">
+                              {startAlreadyIncluded ? "Included" : "Add"}
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-                <div className="rounded-[24px] border border-slate-200/80 bg-white/70 p-2.5">
+                <div className="rounded-[28px] border border-slate-200/80 bg-white/80 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
                   <div className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                     Participation platforms
                   </div>
@@ -2208,22 +2557,26 @@ export function ModularBuilderClient({
                         onClick={() => (isMobile ? addNodeAtCenter(module.type) : undefined)}
                         onMouseEnter={(event) => showModuleTooltip(event, module)}
                         onMouseLeave={hideModuleTooltip}
-                        className="group relative flex w-full cursor-pointer items-start gap-3 rounded-[20px] border border-slate-200 bg-white/95 px-3 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.08)]"
+                        onFocus={(event) => showModuleTooltip(event, module)}
+                        onBlur={hideModuleTooltip}
+                        className="group relative flex w-full cursor-pointer items-center gap-3 rounded-[22px] border border-slate-200 bg-white/96 px-3 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_12px_28px_rgba(15,23,42,0.08)] focus:outline-none focus:ring-2 focus:ring-slate-300/80"
                       >
-                        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${module.color}`}>
-                          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
-                            <path d={module.icon} />
-                          </svg>
+                        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[18px] ring-1 ring-inset ring-white/70 ${module.color}`}>
+                          {renderModuleIcon(module.icon)}
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block text-sm font-semibold text-slate-900">{module.label}</span>
-                          <span className="mt-1 block text-xs leading-5 text-slate-500">
-                            {module.description}
+                          {isMobile ? (
+                            <span className="mt-1 block text-[11px] font-medium text-slate-500">
+                              {module.description}
+                            </span>
+                          ) : null}
+                        </span>
+                        {isMobile ? (
+                          <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 transition group-hover:border-slate-300 group-hover:bg-slate-100">
+                            Add
                           </span>
-                        </span>
-                        <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">
-                          {isMobile ? "Add" : "Drag"}
-                        </span>
+                        ) : null}
                       </button>
                     ))}
                   </div>
@@ -2244,7 +2597,7 @@ export function ModularBuilderClient({
           )}
         </div>
 
-        <div className="dr-card relative min-h-0 flex-1 p-0">
+        <div className="dr-card relative min-h-0 min-w-0 flex-1 p-0">
           <div className="pointer-events-none absolute right-3 top-3 z-10 flex flex-col items-end gap-2">
             <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-slate-200 bg-white/90 px-2 py-1 text-[10px] font-semibold text-slate-600 shadow-sm">
               <span>Zoom</span>
@@ -2387,13 +2740,6 @@ export function ModularBuilderClient({
                     />
                     Public
                   </label>
-                  <button
-                    type="button"
-                    onClick={handleCompileTemplate}
-                    className="dr-button-outline px-3 py-1 text-[11px]"
-                  >
-                    Compile template
-                  </button>
                   {saveError ? <p className="text-[11px] text-rose-600">{saveError}</p> : null}
                 </div>
               </div>
@@ -2504,16 +2850,19 @@ export function ModularBuilderClient({
       </div>
       {hoveredModuleTooltip ? (
         <div
-          className="pointer-events-none fixed z-[120] w-56 -translate-y-1/2 rounded-2xl border border-slate-200 bg-slate-950 px-3 py-2 text-left text-[11px] font-medium leading-4 text-white shadow-2xl"
+          className="pointer-events-none fixed z-[120] w-60 -translate-y-1/2 rounded-[22px] border border-slate-700/80 bg-slate-950/95 px-3.5 py-3 text-left text-[11px] font-medium leading-5 text-white shadow-[0_24px_60px_rgba(15,23,42,0.45)] backdrop-blur"
           style={{
             top: hoveredModuleTooltip.top,
             left: hoveredModuleTooltip.left
           }}
         >
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-300">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+            Module
+          </p>
+          <p className="mt-1 text-sm font-semibold text-white">
             {hoveredModuleTooltip.label}
           </p>
-          <p className="mt-1">{hoveredModuleTooltip.description}</p>
+          <p className="mt-2 text-slate-200">{hoveredModuleTooltip.description}</p>
         </div>
       ) : null}
       {pauseAudioUploadNodeId ? (
@@ -2582,6 +2931,37 @@ export function ModularBuilderClient({
                 {pauseAudioUploading ? "Uploading..." : "Upload and use"}
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+      {pausePreviewOpen ? (
+        <div className="fixed inset-0 z-[145] flex items-center justify-center bg-black/80">
+          <div className="relative h-full w-full overflow-hidden bg-black">
+            {pausePreviewAnimationFile ? (
+              <iframe
+                title={pausePreviewTitle}
+                src={pausePreviewAnimationFile}
+                className="h-full w-full border-0"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-white/70">
+                No animation selected.
+              </div>
+            )}
+            <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.12)_48%,rgba(0,0,0,0.34)_100%)]" />
+            <div className="absolute left-6 top-6 rounded-full bg-black/60 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-white/80">
+              {pausePreviewTitle}
+            </div>
+            <button
+              type="button"
+              onClick={() => setPausePreviewOpen(false)}
+              className="absolute right-6 top-6 rounded-full border border-white/30 bg-black/60 px-4 py-2 text-xs font-semibold text-white/80 hover:bg-black/70"
+            >
+              Close preview
+            </button>
+            {pausePreviewAudioUrl ? (
+              <audio src={pausePreviewAudioUrl} autoPlay loop className="hidden" />
+            ) : null}
           </div>
         </div>
       ) : null}

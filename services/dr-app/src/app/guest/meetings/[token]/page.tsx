@@ -53,7 +53,8 @@ export default async function GuestMeetingPage({
           {meeting.title}
         </h1>
         <p className="mt-2 text-sm text-slate-600">
-          You are invited as <span className="font-semibold">{invite.email}</span>.
+          You are invited as <span className="font-semibold">{invite.guestName || invite.email}</span>
+          {invite.guestName ? <span> · {invite.email}</span> : null}.
         </p>
         {meeting.transcriptionProvider === "WHISPERREMOTE" || meeting.transcriptionProvider === "AUTOREMOTE" ? (
           <div className="mt-3 inline-flex max-w-2xl items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50/90 px-3 py-2 text-sm text-amber-900">
@@ -73,7 +74,7 @@ export default async function GuestMeetingPage({
         meetingId={meeting.id}
         language={langCode}
         provider={providerCode}
-        inviteEmail={invite.email}
+        defaultDisplayName={invite.guestName || invite.email}
         accessToken={accessToken}
       />
 

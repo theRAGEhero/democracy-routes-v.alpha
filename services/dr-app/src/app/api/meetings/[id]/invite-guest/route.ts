@@ -5,6 +5,7 @@ import { getSession } from "@/lib/session";
 import { sendMail } from "@/lib/mailer";
 import { checkRateLimit, getRequestIp } from "@/lib/rateLimit";
 import crypto from "crypto";
+import { buildMeetingInviteEmail } from "@/lib/meetingInviteEmail";
 
 function generateToken() {
   return crypto.randomBytes(24).toString("base64url");
@@ -43,6 +44,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
       },
       dataspace: {
         include: { members: { select: { userId: true } } }
+      },
+      createdBy: {
+        select: { email: true }
       }
     }
   });
@@ -76,6 +80,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
   const token = generateToken();
   const expiresAt = meeting.expiresAt ?? null;
+  const normalizedGuestName = String(parsed.data.name || "").trim() || null;
 
   const invite = await prisma.meetingGuestInvite.upsert({
     where: {
@@ -86,12 +91,14 @@ export async function POST(request: Request, { params }: { params: { id: string 
     },
     update: {
       token,
-      expiresAt
+      expiresAt,
+      ...(normalizedGuestName !== null ? { guestName: normalizedGuestName } : {})
     },
     create: {
       meetingId: meeting.id,
       createdById: session.user.id,
       email: parsed.data.email.toLowerCase(),
+      guestName: normalizedGuestName,
       token,
       expiresAt
     }
@@ -101,13 +108,19 @@ export async function POST(request: Request, { params }: { params: { id: string 
   const guestLink = `${appBaseUrl}/guest/meetings/${invite.token}`;
   const registerLink = `${appBaseUrl}/register`;
 
+  const emailPayload = buildMeetingInviteEmail({
+    inviteKind: "guest",
+    meeting,
+    accessUrl: guestLink,
+    registerUrl: registerLink,
+    inviteeName: invite.guestName
+  });
   const emailResult = await sendMail({
     to: invite.email,
-    subject: "You are invited to a meeting",
-    html: `<p>You have been invited to the meeting <strong>${meeting.title}</strong>.</p>
-      <p>Join without registration: <a href="${guestLink}">${guestLink}</a></p>
-      <p>Prefer to register? Create an account: <a href="${registerLink}">${registerLink}</a></p>`,
-    text: `You have been invited to the meeting ${meeting.title}. Join without registration: ${guestLink}. Register: ${registerLink}`
+    subject: emailPayload.subject,
+    html: emailPayload.html,
+    text: emailPayload.text,
+    attachments: emailPayload.attachments
   });
 
   return NextResponse.json({

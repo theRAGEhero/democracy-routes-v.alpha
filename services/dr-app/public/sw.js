@@ -1,11 +1,10 @@
-self.__DR_CACHE_VERSION__ = "v3";
+self.__DR_CACHE_VERSION__ = "v4";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(`dr-app-shell-${self.__DR_CACHE_VERSION__}`).then((cache) =>
       cache.addAll([
         "/",
-        "/dashboard",
         "/login",
         "/register",
         "/manifest.webmanifest",

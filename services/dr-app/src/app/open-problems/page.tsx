@@ -40,7 +40,7 @@ export default async function OpenProblemsPage() {
           Open Problems Board
         </h1>
         <p className="mt-2 max-w-3xl text-sm text-slate-600">
-          Capture an open problem, place it in Todo, and move it through In Progress, In Review, and Done as the work advances.
+          Capture an open problem, browse existing ones in a table, or move them through Todo, In Progress, In Review, and Done in the Kanban board.
         </p>
       </div>
       <OpenProblemsClient

@@ -6,6 +6,11 @@ type MailPayload = {
   subject: string;
   html: string;
   text?: string;
+  attachments?: Array<{
+    filename: string;
+    content: string | Buffer;
+    contentType?: string;
+  }>;
 };
 
 const smtpConfig = {
@@ -27,7 +32,7 @@ function isSmtpConfigured() {
   );
 }
 
-export async function sendMail({ to, subject, html, text }: MailPayload) {
+export async function sendMail({ to, subject, html, text, attachments }: MailPayload) {
   if (!isSmtpConfigured()) {
     logWarn("smtp_not_configured_skip_email", { to });
     return { ok: false, error: "SMTP not configured" };
@@ -53,7 +58,8 @@ export async function sendMail({ to, subject, html, text }: MailPayload) {
       to,
       subject,
       html,
-      text
+      text,
+      attachments
     });
 
     return { ok: true };

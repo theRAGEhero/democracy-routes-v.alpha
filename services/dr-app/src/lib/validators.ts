@@ -22,14 +22,19 @@ export const createMeetingSchema = z.object({
   transcriptionProvider: z.enum(["DEEPGRAM", "DEEPGRAMLIVE", "GLADIALIVE", "VOSK", "WHISPERREMOTE", "AUTOREMOTE"]).default("DEEPGRAMLIVE"),
   timezone: z.string().max(100).optional().nullable(),
   dataspaceId: z.string().optional().nullable(),
+  openProblemId: z.string().optional().nullable(),
   isPublic: z.boolean().optional().default(false),
   requiresApproval: z.boolean().optional().default(false),
   capacity: z.number().int().positive().optional().nullable(),
-  aiAgentIds: z.array(z.string().min(1).max(64)).optional()
+  aiAgentIds: z.array(z.string().min(1).max(64)).optional(),
+  speakingBalanceModeratorEnabled: z.boolean().optional().default(false),
+  speakingBalanceModeratorPreset: z.enum(["gentle", "strict"]).optional().default("gentle"),
+  speakingBalanceAllowParticipantUnmute: z.boolean().optional().default(true)
 });
 
 export const inviteMemberSchema = z.object({
-  email: z.string().email("Invalid email")
+  email: z.string().email("Invalid email"),
+  name: z.string().trim().min(1).max(120).optional().nullable()
 });
 
 export const linkTranscriptionSchema = z.object({
@@ -56,6 +61,7 @@ export const createPlanSchema = z.object({
   maxParticipantsPerRoom: z.number().int().min(2).max(12).default(2),
   allowOddGroup: z.boolean().optional().default(false),
   dataspaceId: z.string().optional().nullable(),
+  openProblemId: z.string().optional().nullable(),
   language: z.enum(["EN", "IT"]).default("EN"),
   transcriptionProvider: z.enum(["DEEPGRAM", "DEEPGRAMLIVE", "GLADIALIVE", "VOSK"]).default("DEEPGRAMLIVE"),
   timezone: z.string().max(100).optional().nullable(),
@@ -73,14 +79,13 @@ export const createPlanSchema = z.object({
     .array(
       z.object({
         type: blockTypeSchema,
-        durationSeconds: z.number().int().min(1).max(7200),
+        durationSeconds: z.number().int().min(0).max(7200),
         startMode: z
           .enum([
             "specific_datetime",
             "when_x_join",
             "organizer_manual",
-            "when_x_join_and_datetime",
-            "random_selection_among_x"
+            "when_x_join_and_datetime"
           ])
           .optional()
           .nullable(),
@@ -255,6 +260,42 @@ export const profileSettingsSchema = z.object({
     .string()
     .trim()
     .max(200, "Cal.com link is too long")
+    .url("Cal.com link must be a valid URL")
+    .optional()
+    .or(z.literal("")),
+  websiteUrl: z
+    .string()
+    .trim()
+    .max(200, "Website URL is too long")
+    .url("Website URL must be a valid URL")
+    .optional()
+    .or(z.literal("")),
+  xUrl: z
+    .string()
+    .trim()
+    .max(200, "X account URL is too long")
+    .url("X account URL must be a valid URL")
+    .optional()
+    .or(z.literal("")),
+  blueskyUrl: z
+    .string()
+    .trim()
+    .max(200, "Bluesky URL is too long")
+    .url("Bluesky URL must be a valid URL")
+    .optional()
+    .or(z.literal("")),
+  linkedinUrl: z
+    .string()
+    .trim()
+    .max(200, "LinkedIn URL is too long")
+    .url("LinkedIn URL must be a valid URL")
+    .optional()
+    .or(z.literal("")),
+  fediverseUrl: z
+    .string()
+    .trim()
+    .max(200, "Fediverse URL is too long")
+    .url("Fediverse URL must be a valid URL")
     .optional()
     .or(z.literal("")),
   avatarUrl: z

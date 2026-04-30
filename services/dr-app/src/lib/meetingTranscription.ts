@@ -4,6 +4,10 @@ import { postEventHubEvent } from "@/lib/eventHub";
 import { extractTranscriptTextFromTranscription } from "@/lib/transcriptionHub";
 import { canStartProviderWork } from "@/lib/transcriptionLimits";
 import { ensureMeetingAiSummary } from "@/lib/meetingAiSummary";
+import { guessMediaContentType } from "@/lib/meetingMediaUploads";
+import { mergeTranscriptContext } from "@/lib/meetingTranscriptContext";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 type RecordingItem = {
   roomId: string;
@@ -149,20 +153,28 @@ export async function importExistingDrVideoTranscriptForMeeting(meetingId: strin
     return { imported: false, reason: "empty_existing_artifact" as const };
   }
 
+  const existingTranscript = await prisma.meetingTranscript.findUnique({
+    where: { meetingId: meeting.id },
+    select: { transcriptJson: true }
+  });
+  const mergedTranscriptJson = JSON.stringify(
+    mergeTranscriptContext(existingTranscript?.transcriptJson, deliberation)
+  );
+
   await prisma.meetingTranscript.upsert({
     where: { meetingId: meeting.id },
     update: {
       provider: meeting.transcriptionProvider,
       roundId: artifact.sessionId,
       transcriptText,
-      transcriptJson: JSON.stringify(deliberation)
+      transcriptJson: mergedTranscriptJson
     },
     create: {
       meetingId: meeting.id,
       provider: meeting.transcriptionProvider,
       roundId: artifact.sessionId,
       transcriptText,
-      transcriptJson: JSON.stringify(deliberation)
+      transcriptJson: mergedTranscriptJson
     }
   });
 
@@ -215,6 +227,28 @@ async function downloadRecordingBlob(roomId: string, sessionId: string, filename
   }
   const bytes = await response.arrayBuffer();
   return new File([bytes], filename || `${sessionId}.webm`, { type: "audio/webm" });
+}
+
+async function loadAudioBlobForJob(job: {
+  id: string;
+  audioPath: string | null;
+  meeting: { roomId: string } | null;
+}) {
+  if (job.audioPath) {
+    const buffer = await fs.readFile(job.audioPath);
+    const filename = path.basename(job.audioPath);
+    return new File([buffer], filename, { type: guessMediaContentType(filename) });
+  }
+
+  if (!job.meeting) {
+    throw new Error("Meeting not found");
+  }
+  const recording = await fetchLatestRecordingForRoom(job.meeting.roomId);
+  if (!recording) {
+    throw new Error("Meeting recording not found");
+  }
+  const file = await downloadRecordingBlob(job.meeting.roomId, recording.sessionId, recording.filename);
+  return file;
 }
 
 async function createRound(baseUrl: string, meetingTitle: string, language: string) {
@@ -343,6 +377,49 @@ export async function startPostCallMeetingTranscription(meetingId: string, provi
   return { started: false, reason: "queued_by_limit" as const, jobId: job.id, limit: capacity.limit, active: capacity.active };
 }
 
+export async function startUploadedMeetingMediaTranscription(
+  meetingId: string,
+  provider: "VOSK" | "DEEPGRAM",
+  audioPath: string
+) {
+  const meeting = await prisma.meeting.findUnique({
+    where: { id: meetingId },
+    select: {
+      id: true,
+      title: true
+    }
+  });
+  if (!meeting) throw new Error("Meeting not found");
+
+  const capacity = await canStartProviderWork(provider);
+  const initialStatus = capacity.allowed ? "RUNNING" : "PENDING";
+  const job = await prisma.transcriptionJob.create({
+    data: {
+      kind: "MEETING_UPLOAD",
+      status: initialStatus,
+      provider,
+      meetingId,
+      audioPath,
+      attempts: initialStatus === "RUNNING" ? 1 : 0,
+      lastAttemptAt: initialStatus === "RUNNING" ? new Date() : null,
+      lastError: initialStatus === "PENDING" ? `Waiting for ${provider} concurrency slot` : null
+    }
+  });
+
+  if (initialStatus === "RUNNING") {
+    void processMeetingTranscriptionJob(job.id, provider);
+    return { started: true, jobId: job.id };
+  }
+
+  return {
+    started: false,
+    reason: "queued_by_limit" as const,
+    jobId: job.id,
+    limit: capacity.limit,
+    active: capacity.active
+  };
+}
+
 async function processMeetingTranscriptionJob(jobId: string, provider: "VOSK" | "DEEPGRAM") {
   const baseUrl = getProviderBase(provider);
   if (!baseUrl) {
@@ -360,26 +437,10 @@ async function processMeetingTranscriptionJob(jobId: string, provider: "VOSK" | 
   if (!job?.meeting) return;
 
   try {
-    const recording = await fetchLatestRecordingForRoom(job.meeting.roomId);
-    if (!recording) {
-      await postEventHubEvent({
-        source: "dr-app",
-        type: "meeting_recording_lookup_failed",
-        severity: "warning",
-        message: "Meeting recording not found for post-call transcription",
-        meetingId: job.meeting.id,
-        payload: {
-          provider,
-          roomId: job.meeting.roomId,
-          normalizedRoomId: normalizeRoomId(job.meeting.roomId)
-        }
-      });
-      throw new Error("Meeting recording not found");
-    }
-
     const language = normalizeLanguage(job.meeting.language);
     const roundId = await createRound(baseUrl, job.meeting.title, language);
-    const audioFile = await downloadRecordingBlob(job.meeting.roomId, recording.sessionId, recording.filename);
+    const transcriptSessionId = job.audioPath ? `upload-${job.id}` : roundId;
+    const audioFile = await loadAudioBlobForJob(job);
 
     const form = new FormData();
     form.append("audio", audioFile);
@@ -406,6 +467,13 @@ async function processMeetingTranscriptionJob(jobId: string, provider: "VOSK" | 
     }
 
     const transcriptText = extractTranscriptTextFromTranscription(deliberation);
+    const existingTranscript = await prisma.meetingTranscript.findUnique({
+      where: { meetingId: job.meeting.id },
+      select: { transcriptJson: true }
+    });
+    const mergedTranscriptJson = JSON.stringify(
+      mergeTranscriptContext(existingTranscript?.transcriptJson, deliberation)
+    );
 
     await prisma.meetingTranscript.upsert({
       where: { meetingId: job.meeting.id },
@@ -413,35 +481,36 @@ async function processMeetingTranscriptionJob(jobId: string, provider: "VOSK" | 
         provider,
         roundId,
         transcriptText,
-        transcriptJson: JSON.stringify(deliberation)
+        transcriptJson: mergedTranscriptJson
       },
       create: {
         meetingId: job.meeting.id,
         provider,
         roundId,
         transcriptText,
-        transcriptJson: JSON.stringify(deliberation)
+        transcriptJson: mergedTranscriptJson
       }
     });
 
     await prisma.meeting.update({
       where: { id: job.meeting.id },
-      data: { transcriptionRoundId: recording.sessionId }
+      data: { transcriptionRoundId: transcriptSessionId }
     });
 
     await ingestMeetingTranscriptToHub({
       meetingId: job.meeting.id,
       roomId: job.meeting.roomId,
-      sessionId: recording.sessionId,
+      sessionId: transcriptSessionId,
       provider,
       language: job.meeting.language,
       transcriptText,
       transcriptJson: deliberation,
-      startedAt: recording.updatedAt,
+      startedAt: new Date().toISOString(),
       endedAt: new Date().toISOString(),
       metadata: {
-        mirroredBy: "dr-app-post-call",
-        roundId
+        mirroredBy: job.audioPath ? "dr-app-meeting-upload" : "dr-app-post-call",
+        roundId,
+        sourceType: job.audioPath ? "MEETING_UPLOAD" : "MEETING_RECORDING"
       }
     });
 
@@ -463,7 +532,7 @@ async function processMeetingTranscriptionJob(jobId: string, provider: "VOSK" | 
       payload: {
         provider,
         roundId,
-        sessionId: recording.sessionId
+        sessionId: transcriptSessionId
       }
     });
 

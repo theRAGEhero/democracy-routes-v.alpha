@@ -160,13 +160,30 @@ export function FeedbackButton() {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-40 flex flex-col-reverse items-end gap-2 sm:bottom-6 sm:right-6">
+    <div
+      className="fixed right-4 z-50 flex flex-col-reverse items-end gap-2 sm:right-6"
+      style={{ bottom: "max(1rem, calc(env(safe-area-inset-bottom, 0px) + 1rem))" }}
+    >
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="rounded-full border border-slate-200/80 bg-white/90 px-4 py-2 text-xs font-semibold text-slate-700 shadow-[0_12px_30px_rgba(15,23,42,0.15)] backdrop-blur hover:border-slate-300 hover:text-slate-900"
+        className="inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/95 px-4 py-2 text-xs font-semibold text-slate-700 shadow-[0_14px_34px_rgba(15,23,42,0.18)] backdrop-blur hover:border-slate-300 hover:text-slate-900"
       >
-        Leave feedback
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 20 20"
+          className="h-3.5 w-3.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M4.5 5.75h11a1.75 1.75 0 0 1 1.75 1.75v5a1.75 1.75 0 0 1-1.75 1.75H9l-3.5 3v-3H4.5A1.75 1.75 0 0 1 2.75 12.5v-5A1.75 1.75 0 0 1 4.5 5.75Z" />
+          <path d="M7 9h6" />
+          <path d="M7 11.75h4.5" />
+        </svg>
+        <span>Leave feedback</span>
       </button>
       {open ? (
         <div className="relative w-[min(96vw,28rem)] max-h-[78dvh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_30px_70px_rgba(15,23,42,0.2)] sm:w-[min(92vw,28rem)] sm:max-h-[70vh] sm:p-5">

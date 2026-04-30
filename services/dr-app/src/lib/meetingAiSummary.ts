@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { isLiveTranscriptionProvider } from "@/lib/transcriptionProviders";
 import { postEventHubEvent } from "@/lib/eventHub";
+import { extractTranscriptChatMessages } from "@/lib/meetingTranscriptContext";
 
 const summaryResponseSchema = z.object({
   summaryMarkdown: z.string().trim().min(1).max(12000),
@@ -86,19 +87,39 @@ function buildPrompt(args: {
   provider: string;
   language: string;
   transcriptText: string;
+  transcriptJson: string | null;
+  canReplaceTitle: boolean;
+  canReplaceDescription: boolean;
 }) {
+  const chatMessages = extractTranscriptChatMessages(args.transcriptJson)
+    .map((message) => `[CHAT] ${String(message.name || "Participant").trim() || "Participant"}: ${String(message.text || "").trim()}`)
+    .filter(Boolean)
+    .slice(-120);
+
+  const chatSection =
+    chatMessages.length > 0
+      ? `\n\nRoom chat messages:\n${chatMessages.join("\n")}`
+      : "";
+
   return (
-    `You summarize Democracy Routes meeting transcripts.\n\n` +
+    `You summarize meeting transcripts.\n\n` +
     `Return ONLY valid JSON with keys: summaryMarkdown, generatedTitle, generatedDescription.\n` +
     `summaryMarkdown must be concise markdown, structured with short sections and bullets.\n` +
-    `generatedTitle must be a strong meeting title only if the current title is missing or placeholder.\n` +
-    `generatedDescription must be a concise 1-2 sentence meeting description only if the current description is missing.\n` +
+    `Consider room chat messages as part of the meeting record when they add context, questions, clarifications, or decisions.\n` +
+    `The generated title and description must be grounded only in what is actually said in the transcript and chat.\n` +
+    `Do not infer a topic, purpose, or institutional framing from the platform name, project name, or an existing draft title if the conversation does not support it.\n` +
+    `If the conversation is mostly introductions, short check-ins, or sparse fragments, keep the title and description generic and factual.\n` +
+    `generatedTitle must be a strong meeting title only when title replacement is allowed below.\n` +
+    `generatedDescription must be a concise 1-2 sentence meeting description only when description replacement is allowed below.\n` +
     `Do not include markdown fences.\n\n` +
     `Current meeting title: ${args.title}\n` +
     `Current meeting description: ${args.description || "(none)"}\n` +
+    `Title replacement allowed: ${args.canReplaceTitle ? "yes" : "no"}\n` +
+    `Description replacement allowed: ${args.canReplaceDescription ? "yes" : "no"}\n` +
     `Transcription provider: ${args.provider}\n` +
     `Language: ${args.language}\n\n` +
-    `Transcript:\n${args.transcriptText.slice(0, 40000)}`
+    `Transcript:\n${args.transcriptText.slice(0, 36000)}` +
+    chatSection
   );
 }
 
@@ -148,6 +169,9 @@ async function runMeetingSummaryAi(args: {
   provider: string;
   language: string;
   transcriptText: string;
+  transcriptJson: string | null;
+  canReplaceTitle: boolean;
+  canReplaceDescription: boolean;
 }) {
   const apiKey = String(process.env.GEMINI_API_KEY || "").trim();
   if (!apiKey) {
@@ -260,7 +284,10 @@ export async function ensureMeetingAiSummary(meetingId: string) {
       description: meeting.description,
       provider: meeting.transcriptionProvider,
       language: meeting.language,
-      transcriptText: meeting.transcript.transcriptText
+      transcriptText: meeting.transcript.transcriptText,
+      transcriptJson: meeting.transcript.transcriptJson ?? null,
+      canReplaceTitle: shouldAutofillTitle(meeting.title),
+      canReplaceDescription: shouldAutofillDescription(meeting.description)
     });
 
     const nextTitle = shouldAutofillTitle(meeting.title) ? ai.generatedTitle?.trim() || null : null;

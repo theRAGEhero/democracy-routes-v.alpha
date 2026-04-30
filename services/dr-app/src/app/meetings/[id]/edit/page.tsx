@@ -66,7 +66,11 @@ export default async function EditMeetingPage({ params }: { params: { id: string
               isPublic: meeting.isPublic,
               requiresApproval: meeting.requiresApproval,
               capacity: meeting.capacity,
-              aiAgentIds: meeting.aiAgents.map((item) => item.agentId)
+              aiAgentIds: meeting.aiAgents.map((item) => item.agentId),
+              speakingBalanceModeratorEnabled: meeting.speakingBalanceModeratorEnabled,
+              speakingBalanceModeratorPreset:
+                meeting.speakingBalanceModeratorPreset === "strict" ? "strict" : "gentle",
+              speakingBalanceAllowParticipantUnmute: meeting.speakingBalanceAllowParticipantUnmute
             }}
           />
         </div>

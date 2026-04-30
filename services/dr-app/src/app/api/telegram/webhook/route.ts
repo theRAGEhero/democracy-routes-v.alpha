@@ -6,6 +6,28 @@ function normalizeCode(value: string | null) {
   return value.trim().toUpperCase();
 }
 
+function getAppBaseUrl() {
+  return (process.env.APP_BASE_URL || "https://democracyroutes.com").replace(/\/$/, "");
+}
+
+function buildWelcomeMessage() {
+  const appBaseUrl = getAppBaseUrl();
+  return [
+    "Welcome to Democracy Routes.",
+    "This bot helps you link Telegram to the platform so you can receive meeting, dataspace, and workflow notifications.",
+    "",
+    `Register or sign in: ${appBaseUrl}/register`,
+    `Platform: ${appBaseUrl}`,
+    "",
+    "To link this Telegram chat to your account:",
+    "1. Open your profile settings on Democracy Routes.",
+    "2. Copy the Telegram verification code shown there.",
+    "3. Send that code here in this chat.",
+    "",
+    "Once linked, this bot will send you platform notifications here."
+  ].join("\n");
+}
+
 async function sendTelegramMessage(token: string, chatId: string, text: string) {
   try {
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -35,20 +57,12 @@ export async function POST(request: Request) {
   const message = payload?.message ?? payload?.edited_message ?? null;
   const text = typeof message?.text === "string" ? message.text.trim() : "";
   const chatId = message?.chat?.id ? String(message.chat.id) : null;
+  const chatType = typeof message?.chat?.type === "string" ? String(message.chat.type) : "";
+  const isPrivateChat = chatType === "private";
 
   const commandMatch = text.match(/^\/(start|help)(@\w+)?(\s|$)/i);
   if (chatId && commandMatch) {
-    await sendTelegramMessage(
-      botToken,
-      chatId,
-      [
-        "Welcome to Democracy Routes notifications.",
-        "Send the verification code shown in your profile settings to link this chat.",
-        "After linking, you will receive dataspace updates and plan alerts.",
-        "",
-        "Need help? Contact your admin."
-      ].join("\n")
-    );
+    await sendTelegramMessage(botToken, chatId, buildWelcomeMessage());
     return NextResponse.json({ ok: true });
   }
   if (text.startsWith("/")) {
@@ -87,10 +101,29 @@ export async function POST(request: Request) {
   });
 
   if (!user) {
+    if (chatId && isPrivateChat) {
+      const linkedUser = await prisma.user.findFirst({
+        where: { telegramChatId: chatId },
+        select: { id: true }
+      });
+      if (!linkedUser) {
+        await sendTelegramMessage(botToken, chatId, buildWelcomeMessage());
+      }
+    }
     return NextResponse.json({ ok: true });
   }
 
   if (user.telegramVerificationExpiresAt && user.telegramVerificationExpiresAt < new Date()) {
+    if (chatId && isPrivateChat) {
+      await sendTelegramMessage(
+        botToken,
+        chatId,
+        [
+          "That Telegram verification code has expired.",
+          `Open Democracy Routes to generate a new code: ${getAppBaseUrl()}/account`
+        ].join("\n")
+      );
+    }
     return NextResponse.json({ ok: true });
   }
 

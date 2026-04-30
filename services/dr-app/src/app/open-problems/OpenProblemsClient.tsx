@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   OPEN_PROBLEM_BOARD_STATUSES,
@@ -524,7 +525,9 @@ export function OpenProblemsClient({ initialProblems, dataspaces }: Props) {
             ) : (
               <>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-sm font-semibold text-slate-900">{problem.title}</h3>
+                  <Link href={`/open-problems/${problem.id}`} className="text-sm font-semibold text-slate-900 hover:underline">
+                    {problem.title}
+                  </Link>
                   <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${statusBadgeClass(normalizeStatus(problem.status))}`}>
                     {OPEN_PROBLEM_STATUS_LABELS[normalizeStatus(problem.status)]}
                   </span>
@@ -546,6 +549,12 @@ export function OpenProblemsClient({ initialProblems, dataspaces }: Props) {
           </div>
 
           <div className="flex flex-col items-end gap-2">
+            <Link
+              href={`/open-problems/${problem.id}`}
+              className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:text-slate-900"
+            >
+              Open
+            </Link>
             {problem.createdByMe ? (
               editingProblemId === problem.id ? (
                 <>
@@ -630,9 +639,6 @@ export function OpenProblemsClient({ initialProblems, dataspaces }: Props) {
               <h2 className="mt-1 text-xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
                 Existing open problems
               </h2>
-              <p className="mt-2 max-w-3xl text-sm text-slate-600">
-                Switch between a table view for all previously created problems and a Kanban workflow view.
-              </p>
             </div>
             <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white p-1">
               <button
@@ -697,6 +703,12 @@ export function OpenProblemsClient({ initialProblems, dataspaces }: Props) {
                           <td className="px-4 py-4 text-slate-600">{problem.joinCount}</td>
                           <td className="px-4 py-4">
                             <div className="flex flex-wrap gap-2">
+                              <Link
+                                href={`/open-problems/${problem.id}`}
+                                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:border-slate-300 hover:text-slate-900"
+                              >
+                                Open
+                              </Link>
                               {problem.createdByMe ? (
                                 <button
                                   type="button"
@@ -810,13 +822,10 @@ export function OpenProblemsClient({ initialProblems, dataspaces }: Props) {
         <section className="rounded-[28px] border border-[color:var(--stroke)] bg-[color:var(--card)] p-4 shadow-[0_18px_45px_rgba(15,23,42,0.08)] sm:p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Draft</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Draft workspace</div>
               <h2 className="mt-1 text-xl font-semibold text-slate-900" style={{ fontFamily: "var(--font-serif)" }}>
                 AI problem composer
               </h2>
-              <p className="mt-2 text-sm text-slate-600">
-                Use the assistant to shape a new problem, then publish it into Todo.
-              </p>
             </div>
             <button
               type="button"
@@ -852,9 +861,23 @@ export function OpenProblemsClient({ initialProblems, dataspaces }: Props) {
           </div>
 
           <div className="mt-4 rounded-3xl border border-slate-200 bg-white p-3 sm:p-4">
-            <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Dataspace
-            </label>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Dataspace
+                </label>
+                <p className="mt-1 text-sm text-slate-600">
+                  Choose where this problem belongs before you publish it.
+                </p>
+              </div>
+              <div className="text-xs text-slate-500">
+                {provider === "NONE"
+                  ? "Mic transcription unavailable"
+                  : providerLoading
+                    ? "Checking mic transcription"
+                    : `Mic transcription via ${provider}`}
+              </div>
+            </div>
             <select
               value={dataspaceId}
               onChange={(event) => setDataspaceId(event.target.value)}
@@ -885,13 +908,11 @@ export function OpenProblemsClient({ initialProblems, dataspaces }: Props) {
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               className="mt-3 min-h-[150px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-emerald-300"
-              placeholder="Describe what is happening, why it matters, and what kind of conversation you hope to have."
+              placeholder="Describe what is happening, who it affects, why it matters, and what kind of conversation or action this problem needs."
             />
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
               <div className="text-xs text-slate-500">
-                {provider === "NONE"
-                  ? "Mic transcription disabled in admin settings."
-                  : `Mic transcription via ${provider}.`}
+                The assistant can help turn a rough note into a publishable open problem.
               </div>
               <button
                 type="button"
@@ -906,13 +927,35 @@ export function OpenProblemsClient({ initialProblems, dataspaces }: Props) {
 
           <div className="mt-4 space-y-4">
             <div className="rounded-3xl border border-slate-200 bg-white p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Draft title</div>
-              <div className="mt-2 text-sm font-semibold text-slate-900">{suggestedTitle || "Not ready yet"}</div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Draft title</div>
+                <div className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                  suggestedTitle ? "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200" : "bg-slate-100 text-slate-500 ring-1 ring-slate-200"
+                }`}>
+                  {suggestedTitle ? "Ready" : "Waiting"}
+                </div>
+              </div>
+              <div className="mt-2 text-sm font-semibold text-slate-900">
+                {suggestedTitle || "The assistant will suggest a concise title once the issue is clear enough."}
+              </div>
             </div>
             <div className="rounded-3xl border border-slate-200 bg-white p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Draft description</div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Draft description</div>
+                <div className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                  suggestedDescription ? "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200" : "bg-slate-100 text-slate-500 ring-1 ring-slate-200"
+                }`}>
+                  {suggestedDescription ? "Ready" : "Waiting"}
+                </div>
+              </div>
               <div className="mt-2 text-sm text-slate-700">
-                {suggestedDescription || "Continue the conversation to let the assistant shape the draft."}
+                {suggestedDescription || "Keep talking with the assistant. It will turn your notes into a clearer problem statement you can publish."}
+              </div>
+            </div>
+            <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50/80 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Publishing rule</div>
+              <div className="mt-2 text-sm text-slate-600">
+                You can publish only when the draft has both a usable title and a clear description. Similar active problems are shown below so you can join existing work instead of duplicating it.
               </div>
             </div>
             {similarProblems.length > 0 ? (
@@ -942,10 +985,6 @@ export function OpenProblemsClient({ initialProblems, dataspaces }: Props) {
                 </div>
               </div>
             ) : null}
-
-            <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-600">
-              Legacy `OPEN` records are shown in the table and mapped to Todo in the Kanban view.
-            </div>
 
             <div className="flex justify-end">
               <button

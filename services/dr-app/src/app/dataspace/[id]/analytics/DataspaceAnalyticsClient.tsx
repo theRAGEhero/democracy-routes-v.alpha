@@ -187,33 +187,35 @@ export function DataspaceAnalyticsClient({
         <div className="dr-card p-6 text-sm text-rose-700">{error}</div>
       ) : data ? (
         <>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-            <div className="dr-card p-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Templates</p>
-              <p className="mt-1 text-xl font-semibold text-slate-900">{data.stats.templates}</p>
+          <div className="grid gap-2 lg:grid-cols-[repeat(4,minmax(0,120px))_minmax(0,1fr)]">
+            <div className="dr-card px-3 py-2">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-500">Templates</p>
+              <p className="mt-1 text-lg font-semibold leading-none text-slate-900">{data.stats.templates}</p>
             </div>
-            <div className="dr-card p-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Calls</p>
-              <p className="mt-1 text-xl font-semibold text-slate-900">{data.stats.meetings}</p>
+            <div className="dr-card px-3 py-2">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-500">Calls</p>
+              <p className="mt-1 text-lg font-semibold leading-none text-slate-900">{data.stats.meetings}</p>
             </div>
-            <div className="dr-card p-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Participants</p>
-              <p className="mt-1 text-xl font-semibold text-slate-900">{data.stats.participants}</p>
+            <div className="dr-card px-3 py-2">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-500">Participants</p>
+              <p className="mt-1 text-lg font-semibold leading-none text-slate-900">{data.stats.participants}</p>
             </div>
-            <div className="dr-card p-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Connections</p>
-              <p className="mt-1 text-xl font-semibold text-slate-900">{data.stats.connections}</p>
+            <div className="dr-card px-3 py-2">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-500">Connections</p>
+              <p className="mt-1 text-lg font-semibold leading-none text-slate-900">{data.stats.connections}</p>
             </div>
-            <div className="dr-card p-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Most connected</p>
-              <p className="mt-1 truncate text-sm font-semibold text-slate-900">
-                {data.stats.mostConnectedParticipant?.email || "No participant data"}
-              </p>
-              <p className="mt-0.5 text-[11px] text-slate-500">
+            <div className="dr-card flex min-h-[64px] items-center justify-between gap-3 px-3 py-2">
+              <div className="min-w-0">
+                <p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-slate-500">Most connected</p>
+                <p className="mt-1 truncate text-sm font-semibold text-slate-900">
+                  {data.stats.mostConnectedParticipant?.email || "No participant data"}
+                </p>
+              </div>
+              <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-600">
                 {data.stats.mostConnectedParticipant
                   ? `${data.stats.mostConnectedParticipant.count} links`
-                  : "No activity yet"}
-              </p>
+                  : "No activity"}
+              </span>
             </div>
           </div>
 

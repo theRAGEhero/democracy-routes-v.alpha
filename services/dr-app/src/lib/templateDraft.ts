@@ -29,7 +29,6 @@ export type TemplateBlock = {
     | "when_x_join"
     | "organizer_manual"
     | "when_x_join_and_datetime"
-    | "random_selection_among_x"
     | null;
   startDate?: string | null;
   startTime?: string | null;
@@ -111,6 +110,17 @@ export function buildDefaultTemplateDraft(): TemplateDraft {
       requiresApproval: false,
       capacity: null
     },
-    blocks: []
+    blocks: [
+      {
+        type: "START",
+        durationSeconds: 0,
+        startMode: "specific_datetime",
+        startDate: null,
+        startTime: null,
+        timezone: null,
+        requiredParticipants: null,
+        note: null
+      }
+    ]
   };
 }

@@ -175,6 +175,30 @@ export async function POST(request: Request) {
 
   const maxParticipantsPerRoom = parsed.data.maxParticipantsPerRoom;
   const allowOddGroup = Boolean(parsed.data.allowOddGroup);
+  let resolvedOpenProblemId: string | null = null;
+  if (parsed.data.openProblemId) {
+    const problem = await prisma.openProblem.findFirst({
+      where: {
+        id: parsed.data.openProblemId,
+        OR: [
+          { createdById: session.user.id },
+          { joins: { some: { userId: session.user.id } } },
+          { dataspace: { members: { some: { userId: session.user.id } } } }
+        ]
+      },
+      select: { id: true, dataspaceId: true }
+    });
+    if (!problem) {
+      return NextResponse.json({ error: "Open problem not found or not accessible." }, { status: 404 });
+    }
+    if (parsed.data.dataspaceId && problem.dataspaceId && problem.dataspaceId !== parsed.data.dataspaceId) {
+      return NextResponse.json(
+        { error: "Flow dataspace must match the selected open problem dataspace." },
+        { status: 400 }
+      );
+    }
+    resolvedOpenProblemId = problem.id;
+  }
   const admissionMode = normalizeFlowAdmissionMode(parsed.data.admissionMode);
   const joinOpensAt = parsed.data.joinOpensAt ? new Date(parsed.data.joinOpensAt) : null;
   const joinClosesAt = parsed.data.joinClosesAt ? new Date(parsed.data.joinClosesAt) : null;
@@ -345,6 +369,7 @@ export async function POST(request: Request) {
       description: parsed.data.description || null,
       createdById: session.user.id,
       dataspaceId: parsed.data.dataspaceId ?? null,
+      openProblemId: resolvedOpenProblemId,
       startAt,
       timezone: parsed.data.timezone || null,
       roundDurationMinutes: roundBlocks.length

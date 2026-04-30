@@ -4,7 +4,7 @@ export type AppTheme = (typeof APP_THEMES)[number];
 
 export function normalizeAppTheme(value: string | null | undefined): AppTheme {
   if (value === "minimal") return "minimal";
-  return value === "rainbow" ? "rainbow" : "classic";
+  return value === "classic" ? "classic" : "rainbow";
 }
 
 export function getAppThemeBodyClass(theme: string | null | undefined) {

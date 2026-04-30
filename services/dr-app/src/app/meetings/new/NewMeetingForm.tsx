@@ -24,6 +24,9 @@ type InitialMeeting = {
   requiresApproval: boolean;
   capacity: number | null;
   aiAgentIds?: string[];
+  speakingBalanceModeratorEnabled?: boolean;
+  speakingBalanceModeratorPreset?: "gentle" | "strict";
+  speakingBalanceAllowParticipantUnmute?: boolean;
 };
 
 type Props = {
@@ -116,6 +119,9 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
   const [capacity, setCapacity] = useState<number | "">("");
   const [aiAgents, setAiAgents] = useState<AiAgentOption[]>([]);
   const [selectedAiAgentIds, setSelectedAiAgentIds] = useState<string[]>([]);
+  const [speakingBalanceModeratorEnabled, setSpeakingBalanceModeratorEnabled] = useState(false);
+  const [speakingBalanceModeratorPreset, setSpeakingBalanceModeratorPreset] = useState<"gentle" | "strict">("gentle");
+  const [speakingBalanceAllowParticipantUnmute, setSpeakingBalanceAllowParticipantUnmute] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [logId, setLogId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -124,6 +130,7 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
   const [guestInviteStatus, setGuestInviteStatus] = useState<string | null>(null);
   const [guestInviteSending, setGuestInviteSending] = useState(false);
   const [timezone, setTimezone] = useState("");
+  const [openProblemId, setOpenProblemId] = useState("");
   const [includeMyself, setIncludeMyself] = useState(true);
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [resolvedTimezone, setResolvedTimezone] = useState("UTC");
@@ -165,7 +172,15 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
     setRequiresApproval(Boolean(initialMeeting.requiresApproval));
     setCapacity(initialMeeting.capacity ?? "");
     setSelectedAiAgentIds(initialMeeting.aiAgentIds ?? []);
+    setSpeakingBalanceModeratorEnabled(Boolean(initialMeeting.speakingBalanceModeratorEnabled));
+    setSpeakingBalanceModeratorPreset(initialMeeting.speakingBalanceModeratorPreset ?? "gentle");
+    setSpeakingBalanceAllowParticipantUnmute(initialMeeting.speakingBalanceAllowParticipantUnmute ?? true);
   }, [initialMeeting]);
+
+  useEffect(() => {
+    if (isLiveTranscriptionProvider(provider)) return;
+    setSpeakingBalanceModeratorEnabled(false);
+  }, [provider]);
 
   useEffect(() => {
     let active = true;
@@ -194,6 +209,14 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
     if (!dataspaceIds.has(paramId)) return;
     setDataspaceId(paramId);
   }, [dataspaceId, dataspaceIds, mode, searchParams]);
+
+  useEffect(() => {
+    if (mode !== "create") return;
+    if (openProblemId) return;
+    const paramId = searchParams?.get("openProblemId") ?? "";
+    if (!paramId) return;
+    setOpenProblemId(paramId);
+  }, [mode, openProblemId, searchParams]);
 
   useEffect(() => {
     let active = true;
@@ -313,10 +336,15 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
         transcriptionProvider: provider,
         timezone: timezone || resolvedTimezone,
         dataspaceId: dataspaceId || null,
+        openProblemId: openProblemId || null,
         isPublic,
         requiresApproval,
         capacity: capacity === "" ? null : Number(capacity),
-        aiAgentIds: selectedAiAgentIds
+        aiAgentIds: selectedAiAgentIds,
+        speakingBalanceModeratorEnabled:
+          isLiveTranscriptionProvider(provider) && speakingBalanceModeratorEnabled,
+        speakingBalanceModeratorPreset,
+        speakingBalanceAllowParticipantUnmute
       })
     });
 
@@ -391,6 +419,11 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
     <form onSubmit={handleSubmit} className="space-y-4">
       <section className="grid gap-4 lg:grid-cols-[1.4fr,1fr]">
         <div className="space-y-3 rounded-[24px] border border-slate-200/80 bg-white/80 p-4">
+          {openProblemId ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              This meeting will be linked to the selected open problem.
+            </div>
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-[1.1fr,0.9fr]">
             <div>
               <label className="text-sm font-medium text-slate-800">Title (optional)</label>
@@ -644,6 +677,63 @@ export function NewMeetingForm({ dataspaces, mode = "create", initialMeeting }: 
         <p className="mt-2 text-xs text-slate-500">
           This assigns AI agents to the meeting. Live response behavior will follow the meeting runtime configuration for live-transcribed meetings.
         </p>
+      </section>
+
+      <section className="rounded-[24px] border border-slate-200/80 bg-white/80 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <label className="text-sm font-medium text-slate-800">Speaking Balance Moderator</label>
+          <span className="text-xs text-slate-500">
+            Optional airtime moderation for live meetings.
+          </span>
+        </div>
+        {!isLiveTranscriptionProvider(provider) ? (
+          <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-900">
+            Speaking balance moderation is available only for live-transcribed meetings.
+          </div>
+        ) : null}
+        <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={speakingBalanceModeratorEnabled}
+              disabled={!isLiveTranscriptionProvider(provider)}
+              onChange={(event) => setSpeakingBalanceModeratorEnabled(event.target.checked)}
+              className="h-4 w-4"
+            />
+            Enable speaking balance moderation
+          </label>
+          <p className="mt-1 text-xs text-slate-500">
+            Warns people who dominate airtime and can temporarily mute them if they continue.
+          </p>
+          {speakingBalanceModeratorEnabled && isLiveTranscriptionProvider(provider) ? (
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="text-sm font-medium text-slate-800">Moderation style</label>
+                <select
+                  value={speakingBalanceModeratorPreset}
+                  onChange={(event) =>
+                    setSpeakingBalanceModeratorPreset(
+                      event.target.value === "strict" ? "strict" : "gentle"
+                    )
+                  }
+                  className="dr-input mt-1 w-full rounded-xl px-3 py-2 text-sm"
+                >
+                  <option value="gentle">Gentle</option>
+                  <option value="strict">Strict</option>
+                </select>
+              </div>
+              <label className="flex items-center gap-2 self-end text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={speakingBalanceAllowParticipantUnmute}
+                  onChange={(event) => setSpeakingBalanceAllowParticipantUnmute(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Allow participants to unmute someone the moderator muted
+              </label>
+            </div>
+          ) : null}
+        </div>
       </section>
 
       <section className="rounded-[24px] border border-slate-200/80 bg-white/80 p-4">

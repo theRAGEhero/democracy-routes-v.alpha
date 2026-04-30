@@ -27,7 +27,6 @@ export type PlanBlockInput = {
     | "when_x_join"
     | "organizer_manual"
     | "when_x_join_and_datetime"
-    | "random_selection_among_x"
     | null;
   startDate?: string | null;
   startTime?: string | null;

@@ -112,7 +112,7 @@ export function AnalyticsConsent({ enabled, snippet }: Props) {
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[100000] px-3 pb-3 sm:px-4 sm:pb-4">
       <div
-        className="pointer-events-auto mx-auto flex w-full max-w-2xl flex-col gap-3 rounded-[24px] border border-slate-200/90 bg-white/98 p-4 text-sm text-slate-700 shadow-[0_24px_60px_rgba(15,23,42,0.2)]"
+        className="pointer-events-auto mx-auto flex w-full max-w-2xl flex-col gap-3 rounded-[24px] border border-slate-300 bg-white p-4 text-sm text-slate-700 shadow-[0_28px_70px_rgba(15,23,42,0.28)] ring-1 ring-black/5"
         role="dialog"
         aria-label="Analytics consent"
       >

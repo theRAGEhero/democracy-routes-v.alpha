@@ -6,6 +6,7 @@ import { sendMail } from "@/lib/mailer";
 import { checkRateLimit, getRequestIp } from "@/lib/rateLimit";
 import crypto from "crypto";
 import { sendTelegramInvite } from "@/lib/telegramInvites";
+import { buildMeetingInviteEmail } from "@/lib/meetingInviteEmail";
 
 function generateToken() {
   return crypto.randomBytes(24).toString("base64url");
@@ -44,6 +45,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
       },
       dataspace: {
         include: { members: { select: { userId: true } } }
+      },
+      createdBy: {
+        select: { email: true }
       }
     }
   });
@@ -83,6 +87,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   if (!invitee || invitee.isGuest) {
     const token = generateToken();
     const expiresAt = meeting.expiresAt ?? null;
+    const normalizedGuestName = String(parsed.data.name || "").trim() || null;
     const invite = await prisma.meetingGuestInvite.upsert({
       where: {
         meetingId_email: {
@@ -92,12 +97,14 @@ export async function POST(request: Request, { params }: { params: { id: string 
       },
       update: {
         token,
-        expiresAt
+        expiresAt,
+        ...(normalizedGuestName !== null ? { guestName: normalizedGuestName } : {})
       },
       create: {
         meetingId: meeting.id,
         createdById: session.user.id,
         email: parsed.data.email.toLowerCase(),
+        guestName: normalizedGuestName,
         token,
         expiresAt
       }
@@ -106,13 +113,19 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const appBaseUrl = process.env.APP_BASE_URL || "http://localhost:3000";
     const guestLink = `${appBaseUrl}/guest/meetings/${invite.token}`;
     const registerLink = `${appBaseUrl}/register`;
+    const emailPayload = buildMeetingInviteEmail({
+      inviteKind: "guest",
+      meeting,
+      accessUrl: guestLink,
+      registerUrl: registerLink,
+      inviteeName: invite.guestName
+    });
     const emailResult = await sendMail({
       to: invite.email,
-      subject: "You are invited to a meeting",
-      html: `<p>You have been invited to the meeting <strong>${meeting.title}</strong>.</p>
-        <p>Join without registration: <a href="${guestLink}">${guestLink}</a></p>
-        <p>Prefer to register? Create an account: <a href="${registerLink}">${registerLink}</a></p>`,
-      text: `You have been invited to the meeting ${meeting.title}. Join without registration: ${guestLink}. Register: ${registerLink}`
+      subject: emailPayload.subject,
+      html: emailPayload.html,
+      text: emailPayload.text,
+      attachments: emailPayload.attachments
     });
 
     return NextResponse.json({
@@ -169,19 +182,35 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
   const appBaseUrl = process.env.APP_BASE_URL || "http://localhost:3000";
   const meetingLink = `${appBaseUrl}/meetings/${meeting.id}`;
+  const emailPayload = buildMeetingInviteEmail({
+    inviteKind: "registered",
+    meeting,
+    accessUrl: meetingLink
+  });
   const emailResult = await sendMail({
     to: invitee.email,
-    subject: "You are invited to a meeting",
-    html: `<p>You have been invited to the meeting <strong>${meeting.title}</strong>.</p>
-      <p>Open the meeting page: <a href="${meetingLink}">${meetingLink}</a></p>`,
-    text: `You have been invited to the meeting ${meeting.title}. Open: ${meetingLink}`
+    subject: emailPayload.subject,
+    html: emailPayload.html,
+    text: emailPayload.text,
+    attachments: emailPayload.attachments
   });
   await sendTelegramInvite(
     invitee,
     invitee.notifyTelegramMeetingInvites,
     "meeting",
     meeting.title,
-    meetingLink
+    meetingLink,
+    {
+      title: meeting.title,
+      description: meeting.description,
+      scheduledStartAt: meeting.scheduledStartAt,
+      expiresAt: meeting.expiresAt,
+      timezone: meeting.timezone,
+      language: meeting.language,
+      transcriptionProvider: meeting.transcriptionProvider,
+      hostEmail: meeting.createdBy.email,
+      createdAt: meeting.createdAt
+    }
   );
 
   return NextResponse.json({

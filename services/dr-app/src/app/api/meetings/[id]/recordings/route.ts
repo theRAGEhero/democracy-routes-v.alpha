@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import fs from "node:fs/promises";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/session";
+import { guessMediaContentType } from "@/lib/meetingMediaUploads";
 
 type RecordingItem = {
   roomId: string;
@@ -72,7 +74,7 @@ export async function GET(
 
   const items = Array.isArray(payload?.items) ? (payload.items as RecordingItem[]) : [];
   const roomId = normalizeRoomId(access.meeting.roomId);
-  const files = items
+  const recordingFiles = items
     .filter((item) => normalizeRoomId(item.roomId) === roomId)
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
     .map((item) => ({
@@ -89,6 +91,54 @@ export async function GET(
           : "recording",
       playbackUrl: `/api/meetings/${params.id}/recordings/file?sessionId=${encodeURIComponent(item.sessionId)}`
     }));
+
+  const uploadedJobs = await prisma.transcriptionJob.findMany({
+    where: {
+      meetingId: access.meeting.id,
+      kind: "MEETING_UPLOAD",
+      audioPath: { not: null }
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      audioPath: true,
+      provider: true,
+      status: true,
+      updatedAt: true,
+      lastError: true,
+      roundId: true
+    }
+  });
+
+  const uploadedFiles = await Promise.all(
+    uploadedJobs.map(async (job) => {
+      const audioPath = String(job.audioPath || "");
+      let stats: Awaited<ReturnType<typeof fs.stat>> | null = null;
+      try {
+        stats = await fs.stat(audioPath);
+      } catch {
+        stats = null;
+      }
+      return {
+        sessionId: job.id,
+        filename: audioPath.split("/").pop() || `upload-${job.id}`,
+        bytes: stats?.size ?? 0,
+        updatedAt: (stats?.mtime ?? job.updatedAt).toISOString(),
+        transcriptExists: job.status === "DONE",
+        transcriptUpdatedAt: job.status === "DONE" ? job.updatedAt.toISOString() : null,
+        kind: "uploaded-media",
+        provider: job.provider,
+        status: job.status,
+        contentType: guessMediaContentType(audioPath),
+        error: job.lastError ?? null,
+        playbackUrl: `/api/meetings/${params.id}/recordings/file?uploadJobId=${encodeURIComponent(job.id)}`
+      };
+    })
+  );
+
+  const files = [...uploadedFiles, ...recordingFiles].sort(
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+  );
 
   return NextResponse.json({
     roomId: access.meeting.roomId,

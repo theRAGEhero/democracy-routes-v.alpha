@@ -5,6 +5,14 @@ import { extractRemoteWorkerToken, verifyRemoteWorkerToken } from "@/lib/remoteW
 import { canStartProviderWork } from "@/lib/transcriptionLimits";
 import { parseAutoRemoteAssignment } from "@/lib/autoRemoteAssignment";
 
+function parsePayloadJson(payloadJson: string | null) {
+  try {
+    return JSON.parse(payloadJson || "{}") as Record<string, unknown>;
+  } catch {
+    return {} as Record<string, unknown>;
+  }
+}
+
 export async function POST(request: Request) {
   const token = extractRemoteWorkerToken(request);
   const payload = verifyRemoteWorkerToken(token);
@@ -29,6 +37,17 @@ export async function POST(request: Request) {
     select: { id: true }
   });
   if (staleWorkers.length > 0) {
+    const staleClaimedJobs = await prisma.remoteWorkerJob.findMany({
+      where: {
+        status: "CLAIMED",
+        claimedByWorkerId: { in: staleWorkers.map((item) => item.id) }
+      },
+      select: {
+        id: true,
+        sourceType: true,
+        payloadJson: true
+      }
+    });
     await prisma.remoteWorkerJob.updateMany({
       where: {
         status: "CLAIMED",
@@ -40,6 +59,22 @@ export async function POST(request: Request) {
         claimedAt: null
       }
     });
+    const staleUploadJobIds = staleClaimedJobs
+      .filter((job) => job.sourceType === "MEETING_UPLOAD")
+      .map((job) => {
+        const parsed = parsePayloadJson(job.payloadJson);
+        return typeof parsed.transcriptionJobId === "string" ? parsed.transcriptionJobId : null;
+      })
+      .filter((value): value is string => Boolean(value));
+    if (staleUploadJobIds.length > 0) {
+      await prisma.transcriptionJob.updateMany({
+        where: { id: { in: staleUploadJobIds } },
+        data: {
+          status: "PENDING",
+          lastError: "Waiting for remote worker"
+        }
+      });
+    }
     await prisma.remoteWorker.updateMany({
       where: { id: { in: staleWorkers.map((item) => item.id) } },
       data: { status: "READY" }
@@ -112,6 +147,23 @@ export async function POST(request: Request) {
       return null;
     }
 
+    if (job.sourceType === "MEETING_UPLOAD") {
+      const parsed = parsePayloadJson(job.payloadJson);
+      const transcriptionJobId =
+        typeof parsed.transcriptionJobId === "string" ? parsed.transcriptionJobId : null;
+      if (transcriptionJobId) {
+        await tx.transcriptionJob.update({
+          where: { id: transcriptionJobId },
+          data: {
+            status: "RUNNING",
+            attempts: { increment: 1 },
+            lastAttemptAt: new Date(),
+            lastError: null
+          }
+        });
+      }
+    }
+
     await tx.remoteWorker.update({
       where: { id: workerId },
       data: {
@@ -164,7 +216,7 @@ export async function POST(request: Request) {
       ? {
           ...claimedJob,
           audioUrl:
-            claimedJob.sourceType === "MEETING_RECORDING"
+            claimedJob.sourceType === "MEETING_RECORDING" || claimedJob.sourceType === "MEETING_UPLOAD"
               ? `/api/remote-workers/jobs/${claimedJob.id}/audio?workerId=${encodeURIComponent(workerId)}`
               : claimedJob.audioUrl
         }

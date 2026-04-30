@@ -8,25 +8,15 @@ import { TEMPLATE_BLOCK_TYPES } from "@/lib/templateDraft";
 import { getTemplateAiInstructions } from "@/lib/templateAiInstructions";
 import { getTemplateModuleDescriptions } from "@/lib/templateModuleDescriptions";
 
-const agreementDeadlineSchema = z
-  .union([z.string(), z.number().int().min(0)])
-  .optional()
-  .nullable()
-  .transform((value) => {
-    if (value === undefined || value === null || value === "") return null;
-    return String(value);
-  });
-
 const blockSchema = z.object({
   type: z.enum(TEMPLATE_BLOCK_TYPES),
-  durationSeconds: z.number().int().min(30).max(7200),
+  durationSeconds: z.number().int().min(0).max(7200),
   startMode: z
     .enum([
       "specific_datetime",
       "when_x_join",
       "organizer_manual",
-      "when_x_join_and_datetime",
-      "random_selection_among_x"
+      "when_x_join_and_datetime"
     ])
     .optional()
     .nullable(),
@@ -34,13 +24,6 @@ const blockSchema = z.object({
   startTime: z.string().optional().nullable(),
   timezone: z.string().trim().max(100).optional().nullable(),
   requiredParticipants: z.number().int().min(1).max(100000).optional().nullable(),
-  agreementRequired: z.boolean().optional().nullable(),
-  agreementDeadline: agreementDeadlineSchema,
-  minimumParticipants: z.number().int().min(1).max(100000).optional().nullable(),
-  allowStartBeforeFull: z.boolean().optional().nullable(),
-  poolSize: z.number().int().min(1).max(100000).optional().nullable(),
-  selectedParticipants: z.number().int().min(1).max(100000).optional().nullable(),
-  selectionRule: z.enum(["random"]).optional().nullable(),
   note: z.string().trim().max(500).optional().nullable(),
   participantMode: z
     .enum(["manual_selected", "dataspace_invite_all", "dataspace_random", "ai_search_users"])
@@ -137,7 +120,7 @@ function buildSystemPrompt(
       : "";
   const moduleSection =
     `Available modules, meanings, and fields:\n` +
-    `- START: ${moduleDescriptions.START || ""} Fields: durationSeconds, startMode ("specific_datetime" | "when_x_join" | "organizer_manual" | "when_x_join_and_datetime" | "random_selection_among_x"), startDate, startTime, timezone, requiredParticipants, agreementRequired, agreementDeadline, minimumParticipants, allowStartBeforeFull, poolSize, selectedParticipants, selectionRule ("random"), note\n` +
+    `- START: ${moduleDescriptions.START || ""} Fields: startMode ("specific_datetime" | "when_x_join" | "organizer_manual" | "when_x_join_and_datetime"), startDate, startTime, timezone, requiredParticipants, note. Do not set a duration for START beyond 0.\n` +
     `- PARTICIPANTS: ${moduleDescriptions.PARTICIPANTS || ""} Fields: durationSeconds, participantMode ("manual_selected" | "dataspace_invite_all" | "dataspace_random" | "ai_search_users"), participantUserIds, participantDataspaceIds, participantCount, participantQuery, participantNote\n` +
     `- DISCUSSION: ${moduleDescriptions.DISCUSSION || ""} Fields: durationSeconds, roundMaxParticipants (2-12)\n` +
     `- PAUSE: ${moduleDescriptions.PAUSE || ""} Fields: durationSeconds, meditationAnimationId, meditationAudioUrl\n` +
