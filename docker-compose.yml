@@ -11,6 +11,7 @@ services:
       PORT: ${DR_APP_PORT:-3015}
       DATABASE_URL: ${DR_APP_DATABASE_URL:-file:/data/dev.db}
       UPLOADS_DIR: /data/uploads
+      MEDITATION_AUDIO_DIR: /data/uploads/meditation-audio
       DEEPGRAM_BASE_URL: ${AUDIO_DEEPGRAM_BASE_URL:-http://audio-deepgram:3000}
       VOSK_BASE_URL: ${AUDIO_VOSK_BASE_URL:-http://audio-vosk:3009}
       TRANSCRIPTION_HUB_BASE_URL: ${TRANSCRIPTION_HUB_BASE_URL:-http://transcription-hub:3030}

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 BACKUP_DIR="${BACKUP_DIR:-/backups}"
+export DOCKER_API_VERSION="${DOCKER_API_VERSION:-1.41}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 WORK_DIR="$(mktemp -d)"
 

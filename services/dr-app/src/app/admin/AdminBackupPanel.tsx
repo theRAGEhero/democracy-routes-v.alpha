@@ -58,7 +58,7 @@ export function AdminBackupPanel() {
       const response = await fetch("/api/admin/backups", { method: "POST" });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        setError(payload?.error ?? "Backup failed.");
+        setError(payload?.detail || payload?.error || "Backup failed.");
       } else {
         setMessage(payload?.stdout || "Backup completed.");
         await loadBackups();

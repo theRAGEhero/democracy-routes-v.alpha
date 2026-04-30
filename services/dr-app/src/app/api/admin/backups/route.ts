@@ -80,10 +80,12 @@ export async function POST() {
       stderr: stderr.trim()
     });
   } catch (error: any) {
+    const stderr = typeof error?.stderr === "string" ? error.stderr.trim() : "";
+    const stdout = typeof error?.stdout === "string" ? error.stdout.trim() : "";
     return NextResponse.json(
       {
         error: "Backup failed.",
-        detail: error?.message ?? "Unknown error"
+        detail: stderr || stdout || error?.message || "Unknown error"
       },
       { status: 500 }
     );

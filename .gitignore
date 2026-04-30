@@ -1,6 +1,9 @@
 .env
 .env.*
 !.env.example
+*.local
+*.secret
+*.secrets
 
 **/node_modules/
 **/.next/
@@ -8,6 +11,7 @@
 **/build/
 **/.cache/
 **/tsconfig.tsbuildinfo
+**/coverage/
 
 services/dr-video/recordings/
 services/dr-video/logs/
@@ -16,6 +20,16 @@ audio-api/deepgram/logs/
 audio-api/vosk/logs/
 
 *.log
+*.pid
+*.db
+*.sqlite
+*.sqlite-journal
+*.db-journal
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
 .DS_Store
 
 # Local-only repo
